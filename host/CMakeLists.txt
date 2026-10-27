@@ -1,0 +1,18 @@
+cmake_minimum_required(VERSION 3.16)
+project(acid_host C)
+
+set(CMAKE_C_STANDARD 11)
+add_compile_options(-Wall -Wextra -Werror -O2)
+
+set(ACID_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../components/acid)
+file(GLOB ACID_SRCS CONFIGURE_DEPENDS ${ACID_DIR}/*.c)
+
+enable_testing()
+file(GLOB TEST_SRCS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/test_*.c)
+foreach(src ${TEST_SRCS})
+    get_filename_component(name ${src} NAME_WE)
+    add_executable(${name} ${src} ${ACID_SRCS})
+    target_include_directories(${name} PRIVATE ${ACID_DIR}/include)
+    target_link_libraries(${name} m)
+    add_test(NAME ${name} COMMAND ${name})
+endforeach()
