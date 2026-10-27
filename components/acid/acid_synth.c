@@ -17,6 +17,7 @@
 #define LFO_BARS 12.0f
 #define DRIVE 0.8f
 #define OUT_PEAK 0.5f // -6 dBFS
+#define KICK_GAIN 1.2f
 #define PI_F 3.14159265f
 #define CTRL_BLOCK 16 // управляющая частота sr/16: высота, LFO, коэффициент фильтра
 
@@ -39,6 +40,8 @@ void acid_synth_init(acid_synth_t *s, float sr)
     s->lfo_inc = 1.0f / (LFO_BARS * bar_s * sr);
     s->ctrl_left = 0;
     s->g = 0.0f;
+    acid_kick_init(&s->kick, sr);
+    s->kick_on = 1;
     acid_synth_set_pattern(s, acid_pattern_default, 16);
 }
 
@@ -98,6 +101,9 @@ void acid_synth_render(acid_synth_t *s, float *out, size_t n)
     for (size_t i = 0; i < n; i++) {
         int step = acid_seq_tick(&s->seq);
         if (step >= 0) {
+            if (s->kick_on && step % 4 == 0) {
+                acid_kick_trigger(&s->kick);
+            }
             on_step(s, step);
             s->ctrl_left = 0; // новая нота: пересчитать сразу
         }
@@ -116,6 +122,7 @@ void acid_synth_render(acid_synth_t *s, float *out, size_t n)
         acid_decay_next(&s->fenv);
         float y = acid_ladder_run(&s->flt, x, s->g, s->res);
         y *= acid_amp_next(&s->amp) * s->accent_gain;
+        y += KICK_GAIN * acid_kick_next(&s->kick);
         out[i] = OUT_PEAK * acid_tanh(DRIVE * y);
     }
 }

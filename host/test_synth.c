@@ -106,6 +106,7 @@ TEST(test_synth_slide_into_rest)
     static const acid_step_t pat[2] = {{45, ACID_SLIDE}, {0, ACID_REST}};
     acid_synth_init(&s, SR);
     acid_synth_set_pattern(&s, pat, 2);
+    s.kick_on = 0; // проверяем бас, бочка тут мешает
     render_until(1, s.seq.samples_per_step / 2);
     double sum_sq = 0.0;
     int n = 0;

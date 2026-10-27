@@ -3,11 +3,12 @@
 
 #include "acid_env.h"
 #include "acid_filter.h"
+#include "acid_kick.h"
 #include "acid_osc.h"
 #include "acid_seq.h"
 
 // Монофонический acid-голос с секвенсором. Поля публичные ради тестов,
-// снаружи трогать только res и wave.
+// снаружи трогать только res, wave и kick_on.
 typedef struct {
     float sr;
     acid_osc_t osc;
@@ -27,6 +28,8 @@ typedef struct {
     float lfo_inc;
     float g;           // коэффициент фильтра с управляющей частоты
     int ctrl_left;     // сэмплов до следующего пересчёта
+    acid_kick_t kick;
+    int kick_on;       // прямая бочка на каждую долю
 } acid_synth_t;
 
 void acid_synth_init(acid_synth_t *s, float sr);
