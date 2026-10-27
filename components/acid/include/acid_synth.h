@@ -25,6 +25,8 @@ typedef struct {
     int wave;          // 0 пила, 1 меандр
     float lfo_phase;   // [0, 1)
     float lfo_inc;
+    float g;           // коэффициент фильтра с управляющей частоты
+    int ctrl_left;     // сэмплов до следующего пересчёта
 } acid_synth_t;
 
 void acid_synth_init(acid_synth_t *s, float sr);

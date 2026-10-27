@@ -1,40 +1,55 @@
-#include <math.h>
-
+#include "acid.h"
 #include "audio_out.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "usb_host_task.h"
 
-#define BLOCK 480
+#define SR 48000
+#define BLOCK 480 // 10 мс
+#define STATS_PERIOD_US (10 * 1000 * 1000)
 
 static const char *TAG = "main";
 
-// Тестовый тон 440 Гц, -12 dBFS.
-static void tone_task(void *arg)
+static acid_synth_t s_synth;
+
+static void synth_task(void *arg)
 {
     (void)arg;
-    static int16_t buf[BLOCK * 2];
-    float phase = 0.0f;
-    uint32_t block_no = 0;
-    const float amp = 0.25f * 32767.0f;
+    static float mono[BLOCK];
+    static int16_t pcm[BLOCK * 2];
+    uint32_t last_underruns = 0;
+    int64_t worst_us = 0;
+    int64_t next_stats = esp_timer_get_time() + STATS_PERIOD_US;
+
+    acid_synth_init(&s_synth, (float)SR);
     for (;;) {
-        if (!audio_out_wait_connected(1000)) {
-            continue;
+        if (!audio_out_connected()) {
+            // Ждём свисток молча, без перебора в цикле.
+            audio_out_wait_connected(portMAX_DELAY);
+            ESP_LOGI(TAG, "speaker ready, playing acid pattern");
         }
-        // Диагностика: 1 с тон / 1 с тишина, высота чередуется 440 и 880 Гц.
-        uint32_t sec = block_no++ / 100;
-        int on = (sec % 2) == 0;
-        float inc = 2.0f * (float)M_PI * ((sec / 2) % 2 ? 880.0f : 440.0f) / 48000.0f;
-        for (int i = 0; i < BLOCK; i++) {
-            int16_t v = on ? (int16_t)(amp * sinf(phase)) : 0;
-            buf[2 * i] = buf[2 * i + 1] = v;
-            phase += inc;
-            if (phase > 2.0f * (float)M_PI) {
-                phase -= 2.0f * (float)M_PI;
+        int64_t t0 = esp_timer_get_time();
+        acid_synth_render(&s_synth, mono, BLOCK);
+        acid_pcm_to_s16_stereo(mono, pcm, BLOCK);
+        int64_t dt = esp_timer_get_time() - t0;
+        worst_us = dt > worst_us ? dt : worst_us;
+
+        audio_out_write(pcm, BLOCK, 50);
+
+        if (t0 >= next_stats) {
+            uint32_t u = audio_out_underruns();
+            if (u != last_underruns || worst_us > 5000) {
+                ESP_LOGW(TAG, "underruns %lu (+%lu), worst render %lld us of 10000",
+                         (unsigned long)u, (unsigned long)(u - last_underruns), worst_us);
+            } else {
+                ESP_LOGI(TAG, "ok, worst render %lld us of 10000", worst_us);
             }
+            last_underruns = u;
+            worst_us = 0;
+            next_stats = t0 + STATS_PERIOD_US;
         }
-        audio_out_write(buf, BLOCK, 50);
     }
 }
 
@@ -42,6 +57,5 @@ void app_main(void)
 {
     usb_host_start();
     ESP_ERROR_CHECK(audio_out_start());
-    xTaskCreatePinnedToCore(tone_task, "tone", 4096, NULL, 6, NULL, 1);
-    ESP_LOGI(TAG, "440 Hz test tone");
+    xTaskCreatePinnedToCore(synth_task, "synth", 4096, NULL, 6, NULL, 1);
 }

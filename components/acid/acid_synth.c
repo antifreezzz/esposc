@@ -2,6 +2,8 @@
 
 #include <math.h>
 
+#include "acid_math.h"
+
 #define BPM 130.0f
 #define RES 0.85f
 #define FENV_NORMAL_HZ 3000.0f
@@ -16,6 +18,7 @@
 #define DRIVE 0.8f
 #define OUT_PEAK 0.5f // -6 dBFS
 #define PI_F 3.14159265f
+#define CTRL_BLOCK 16 // управляющая частота sr/16: высота, LFO, коэффициент фильтра
 
 void acid_synth_init(acid_synth_t *s, float sr)
 {
@@ -34,6 +37,8 @@ void acid_synth_init(acid_synth_t *s, float sr)
     s->lfo_phase = 0.0f;
     float bar_s = 4.0f * 60.0f / BPM;
     s->lfo_inc = 1.0f / (LFO_BARS * bar_s * sr);
+    s->ctrl_left = 0;
+    s->g = 0.0f;
     acid_synth_set_pattern(s, acid_pattern_default, 16);
 }
 
@@ -72,32 +77,45 @@ static void on_step(acid_synth_t *s, int index)
     s->accent_gain = accent ? ACCENT_GAIN : 1.0f;
 }
 
+// Пересчёт дорогих величин раз в CTRL_BLOCK сэмплов.
+static float control_update(acid_synth_t *s)
+{
+    acid_osc_set_freq(&s->osc, exp2f(s->pitch_log2), s->sr);
+
+    // LFO по экспоненте между LFO_MIN_HZ и LFO_MAX_HZ, синусоидой.
+    float lfo = 0.5f - 0.5f * cosf(2.0f * PI_F * s->lfo_phase);
+    s->lfo_phase += s->lfo_inc * CTRL_BLOCK;
+    if (s->lfo_phase >= 1.0f) {
+        s->lfo_phase -= 1.0f;
+    }
+    float base = LFO_MIN_HZ * exp2f(lfo * log2f(LFO_MAX_HZ / LFO_MIN_HZ));
+    float cutoff = base + s->fenv_amount * s->fenv.value;
+    return acid_ladder_coef(cutoff, s->sr);
+}
+
 void acid_synth_render(acid_synth_t *s, float *out, size_t n)
 {
     for (size_t i = 0; i < n; i++) {
         int step = acid_seq_tick(&s->seq);
         if (step >= 0) {
             on_step(s, step);
+            s->ctrl_left = 0; // новая нота: пересчитать сразу
         }
         acid_amp_gate(&s->amp, acid_seq_gate(&s->seq));
 
         if (s->gliding) {
             s->pitch_log2 = s->target_log2 + (s->pitch_log2 - s->target_log2) * s->glide_coef;
         }
-        acid_osc_set_freq(&s->osc, exp2f(s->pitch_log2), s->sr);
-        float x = s->wave ? acid_osc_square(&s->osc) : acid_osc_saw(&s->osc);
-
-        // LFO по экспоненте между LFO_MIN_HZ и LFO_MAX_HZ, синусоидой.
-        float lfo = 0.5f - 0.5f * cosf(2.0f * PI_F * s->lfo_phase);
-        s->lfo_phase += s->lfo_inc;
-        if (s->lfo_phase >= 1.0f) {
-            s->lfo_phase -= 1.0f;
+        if (s->ctrl_left == 0) {
+            s->g = control_update(s);
+            s->ctrl_left = CTRL_BLOCK;
         }
-        float base = LFO_MIN_HZ * powf(LFO_MAX_HZ / LFO_MIN_HZ, lfo);
-        float cutoff = base + s->fenv_amount * acid_decay_next(&s->fenv);
+        s->ctrl_left--;
 
-        float y = acid_ladder_process(&s->flt, x, cutoff, s->res, s->sr);
+        float x = s->wave ? acid_osc_square(&s->osc) : acid_osc_saw(&s->osc);
+        acid_decay_next(&s->fenv);
+        float y = acid_ladder_run(&s->flt, x, s->g, s->res);
         y *= acid_amp_next(&s->amp) * s->accent_gain;
-        out[i] = OUT_PEAK * tanhf(DRIVE * y);
+        out[i] = OUT_PEAK * acid_tanh(DRIVE * y);
     }
 }

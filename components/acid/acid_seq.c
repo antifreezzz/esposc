@@ -4,8 +4,8 @@ void acid_seq_init(acid_seq_t *s, const acid_step_t *steps, int len, float bpm, 
 {
     s->steps = steps;
     s->len = len;
-    s->samples_per_step = (double)sr * 60.0 / (double)bpm / 4.0;
-    s->pos = 0.0;
+    s->samples_per_step = sr * 60.0f / bpm / 4.0f;
+    s->pos = 0.0f;
     s->index = -1;
 }
 
@@ -13,10 +13,10 @@ int acid_seq_tick(acid_seq_t *s)
 {
     if (s->index < 0) {
         s->index = 0;
-        s->pos = 0.0;
+        s->pos = 0.0f;
         return 0;
     }
-    s->pos += 1.0;
+    s->pos += 1.0f;
     if (s->pos >= s->samples_per_step) {
         s->pos -= s->samples_per_step;
         s->index = (s->index + 1) % s->len;
@@ -43,5 +43,5 @@ int acid_seq_gate(const acid_seq_t *s)
     if ((cur->flags & ACID_SLIDE) && !(acid_seq_next_step(s)->flags & ACID_REST)) {
         return 1;
     }
-    return s->pos < 0.5 * s->samples_per_step;
+    return s->pos < 0.5f * s->samples_per_step;
 }

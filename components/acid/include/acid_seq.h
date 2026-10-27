@@ -15,8 +15,8 @@ typedef struct {
 typedef struct {
     const acid_step_t *steps;
     int len;
-    double samples_per_step;
-    double pos;   // сэмплов от начала текущего шага
+    float samples_per_step;
+    float pos;    // сэмплов от начала текущего шага (float: у S3 нет FPU для double)
     int index;    // -1 до первого tick
 } acid_seq_t;
 
