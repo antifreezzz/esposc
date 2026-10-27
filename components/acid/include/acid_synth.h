@@ -1,14 +1,17 @@
 #pragma once
 #include <stddef.h>
+#include <stdint.h>
 
+#include "acid_arr.h"
+#include "acid_drums.h"
 #include "acid_env.h"
 #include "acid_filter.h"
 #include "acid_kick.h"
 #include "acid_osc.h"
 #include "acid_seq.h"
 
-// Монофонический acid-голос с секвенсором. Поля публичные ради тестов,
-// снаружи трогать только res, wave и kick_on.
+// Acid-трек: бас-голос, ударные и аранжировка на 64 такта. Поля публичные
+// ради тестов, снаружи трогать только res, wave и kick_on (в режиме фиксированного паттерна).
 typedef struct {
     float sr;
     acid_osc_t osc;
@@ -24,15 +27,27 @@ typedef struct {
     float fenv_amount; // Гц на пике огибающей фильтра
     float res;
     int wave;          // 0 пила, 1 меандр
-    float lfo_phase;   // [0, 1)
-    float lfo_inc;
     float g;           // коэффициент фильтра с управляющей частоты
     int ctrl_left;     // сэмплов до следующего пересчёта
+    uint8_t last_flags; // флаги последнего сыгранного шага (для слайда через такт)
     acid_kick_t kick;
-    int kick_on;       // прямая бочка на каждую долю
+    acid_hat_t hat;
+    acid_clap_t clap;
+    int kick_on;       // прямая бочка (только в режиме фиксированного паттерна)
+
+    // Аранжировка.
+    int arr_on;
+    int started;
+    int bar;           // 0..63
+    int cycle;         // номер круга
+    const acid_section_t *sec;
+    acid_step_t bar_steps[16];
+    acid_step_t mut[ACID_PAT_COUNT][16]; // паттерны текущего круга (с мутацией)
 } acid_synth_t;
 
+// Режим трека по умолчанию.
 void acid_synth_init(acid_synth_t *s, float sr);
+// Фиксированный паттерн без аранжировки (для тестов голоса).
 void acid_synth_set_pattern(acid_synth_t *s, const acid_step_t *steps, int len);
 void acid_synth_render(acid_synth_t *s, float *out, size_t n);
 float acid_synth_pitch_hz(const acid_synth_t *s);
