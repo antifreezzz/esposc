@@ -161,7 +161,7 @@ Voice values (my calls, tune by ear later): cutoff base 300 Hz, env mod up to +3
 
 - [ ] **Step 1: Failing test** `host/test_wav.c` `test_wav_header`: call `acid_write_wav(path, frames, n)` (exported from `host/wav.c`, `int acid_write_wav(const char *path, const int16_t *stereo, size_t frames)`) for 480 frames -> file size 44 + 1920, bytes 0-3 "RIFF", 8-11 "WAVE", sample rate field 48000, channels 2, bits 16.
 - [ ] **Step 2:** ctest -> FAIL. **Step 3:** implement `host/wav.c` + `render_wav.c`. **Step 4:** ctest -> PASS.
-- [ ] **Step 5:** `host/build/acid_render /tmp/.../acid.wav 30` then `aplay -D plughw:CARD=Audio acid.wav` with dongle in hub's USB-A, hub in PC. User listens: acid pattern, no hum/clicks. Record result in commit message.
+- [ ] **Step 5:** `host/build/acid_render /tmp/.../acid.wav 30` then `aplay -D plughw:CARD=Audio acid.wav` with dongle in hub's USB-A, hub in PC. Optional preview for the user (how ESP will sound); also checks dongle+hub on PC. Final listening is real-time from ESP (Tasks 8-9). Agent itself analyses the WAV (peak, RMS, clicks).
 - [ ] **Step 6:** Commit `feat(host): wav renderer`.
 
 ### Task 7: ESP-IDF toolchain and USB host skeleton
