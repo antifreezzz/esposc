@@ -36,13 +36,17 @@ static void synth_task(void *arg)
         int64_t dt = esp_timer_get_time() - t0;
         worst_us = dt > worst_us ? dt : worst_us;
 
-        audio_out_write(pcm, BLOCK, 50);
+        if (audio_out_write(pcm, BLOCK, 50) == 0) {
+            // Запись не прошла (устройство пропало или в ошибке): не крутиться вхолостую.
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
 
         if (t0 >= next_stats) {
             uint32_t u = audio_out_underruns();
             if (u != last_underruns || worst_us > 5000) {
-                ESP_LOGW(TAG, "underruns %lu (+%lu), worst render %lld us of 10000",
-                         (unsigned long)u, (unsigned long)(u - last_underruns), worst_us);
+                ESP_LOGW(TAG, "underruns %lu (+%lu), xfer errors %lu, worst render %lld us of 10000",
+                         (unsigned long)u, (unsigned long)(u - last_underruns),
+                         (unsigned long)audio_out_transfer_errors(), worst_us);
             } else {
                 ESP_LOGI(TAG, "ok, worst render %lld us of 10000", worst_us);
             }

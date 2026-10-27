@@ -14,6 +14,7 @@
 #define LOW_WATER_BYTES (SAMPLE_RATE / 100 * FRAME_BYTES) // 10 мс
 #define VOLUME_DB (-13)                // громкость свистка, с запасом для ушей (подобрано на слух)
 #define CONNECTED_BIT BIT0
+#define EVENT_QUEUE_LEN 32
 
 static const char *TAG = "audio_out";
 
@@ -38,6 +39,7 @@ static SemaphoreHandle_t s_lock;
 static uac_host_device_handle_t s_spk;
 static volatile uint32_t s_underruns;
 static volatile int s_streaming;
+static volatile uint32_t s_xfer_errors;
 
 static void device_cb(uac_host_device_handle_t handle, const uac_host_device_event_t event, void *arg)
 {
@@ -49,15 +51,24 @@ static void device_cb(uac_host_device_handle_t handle, const uac_host_device_eve
         }
         return;
     }
+    if (event == UAC_HOST_DEVICE_EVENT_TRANSFER_ERROR) {
+        // Не в очередь: поток ошибок не должен вытеснить событие отключения.
+        s_xfer_errors++;
+        return;
+    }
     uac_evt_t e = {.is_driver = 0, .dev = {handle, event}};
-    xQueueSend(s_queue, &e, 0);
+    if (xQueueSend(s_queue, &e, 0) != pdTRUE) {
+        ESP_LOGE(TAG, "event queue full, device event %d lost", event);
+    }
 }
 
 static void driver_cb(uint8_t addr, uint8_t iface, const uac_host_driver_event_t event, void *arg)
 {
     (void)arg;
     uac_evt_t e = {.is_driver = 1, .drv = {addr, iface, event}};
-    xQueueSend(s_queue, &e, 0);
+    if (xQueueSend(s_queue, &e, 0) != pdTRUE) {
+        ESP_LOGE(TAG, "event queue full, driver event %d lost", event);
+    }
 }
 
 static void open_speaker(uint8_t addr, uint8_t iface)
@@ -124,7 +135,12 @@ static void event_task(void *arg)
             continue;
         }
         if (e.is_driver) {
-            if (e.drv.event == UAC_HOST_DRIVER_EVENT_TX_CONNECTED && s_spk == NULL) {
+            if (e.drv.event == UAC_HOST_DRIVER_EVENT_TX_CONNECTED) {
+                if (s_spk != NULL) {
+                    // Отключение потерялось: старый хэндл мёртв, закрываем и открываем заново.
+                    ESP_LOGW(TAG, "speaker connected while previous handle still open, reopening");
+                    close_speaker(s_spk);
+                }
                 open_speaker(e.drv.addr, e.drv.iface);
             }
             // RX (микрофон свистка) игнорируем.
@@ -134,15 +150,13 @@ static void event_task(void *arg)
             } else {
                 uac_host_device_close(e.dev.handle);
             }
-        } else if (e.dev.event == UAC_HOST_DEVICE_EVENT_TRANSFER_ERROR) {
-            ESP_LOGW(TAG, "transfer error");
         }
     }
 }
 
 esp_err_t audio_out_start(void)
 {
-    s_queue = xQueueCreate(10, sizeof(uac_evt_t));
+    s_queue = xQueueCreate(EVENT_QUEUE_LEN, sizeof(uac_evt_t));
     s_events = xEventGroupCreate();
     s_lock = xSemaphoreCreateMutex();
     if (!s_queue || !s_events || !s_lock) {
@@ -195,4 +209,9 @@ int audio_out_wait_connected(uint32_t timeout_ms)
 uint32_t audio_out_underruns(void)
 {
     return s_underruns;
+}
+
+uint32_t audio_out_transfer_errors(void)
+{
+    return s_xfer_errors;
 }

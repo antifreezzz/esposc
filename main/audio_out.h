@@ -20,3 +20,6 @@ int audio_out_wait_connected(uint32_t timeout_ms);
 
 // Сколько раз буфер драйвера опускался до минимума (почти недогруз).
 uint32_t audio_out_underruns(void);
+
+// Ошибки изохронной передачи (счётчик, без очереди событий).
+uint32_t audio_out_transfer_errors(void);
