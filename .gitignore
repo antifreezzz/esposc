@@ -3,3 +3,5 @@ host/build/
 sdkconfig.old
 managed_components/
 *.wav
+sdkconfig
+dependencies.lock

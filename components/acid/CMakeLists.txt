@@ -1,3 +1,4 @@
 # Ядро синта, чистый C. Хост-сборка (host/) берёт исходники напрямую и этот файл не читает.
-file(GLOB srcs CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/*.c)
-idf_component_register(SRCS ${srcs} INCLUDE_DIRS include)
+idf_component_register(SRCS "acid_osc.c" "acid_env.c" "acid_filter.c" "acid_seq.c"
+                            "acid_pattern.c" "acid_synth.c" "acid_pcm.c"
+                       INCLUDE_DIRS "include")
