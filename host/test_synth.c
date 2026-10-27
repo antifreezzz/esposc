@@ -120,6 +120,30 @@ TEST(test_synth_slide_into_rest)
     CHECK(sqrt(sum_sq / n) < 0.001);
 }
 
+TEST(test_synth_accent_on_slid_note)
+{
+    // Шаг 0 слайдом в акцентированный шаг 1: акцент громкости должен сработать.
+    static const acid_step_t pat[3] = {{45, ACID_SLIDE}, {57, ACID_ACCENT}, {45, 0}};
+    acid_synth_init(&s, SR);
+    acid_synth_set_pattern(&s, pat, 3);
+    s.kick_on = 0;
+    render_until(1, 100);
+    CHECK(s.gliding);
+    CHECK(s.accent_gain > 1.0f);
+}
+
+TEST(test_synth_slid_note_without_accent_drops_accent)
+{
+    // Акцентированный шаг слайдом в обычный: акцент не тянется дальше.
+    static const acid_step_t pat[3] = {{45, ACID_ACCENT | ACID_SLIDE}, {57, 0}, {45, 0}};
+    acid_synth_init(&s, SR);
+    acid_synth_set_pattern(&s, pat, 3);
+    s.kick_on = 0;
+    render_until(1, 100);
+    CHECK(s.gliding);
+    CHECK_NEAR(s.accent_gain, 1.0f, 1e-6);
+}
+
 TEST(test_pcm_convert)
 {
     const float in[4] = {0.0f, 0.5f, -1.0f, 2.0f};
@@ -138,6 +162,8 @@ int main(void)
     RUN(test_synth_pitch_follows_step);
     RUN(test_synth_slide_glides);
     RUN(test_synth_slide_into_rest);
+    RUN(test_synth_accent_on_slid_note);
+    RUN(test_synth_slid_note_without_accent_drops_accent);
     RUN(test_pcm_convert);
     TEST_MAIN_END();
 }

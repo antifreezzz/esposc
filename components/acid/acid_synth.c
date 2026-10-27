@@ -67,17 +67,18 @@ static void on_step(acid_synth_t *s, int index)
     int slide_in = (prev->flags & ACID_SLIDE) &&
                    !(prev->flags & ACID_REST) && s->amp.value > 0.0f;
     s->target_log2 = log2f(acid_midi_to_hz(cur->note));
+    int accent = cur->flags & ACID_ACCENT;
+    // Акцент громкости действует и на слайде, огибающие при этом не перезапускаются.
+    s->accent_gain = accent ? ACCENT_GAIN : 1.0f;
     if (slide_in) {
         s->gliding = 1;
         return;
     }
     s->gliding = 0;
     s->pitch_log2 = s->target_log2;
-    int accent = cur->flags & ACID_ACCENT;
     acid_decay_set(&s->fenv, accent ? FENV_ACCENT_S : FENV_NORMAL_S, s->sr);
     acid_decay_trigger(&s->fenv, 1.0f);
     s->fenv_amount = accent ? FENV_ACCENT_HZ : FENV_NORMAL_HZ;
-    s->accent_gain = accent ? ACCENT_GAIN : 1.0f;
 }
 
 // Пересчёт дорогих величин раз в CTRL_BLOCK сэмплов.
