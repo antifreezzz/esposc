@@ -17,7 +17,7 @@
 #define LFO_BARS 12.0f
 #define DRIVE 0.8f
 #define OUT_PEAK 0.5f // -6 dBFS
-#define KICK_GAIN 1.2f
+#define KICK_GAIN 1.45f // +10% пика бочки на выходе после tanh
 #define PI_F 3.14159265f
 #define CTRL_BLOCK 16 // управляющая частота sr/16: высота, LFO, коэффициент фильтра
 

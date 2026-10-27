@@ -91,11 +91,32 @@ TEST(test_synth_kick_on_beats)
     }
 }
 
+TEST(test_synth_kick_level)
+{
+    // Пик бочки на выходе: было ~0.37, по просьбе +10% -> ~0.41.
+    static acid_step_t rests[16];
+    for (int i = 0; i < 16; i++) {
+        rests[i].note = 0;
+        rests[i].flags = ACID_REST;
+    }
+    static acid_synth_t s;
+    acid_synth_init(&s, SR);
+    acid_synth_set_pattern(&s, rests, 16);
+    float x, peak = 0.0f;
+    for (int n = 0; n < 4800; n++) {
+        acid_synth_render(&s, &x, 1);
+        peak = fabsf(x) > peak ? fabsf(x) : peak;
+    }
+    CHECK(peak >= 0.40f);
+    CHECK(peak <= 0.42f);
+}
+
 int main(void)
 {
     RUN(test_kick_silent_until_trigger);
     RUN(test_kick_decays);
     RUN(test_kick_pitch_drops);
     RUN(test_synth_kick_on_beats);
+    RUN(test_synth_kick_level);
     TEST_MAIN_END();
 }
