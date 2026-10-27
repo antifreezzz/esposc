@@ -1,0 +1,5 @@
+build/
+host/build/
+sdkconfig.old
+managed_components/
+*.wav
