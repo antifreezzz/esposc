@@ -28,7 +28,7 @@ static void synth_task(void *arg)
         if (!audio_out_connected()) {
             // Ждём свисток молча, без перебора в цикле.
             audio_out_wait_connected(portMAX_DELAY);
-            ESP_LOGI(TAG, "speaker ready, playing acid pattern");
+            ESP_LOGI(TAG, "speaker ready, playing acid track");
         }
         int64_t t0 = esp_timer_get_time();
         acid_synth_render(&s_synth, mono, BLOCK);
@@ -43,7 +43,7 @@ static void synth_task(void *arg)
 
         if (t0 >= next_stats) {
             uint32_t u = audio_out_underruns();
-            if (u != last_underruns || worst_us > 5000) {
+            if (u != last_underruns || worst_us > 7000) {
                 ESP_LOGW(TAG, "underruns %lu (+%lu), xfer errors %lu, worst render %lld us of 10000",
                          (unsigned long)u, (unsigned long)(u - last_underruns),
                          (unsigned long)audio_out_transfer_errors(), worst_us);
