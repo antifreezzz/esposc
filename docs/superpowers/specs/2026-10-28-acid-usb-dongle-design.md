@@ -63,7 +63,9 @@
 - Пользователь: вариант с хабом, а не перемычка.
 - Пользователь: паттерн зашит, без управления на этапе 1.
 - Моё: ESP-IDF v6.1 (стоит в `~/esp/esp-idf-v6.1`), компонент `espressif/usb_host_uac`
-  (1.5.x) + поддержка хабов в USB Host (`CONFIG_USB_HOST_HUBS_SUPPORTED`).
+  (1.5.x) поверх USB Host Library. С IDF 6.0 она не в составе IDF, а managed-компонент
+  `espressif/usb` (1.6.x). Хабы: `CONFIG_USB_HOST_HUBS_SUPPORTED` (один хаб достаточно).
+  У S3 8 хост-каналов: хаб + RTL8152 (только енумерация, интерфейс не берём) + свисток влезают.
 - Моё: язык C, синт в float (у S3 есть FPU single precision).
 - Моё: консоль ESP-IDF на UART0 (через CH343), родной USB полностью отдан хосту.
 
