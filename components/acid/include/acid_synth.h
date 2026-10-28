@@ -98,6 +98,7 @@ typedef struct {
     float clap_tone, clap_tail_s;
     float snare_tune, snare_snappy, snare_decay_s;
     int page;          // страница ручек: 0 микс, 1 ударка, 2 синт 1, 3 синт 2
+    int page_enc;      // последнее значение энкодера 1, -1: ещё не крутили
 
     int live;          // live-режим: ноты от MIDI, свой секвенсор молчит
     int save;          // сменили тип: память ручек пора записать

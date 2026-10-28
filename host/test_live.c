@@ -153,31 +153,55 @@ TEST(test_live_drums)
 // CC энкодеров BSP по порядку на панели: верхний ряд 1-8, нижний 9-16.
 static const uint8_t ENC[17] = {0, 10, 74, 71, 76, 77, 93, 73, 75, 114, 18, 19, 16, 17, 91, 79, 72};
 
+// Энкодер 1 BSP шлёт своё положение 0..127; страница листается щелчками по кругу.
+static int enc1 = 64;
+
+static void click(int d)
+{
+    enc1 += d;
+    cc(ENC[1], (uint8_t)enc1);
+}
+
 static void page(int p)
 {
-    cc(ENC[1], (uint8_t)(p * 127 / 3)); // 4 страницы: 0, 42, 84, 127
+    for (int i = 0; i < 8 && s.page != p; i++) {
+        click(enc1 < 100 ? 1 : -1);
+    }
 }
 
 TEST(test_live_page_select)
 {
     live();
     CHECK(s.page == 2); // до касания энкодера 1 - синт 1
-    cc(ENC[1], 0);
-    CHECK(s.page == 0);
-    cc(ENC[1], 31);
-    CHECK(s.page == 0);
-    cc(ENC[1], 32);
-    CHECK(s.page == 1);
-    cc(ENC[1], 63);
-    CHECK(s.page == 1);
-    cc(ENC[1], 64);
+    enc1 = 10;
+    cc(ENC[1], 10); // первое касание: направление неизвестно, страница та же
     CHECK(s.page == 2);
-    cc(ENC[1], 95);
+    click(1);
+    CHECK(s.page == 3);
+    click(1);
+    CHECK(s.page == 0); // по кругу
+    click(-1);
+    CHECK(s.page == 3);
+    click(-1);
     CHECK(s.page == 2);
-    cc(ENC[1], 96);
+    click(-1);
+    click(-1);
+    CHECK(s.page == 0);
+    click(-1);
+    CHECK(s.page == 3); // по кругу назад
+}
+
+TEST(test_live_page_fast_turn)
+{
+    // Быстрый поворот BSP шлёт скачок значения: это всё равно один шаг.
+    live();
+    cc(ENC[1], 50);
+    cc(ENC[1], 54);
     CHECK(s.page == 3);
-    cc(ENC[1], 127);
+    cc(ENC[1], 54); // повтор того же значения - не шаг
     CHECK(s.page == 3);
+    cc(ENC[1], 46);
+    CHECK(s.page == 2);
 }
 
 TEST(test_live_bass_page)
@@ -493,6 +517,7 @@ int main(void)
     RUN(test_live_accent_velocity);
     RUN(test_live_drums);
     RUN(test_live_page_select);
+    RUN(test_live_page_fast_turn);
     RUN(test_live_bass_page);
     RUN(test_live_transpose);
     RUN(test_live_glide_knob);

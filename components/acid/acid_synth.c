@@ -115,6 +115,7 @@ void acid_synth_init(acid_synth_t *s, float sr)
     s->snare_snappy = ACID_SNARE_SNAPPY;
     s->snare_decay_s = ACID_SNARE_DECAY_S;
     s->page = PAGE_SYNTH1;
+    s->page_enc = -1;
     s->live = 0;
 
     s->arr_on = 1;
@@ -531,7 +532,11 @@ static void control_change(acid_synth_t *s, int num, int v)
         }
     }
     if (slot == 0) {
-        s->page = v * PAGES / 128; // зоны хода энкодера 1
+        // Щелчок энкодера 1 - страница по кругу: у края хода BSP молчит, но в другую сторону дойдём.
+        if (s->page_enc >= 0 && v != s->page_enc) {
+            s->page = (s->page + (v > s->page_enc ? 1 : PAGES - 1)) % PAGES;
+        }
+        s->page_enc = v;
     } else if (s->page == 0) {
         page_mix(s, slot, v);
     } else if (s->page == 1) {

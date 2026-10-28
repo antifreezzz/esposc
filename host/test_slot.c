@@ -31,7 +31,16 @@ static void send(uint8_t type, uint8_t ch, uint8_t d1, uint8_t d2)
 static void on(uint8_t ch, uint8_t note, uint8_t vel) { send(ACID_MIDI_NOTE_ON, ch, note, vel); }
 static void off(uint8_t ch, uint8_t note) { send(ACID_MIDI_NOTE_OFF, ch, note, 0); }
 static void cc(int enc, int val) { send(ACID_MIDI_CC, 1, ENC[enc], (uint8_t)val); }
-static void page(int p) { cc(1, p * 127 / 3); }
+// Энкодер 1: страница щелчками по кругу, BSP шлёт положение 0..127.
+static int enc1 = 64;
+
+static void page(int p)
+{
+    for (int i = 0; i < 8 && s.page != p; i++) {
+        enc1 += enc1 < 100 ? 1 : -1;
+        cc(1, enc1);
+    }
+}
 
 static float rms(int n)
 {
