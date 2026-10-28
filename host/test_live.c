@@ -149,25 +149,122 @@ TEST(test_live_drums)
     CHECK(soft < loud * 0.8f);
 }
 
-TEST(test_live_cc_params)
+// CC энкодеров BSP по порядку на панели: верхний ряд 1-8, нижний 9-16.
+static const uint8_t ENC[17] = {0, 10, 74, 71, 76, 77, 93, 73, 75, 114, 18, 19, 16, 17, 91, 79, 72};
+
+static void page(int p)
+{
+    cc(ENC[1], (uint8_t)(p * 127 / 2)); // 3 страницы: 0, 63, 127
+}
+
+TEST(test_live_page_select)
 {
     live();
-    cc(74, 0);
-    CHECK_NEAR(s.res, 0.0f, 1e-6f);
-    cc(74, 127);
-    CHECK_NEAR(s.res, 0.97f, 1e-4f);
-    cc(10, 0);
+    CHECK(s.page == 2); // до касания энкодера 1 - бас
+    cc(ENC[1], 0);
+    CHECK(s.page == 0);
+    cc(ENC[1], 42);
+    CHECK(s.page == 0);
+    cc(ENC[1], 43);
+    CHECK(s.page == 1);
+    cc(ENC[1], 85);
+    CHECK(s.page == 1);
+    cc(ENC[1], 86);
+    CHECK(s.page == 2);
+    cc(ENC[1], 127);
+    CHECK(s.page == 2);
+}
+
+TEST(test_live_bass_page)
+{
+    live();
+    page(2);
+    cc(ENC[2], 0);
     CHECK_NEAR(s.cut_base, 60.0f, 0.1f);
-    cc(10, 127);
+    cc(ENC[2], 127);
     CHECK_NEAR(s.cut_base, 3000.0f, 1.0f);
-    cc(93, 0);
+    cc(ENC[3], 0);
+    CHECK_NEAR(s.res, 0.0f, 1e-6f);
+    cc(ENC[3], 127);
+    CHECK_NEAR(s.res, 0.97f, 1e-4f);
+    cc(ENC[7], 0);
     CHECK(s.wave == 0);
-    cc(93, 127);
+    cc(ENC[7], 127);
     CHECK(s.wave == 1);
-    cc(91, 0); // мастер в ноль: тишина
+}
+
+TEST(test_live_transpose)
+{
+    live();
+    page(2);
+    cc(ENC[9], 127); // +12
+    on(BASS, 45, 100);
+    rms(480);
+    CHECK_NEAR(acid_synth_pitch_hz(&s), 220.0f, 1.0f);
+    off(BASS, 45);
+    cc(ENC[9], 0); // -12
+    rms(4800);
+    on(BASS, 45, 100);
+    rms(480);
+    CHECK_NEAR(acid_synth_pitch_hz(&s), 55.0f, 0.5f);
+}
+
+TEST(test_live_glide_knob)
+{
+    live();
+    page(2);
+    cc(ENC[8], 0); // самый быстрый глайд, 10 мс
+    on(BASS, 45, 100);
+    rms(480);
+    on(BASS, 57, 100);
+    rms(2400); // 50 мс = 5 постоянных времени
+    CHECK_NEAR(acid_synth_pitch_hz(&s), 220.0f, 2.0f);
+}
+
+TEST(test_live_mix_page)
+{
+    live();
+    page(0);
+    float cut = s.cut_base;
+    cc(ENC[2], 0); // мастер в ноль
+    CHECK_NEAR(s.cut_base, cut, 1e-6f); // ручка страницы микса не трогает бас
     on(BASS, 45, 127);
     on(DRUMS, 36, 127);
     CHECK(rms(2400) < 1e-6f);
+    cc(ENC[3], 127);
+    CHECK_NEAR(s.drive, 3.0f, 1e-3f);
+}
+
+TEST(test_live_drum_page)
+{
+    live();
+    page(1);
+    cc(ENC[2], 127);
+    CHECK_NEAR(s.kick.low_hz, 80.0f, 0.1f);
+    cc(ENC[12], 0);
+    CHECK_NEAR(s.snare.snappy, 0.0f, 1e-6f);
+    cc(ENC[12], 127);
+    CHECK_NEAR(s.snare.snappy, 1.0f, 1e-6f);
+    cc(ENC[11], 0);
+    CHECK_NEAR(s.snare.tune_hz, 120.0f, 0.1f);
+}
+
+TEST(test_live_snare_and_clap_notes)
+{
+    live();
+    on(DRUMS, 38, 127);
+    rms(1);
+    CHECK(s.snare.noise_env > 0.0f);
+    CHECK(s.clap.t < 0);
+    live();
+    on(DRUMS, 40, 127);
+    rms(1);
+    CHECK(s.snare.noise_env > 0.0f);
+    live();
+    on(DRUMS, 39, 127);
+    rms(1);
+    CHECK(s.clap.t >= 0);
+    CHECK(s.snare.noise_env == 0.0f);
 }
 
 TEST(test_live_ignores_other_channels)
@@ -213,7 +310,7 @@ TEST(test_live_off_restarts_track)
     acid_synth_init(&s, SR);
     rms(48000);
     acid_synth_set_live(&s, 1);
-    cc(74, 0);
+    cc(71, 0); // резонанс на странице баса
     on(BASS, 45, 100);
     rms(4800);
     acid_synth_set_live(&s, 0);
@@ -302,7 +399,13 @@ int main(void)
     RUN(test_live_note_off_closes_gate);
     RUN(test_live_accent_velocity);
     RUN(test_live_drums);
-    RUN(test_live_cc_params);
+    RUN(test_live_page_select);
+    RUN(test_live_bass_page);
+    RUN(test_live_transpose);
+    RUN(test_live_glide_knob);
+    RUN(test_live_mix_page);
+    RUN(test_live_drum_page);
+    RUN(test_live_snare_and_clap_notes);
     RUN(test_live_ignores_other_channels);
     RUN(test_live_stop_silences);
     RUN(test_live_transitions_no_click);
