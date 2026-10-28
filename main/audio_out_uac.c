@@ -10,7 +10,7 @@
 
 #define SAMPLE_RATE 48000
 #define FRAME_BYTES 4                  // 2 канала по 16 бит
-#define BUF_BYTES (SAMPLE_RATE / 10 * FRAME_BYTES)   // 100 мс в драйвере
+#define BUF_BYTES (SAMPLE_RATE * 3 / 100 * FRAME_BYTES) // 30 мс в драйвере: задержка ноты от BSP
 #define LOW_WATER_BYTES (SAMPLE_RATE / 100 * FRAME_BYTES) // 10 мс
 #define VOLUME_DB (-13)                // громкость свистка, с запасом для ушей (подобрано на слух)
 #define CONNECTED_BIT BIT0
