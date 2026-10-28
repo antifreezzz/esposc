@@ -75,6 +75,15 @@ TEST(test_midi_parse_multi_and_padding)
     CHECK(acid_midi_parse(p, sizeof p, ev, 2) == 2);
 }
 
+TEST(test_midi_masks_data_bytes)
+{
+    // Битый пакет: старшие биты данных не должны протечь в события.
+    const uint8_t p[] = {0x0B, 0xB1, 0xCA, 0xFF, 0x09, 0x94, 0xBC, 0xE4};
+    CHECK(parse(p, sizeof p) == 2);
+    CHECK(ev[0].d1 == 74 && ev[0].d2 == 127);
+    CHECK(ev[1].type == ACID_MIDI_NOTE_ON && ev[1].d1 == 60 && ev[1].d2 == 100);
+}
+
 int main(void)
 {
     RUN(test_midi_note_on);
@@ -84,5 +93,6 @@ int main(void)
     RUN(test_midi_stop);
     RUN(test_midi_ignores_other_messages);
     RUN(test_midi_parse_multi_and_padding);
+    RUN(test_midi_masks_data_bytes);
     TEST_MAIN_END();
 }
