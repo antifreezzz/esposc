@@ -4,15 +4,30 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "midi_in.h"
 #include "usb_host_task.h"
 
 #define SR 48000
-#define BLOCK 480 // 10 мс
+#define BLOCK 96 // 2 мс: короткий блок - меньше задержка от ноты до звука
+#define BLOCK_US (BLOCK * 1000000 / SR)
+#define CHUNK 32  // MIDI применяется между кусками; рендер идёт рывками, так что реальный джиттер ~5 мс
 #define STATS_PERIOD_US (10 * 1000 * 1000)
 
 static const char *TAG = "main";
 
 static acid_synth_t s_synth;
+
+// Блок кусками по CHUNK, события MIDI перед каждым куском.
+static void render_block(float *out)
+{
+    for (int off = 0; off < BLOCK; off += CHUNK) {
+        acid_midi_event_t ev;
+        while (midi_in_receive(&ev)) {
+            acid_synth_midi(&s_synth, &ev);
+        }
+        acid_synth_render(&s_synth, out + off, CHUNK);
+    }
+}
 
 static void synth_task(void *arg)
 {
@@ -22,16 +37,29 @@ static void synth_task(void *arg)
     uint32_t last_underruns = 0;
     int64_t worst_us = 0;
     int64_t next_stats = esp_timer_get_time() + STATS_PERIOD_US;
+    int live = 0;
 
     acid_synth_init(&s_synth, (float)SR);
     for (;;) {
         if (!audio_out_connected()) {
             // Ждём свисток молча, без перебора в цикле.
             audio_out_wait_connected(portMAX_DELAY);
-            ESP_LOGI(TAG, "speaker ready, playing acid track");
+            ESP_LOGI(TAG, "speaker ready");
+            acid_midi_event_t stale;
+            while (midi_in_receive(&stale)) {
+                // Пока свистка не было, накопились старые события: выбрасываем.
+            }
+            if (live) {
+                acid_synth_set_live(&s_synth, 1); // вместе с событиями ушли и note off: чистим стек нот
+            }
+        }
+        if (midi_in_connected() != live) {
+            live = midi_in_connected();
+            acid_synth_set_live(&s_synth, live);
+            ESP_LOGI(TAG, "%s", live ? "midi controller: live mode" : "no midi controller: playing acid track");
         }
         int64_t t0 = esp_timer_get_time();
-        acid_synth_render(&s_synth, mono, BLOCK);
+        render_block(mono);
         acid_pcm_to_s16_stereo(mono, pcm, BLOCK);
         int64_t dt = esp_timer_get_time() - t0;
         worst_us = dt > worst_us ? dt : worst_us;
@@ -43,12 +71,12 @@ static void synth_task(void *arg)
 
         if (t0 >= next_stats) {
             uint32_t u = audio_out_underruns();
-            if (u != last_underruns || worst_us > 7000) {
-                ESP_LOGW(TAG, "underruns %lu (+%lu), xfer errors %lu, worst render %lld us of 10000",
+            if (u != last_underruns || worst_us > BLOCK_US * 7 / 10) {
+                ESP_LOGW(TAG, "underruns %lu (+%lu), xfer errors %lu, worst render %lld us of %d",
                          (unsigned long)u, (unsigned long)(u - last_underruns),
-                         (unsigned long)audio_out_transfer_errors(), worst_us);
+                         (unsigned long)audio_out_transfer_errors(), worst_us, BLOCK_US);
             } else {
-                ESP_LOGI(TAG, "ok, worst render %lld us of 10000", worst_us);
+                ESP_LOGI(TAG, "ok, worst render %lld us of %d", worst_us, BLOCK_US);
             }
             last_underruns = u;
             worst_us = 0;
@@ -60,6 +88,7 @@ static void synth_task(void *arg)
 void app_main(void)
 {
     usb_host_start();
+    ESP_ERROR_CHECK(midi_in_start());
     ESP_ERROR_CHECK(audio_out_start());
     xTaskCreatePinnedToCore(synth_task, "synth", 4096, NULL, 6, NULL, 1);
 }
