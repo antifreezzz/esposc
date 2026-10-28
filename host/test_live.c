@@ -6,6 +6,7 @@
 #define SR 48000.0f
 #define BASS 4  // MIDI канал 5
 #define DRUMS 1 // MIDI канал 2
+#define SEQ2 5  // MIDI канал 6
 
 static acid_synth_t s;
 static float buf[48000];
@@ -77,17 +78,17 @@ TEST(test_live_overlap_slides)
     live();
     on(BASS, 45, 100);
     rms(4800);
-    float f1 = s.fenv.value;
+    float f1 = s.slot[0].fenv.value;
     CHECK(f1 < 0.9f);
     on(BASS, 57, 100);
     rms(1);
-    CHECK(s.fenv.value <= f1); // огибающая не перезапущена
+    CHECK(s.slot[0].fenv.value <= f1); // огибающая не перезапущена
     rms(480);
     float hz = acid_synth_pitch_hz(&s);
     CHECK(hz > 111.0f && hz < 218.0f); // ещё ползёт
     rms(24000); // глайд с постоянной 60 мс: за 0.5 с доходит
     CHECK_NEAR(acid_synth_pitch_hz(&s), 220.0f, 1.0f);
-    CHECK(s.amp.gate == 1);
+    CHECK(s.slot[0].amp.gate == 1);
 }
 
 TEST(test_live_release_returns_to_held)
@@ -99,7 +100,7 @@ TEST(test_live_release_returns_to_held)
     off(BASS, 57);
     rms(24000);
     CHECK_NEAR(acid_synth_pitch_hz(&s), 110.0f, 0.5f);
-    CHECK(s.amp.gate == 1);
+    CHECK(s.slot[0].amp.gate == 1);
     CHECK(rms(480) > 0.005f);
 }
 
@@ -110,7 +111,7 @@ TEST(test_live_note_off_closes_gate)
     rms(2400);
     off(BASS, 45);
     rms(4800);
-    CHECK(s.amp.gate == 0);
+    CHECK(s.slot[0].amp.gate == 0);
     CHECK(rms(480) < 1e-3f);
 }
 
@@ -152,57 +153,56 @@ TEST(test_live_drums)
 // CC энкодеров BSP по порядку на панели: верхний ряд 1-8, нижний 9-16.
 static const uint8_t ENC[17] = {0, 10, 74, 71, 76, 77, 93, 73, 75, 114, 18, 19, 16, 17, 91, 79, 72};
 
+// Энкодер 1: значение на экране BSP - номер страницы с нуля.
 static void page(int p)
 {
-    cc(ENC[1], (uint8_t)(p * 127 / 2)); // 3 страницы: 0, 63, 127
+    cc(ENC[1], (uint8_t)p);
 }
 
 TEST(test_live_page_select)
 {
     live();
-    CHECK(s.page == 2); // до касания энкодера 1 - бас
-    cc(ENC[1], 0);
-    CHECK(s.page == 0);
-    cc(ENC[1], 42);
-    CHECK(s.page == 0);
-    cc(ENC[1], 43);
-    CHECK(s.page == 1);
-    cc(ENC[1], 85);
-    CHECK(s.page == 1);
-    cc(ENC[1], 86);
-    CHECK(s.page == 2);
+    CHECK(s.page == 2); // до касания энкодера 1 - синт 1
+    for (int p = 0; p < 4; p++) {
+        cc(ENC[1], (uint8_t)p);
+        CHECK(s.page == p);
+    }
+    cc(ENC[1], 4); // такой страницы нет: остаёмся
+    CHECK(s.page == 3);
     cc(ENC[1], 127);
-    CHECK(s.page == 2);
+    CHECK(s.page == 3);
+    cc(ENC[1], 1);
+    CHECK(s.page == 1);
 }
 
 TEST(test_live_bass_page)
 {
     live();
     page(2);
-    cc(ENC[2], 0);
-    CHECK_NEAR(s.cut_base, 60.0f, 0.1f);
-    cc(ENC[2], 127);
-    CHECK_NEAR(s.cut_base, 3000.0f, 1.0f);
     cc(ENC[3], 0);
-    CHECK_NEAR(s.res, 0.0f, 1e-6f);
+    CHECK_NEAR(s.slot[0].cut_base, 60.0f, 0.1f);
     cc(ENC[3], 127);
-    CHECK_NEAR(s.res, 0.97f, 1e-4f);
-    cc(ENC[7], 0);
-    CHECK(s.wave == 0);
-    cc(ENC[7], 127);
-    CHECK(s.wave == 1);
+    CHECK_NEAR(s.slot[0].cut_base, 3000.0f, 1.0f);
+    cc(ENC[4], 0);
+    CHECK_NEAR(s.slot[0].res, 0.0f, 1e-6f);
+    cc(ENC[4], 127);
+    CHECK_NEAR(s.slot[0].res, 0.97f, 1e-4f);
+    cc(ENC[8], 0);
+    CHECK(s.slot[0].wave == 0);
+    cc(ENC[8], 127);
+    CHECK(s.slot[0].wave == 1);
 }
 
 TEST(test_live_transpose)
 {
     live();
     page(2);
-    cc(ENC[9], 127); // +12
+    cc(ENC[10], 127); // +12
     on(BASS, 45, 100);
     rms(480);
     CHECK_NEAR(acid_synth_pitch_hz(&s), 220.0f, 1.0f);
     off(BASS, 45);
-    cc(ENC[9], 0); // -12
+    cc(ENC[10], 0); // -12
     rms(4800);
     on(BASS, 45, 100);
     rms(480);
@@ -213,7 +213,7 @@ TEST(test_live_glide_knob)
 {
     live();
     page(2);
-    cc(ENC[8], 0); // самый быстрый глайд, 10 мс
+    cc(ENC[9], 0); // самый быстрый глайд, 10 мс
     on(BASS, 45, 100);
     rms(480);
     on(BASS, 57, 100);
@@ -225,14 +225,20 @@ TEST(test_live_mix_page)
 {
     live();
     page(0);
-    float cut = s.cut_base;
+    float cut = s.slot[0].cut_base;
     cc(ENC[2], 0); // мастер в ноль
-    CHECK_NEAR(s.cut_base, cut, 1e-6f); // ручка страницы микса не трогает бас
+    CHECK_NEAR(s.slot[0].cut_base, cut, 1e-6f); // ручка страницы микса не трогает бас
     on(BASS, 45, 127);
     on(DRUMS, 36, 127);
     CHECK(rms(2400) < 1e-6f);
     cc(ENC[3], 127);
     CHECK_NEAR(s.drive, 3.0f, 1e-3f);
+    cc(ENC[4], 0);
+    CHECK_NEAR(s.slot[0].gain, 0.0f, 1e-6f);
+    cc(ENC[5], 127);
+    CHECK_NEAR(s.slot[1].gain, 1.5f, 1e-6f);
+    cc(ENC[9], 0);
+    CHECK_NEAR(s.snare_gain, 0.0f, 1e-6f);
 }
 
 TEST(test_live_drum_page)
@@ -270,7 +276,7 @@ TEST(test_live_snare_and_clap_notes)
 TEST(test_live_ignores_other_channels)
 {
     live();
-    on(5, 45, 100); // SEQ2, канал 6
+    on(0, 45, 100); // канал 1
     on(9, 37, 127); // метроном, канал 10
     CHECK(rms(4800) < 1e-4f);
 }
@@ -310,15 +316,97 @@ TEST(test_live_off_restarts_track)
     acid_synth_init(&s, SR);
     rms(48000);
     acid_synth_set_live(&s, 1);
-    cc(71, 0); // резонанс на странице баса
+    cc(ENC[4], 0); // резонанс на странице синта 1
     on(BASS, 45, 100);
     rms(4800);
     acid_synth_set_live(&s, 0);
     CHECK(s.arr_on == 1 && s.bar == 0 && s.cycle == 0 && s.started == 0);
     rms(4800);
     CHECK(s.bar == 0 && s.started == 1);
-    CHECK(s.res > 0.5f); // резонанс снова от автоматизации, а не от ручки
+    CHECK(s.slot[0].res > 0.5f); // резонанс снова от автоматизации, а не от ручки
     CHECK(s.kick.amp_env > 0.1f); // бочка автопилота на месте
+}
+
+static float slot_hz(int k)
+{
+    return exp2f(s.slot[k].pitch_log2);
+}
+
+TEST(test_live_seq2_plays_slot1)
+{
+    live();
+    on(SEQ2, 45, 100);
+    CHECK(rms(2400) > 0.01f);
+    CHECK_NEAR(slot_hz(1), 110.0f, 0.5f);
+    CHECK(s.slot[0].amp.gate == 0);
+    on(BASS, 57, 100);
+    rms(480);
+    CHECK_NEAR(slot_hz(0), 220.0f, 0.5f); // свой стек: не слайд из ноты синта 2
+    CHECK_NEAR(slot_hz(1), 110.0f, 0.5f);
+    off(SEQ2, 45);
+    rms(4800);
+    CHECK(s.slot[1].amp.gate == 0);
+    CHECK(s.slot[0].amp.gate == 1);
+}
+
+TEST(test_live_slot_knobs_independent)
+{
+    live();
+    page(3);
+    cc(ENC[2], 0); // синт 2 тоже 303 (по умолчанию он FM)
+    rms(960);
+    cc(ENC[3], 0);
+    CHECK_NEAR(s.slot[1].cut_base, 60.0f, 0.1f);
+    CHECK(s.slot[0].cut_base > 400.0f);
+    page(2);
+    cc(ENC[3], 127);
+    CHECK_NEAR(s.slot[0].cut_base, 3000.0f, 1.0f);
+    CHECK_NEAR(s.slot[1].cut_base, 60.0f, 0.1f);
+}
+
+TEST(test_live_stop_silences_both)
+{
+    live();
+    on(BASS, 45, 100);
+    on(SEQ2, 50, 100);
+    rms(2400);
+    send(ACID_MIDI_STOP, 0, 0, 0);
+    CHECK(s.slot[0].nheld == 0 && s.slot[1].nheld == 0);
+    rms(48000); // хвост Plaits (синт 2 по умолчанию FM) доигрывает сам
+    CHECK(s.slot[0].amp.gate == 0);
+    CHECK(rms(480) < 1e-3f);
+}
+
+TEST(test_render_split_identical)
+{
+    // Слот 1 отдельным буфером (как на ядре 0) звучит так же, как общий рендер.
+    static acid_synth_t a, b;
+    static float x[96], y[96], ext[96];
+    acid_synth_init(&a, SR);
+    acid_synth_init(&b, SR);
+    acid_synth_set_live(&a, 1);
+    acid_synth_set_live(&b, 1);
+    int same = 1;
+    for (int blk = 0; blk < 500; blk++) {
+        if (blk % 50 == 0) {
+            acid_midi_event_t ev[3] = {
+                {.type = ACID_MIDI_NOTE_ON, .ch = SEQ2, .d1 = (uint8_t)(40 + blk / 50), .d2 = 120},
+                {.type = ACID_MIDI_NOTE_ON, .ch = BASS, .d1 = 45, .d2 = 100},
+                {.type = ACID_MIDI_NOTE_ON, .ch = DRUMS, .d1 = 36, .d2 = 100},
+            };
+            for (int e = 0; e < 3; e++) {
+                acid_synth_midi(&a, &ev[e]);
+                acid_synth_midi(&b, &ev[e]);
+            }
+        }
+        acid_synth_render(&a, x, 96);
+        acid_synth_render_slot(&b, 1, ext, 96);
+        acid_synth_render_with(&b, y, 96, ext);
+        for (int i = 0; i < 96; i++) {
+            same &= x[i] == y[i];
+        }
+    }
+    CHECK(same);
 }
 
 TEST(test_live_soft_drum_hit_audible)
@@ -341,16 +429,16 @@ TEST(test_live_bass_bounce_merged)
     int gate_dropped = 0;
     for (int i = 0; i < 1440; i++) {
         rms(1);
-        gate_dropped |= s.amp.gate == 0;
+        gate_dropped |= s.slot[0].amp.gate == 0;
     }
-    float f = s.fenv.value;
+    float f = s.slot[0].fenv.value;
     on(BASS, 45, 5);
     rms(1);
     CHECK(!gate_dropped);
-    CHECK(s.fenv.value <= f); // огибающая не перезапущена: одна нота, а не две
+    CHECK(s.slot[0].fenv.value <= f); // огибающая не перезапущена: одна нота, а не две
     off(BASS, 45);
     rms(9600);
-    CHECK(s.amp.gate == 0);
+    CHECK(s.slot[0].amp.gate == 0);
 }
 
 TEST(test_live_short_note_still_ends)
@@ -360,7 +448,7 @@ TEST(test_live_short_note_still_ends)
     rms(480);
     off(BASS, 45);
     rms(4800);
-    CHECK(s.amp.gate == 0);
+    CHECK(s.slot[0].amp.gate == 0);
 }
 
 TEST(test_live_fast_repeat_retriggers)
@@ -373,7 +461,7 @@ TEST(test_live_fast_repeat_retriggers)
     rms(2880);
     on(BASS, 45, 100);
     rms(1);
-    CHECK(s.fenv.value > 0.99f);
+    CHECK(s.slot[0].fenv.value > 0.99f);
 }
 
 TEST(test_live_short_note_then_other_note_retriggers)
@@ -386,7 +474,7 @@ TEST(test_live_short_note_then_other_note_retriggers)
     rms(480);
     on(BASS, 50, 100);
     rms(1);
-    CHECK(s.fenv.value > 0.99f);
+    CHECK(s.slot[0].fenv.value > 0.99f);
     CHECK_NEAR(acid_synth_pitch_hz(&s), acid_midi_to_hz(50), 0.5f);
 }
 
@@ -410,6 +498,10 @@ int main(void)
     RUN(test_live_stop_silences);
     RUN(test_live_transitions_no_click);
     RUN(test_live_off_restarts_track);
+    RUN(test_live_seq2_plays_slot1);
+    RUN(test_live_slot_knobs_independent);
+    RUN(test_live_stop_silences_both);
+    RUN(test_render_split_identical);
     RUN(test_live_soft_drum_hit_audible);
     RUN(test_live_bass_bounce_merged);
     RUN(test_live_short_note_still_ends);
