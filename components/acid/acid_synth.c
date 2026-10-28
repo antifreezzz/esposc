@@ -27,6 +27,9 @@
 #define BOUNCE_S 0.025f    // нота короче этого - возможно дребезг пэда BSP
 #define MERGE_S 0.05f      // повтор той же ноты в этом окне от нажатия склеивается с ней
 #define DRUM_VEL_FLOOR 0.3f // громкость самого слабого удара пэда
+#define SNARE_GAIN 0.8f
+#define PAGES 3
+#define PAGE_BASS 2
 
 void acid_synth_init(acid_synth_t *s, float sr)
 {
@@ -48,6 +51,7 @@ void acid_synth_init(acid_synth_t *s, float sr)
     acid_kick_init(&s->kick, sr);
     acid_hat_init(&s->hat, sr);
     acid_clap_init(&s->clap, sr);
+    acid_snare_init(&s->snare, sr);
     s->kick_on = 1;
 
     s->cut_base = FIXED_CUTOFF_HZ;
@@ -58,9 +62,24 @@ void acid_synth_init(acid_synth_t *s, float sr)
     s->kick_gain = KICK_GAIN;
     s->hat_gain = HAT_GAIN;
     s->clap_gain = CLAP_GAIN;
+    s->snare_gain = SNARE_GAIN;
     s->drive = DRIVE;
     s->master = 1.0f;
-    s->kick_vel = s->hat_vel = s->clap_vel = 1.0f;
+    s->kick_vel = s->hat_vel = s->clap_vel = s->snare_vel = 1.0f;
+    s->transpose = 0;
+    s->kick_tune = ACID_KICK_LOW_HZ;
+    s->kick_sweep = ACID_KICK_SWEEP_HZ;
+    s->kick_pitch_s = ACID_KICK_PITCH_S;
+    s->kick_amp_s = ACID_KICK_AMP_S;
+    s->hat_tone = ACID_HAT_HZ;
+    s->hat_closed_s = ACID_HAT_CLOSED_S;
+    s->hat_open_s = ACID_HAT_OPEN_S;
+    s->clap_tone = ACID_CLAP_HZ;
+    s->clap_tail_s = ACID_CLAP_TAIL_S;
+    s->snare_tune = ACID_SNARE_TUNE_HZ;
+    s->snare_snappy = ACID_SNARE_SNAPPY;
+    s->snare_decay_s = ACID_SNARE_DECAY_S;
+    s->page = PAGE_BASS;
     s->live = 0;
     s->nheld = 0;
     s->now = 0;
@@ -182,6 +201,7 @@ void acid_synth_set_live(acid_synth_t *s, int on)
     acid_kick_t kick = s->kick;
     acid_hat_t hat = s->hat;
     acid_clap_t clap = s->clap;
+    acid_snare_t snare = s->snare;
     float pitch = s->pitch_log2;
     acid_synth_init(s, s->sr);
     s->osc = osc;
@@ -191,6 +211,12 @@ void acid_synth_set_live(acid_synth_t *s, int on)
     s->kick = kick;
     s->hat = hat;
     s->clap = clap;
+    s->snare = snare;
+    // Хвосты доигрывают, но дальше ударка звучит как в треке.
+    acid_kick_set(&s->kick, s->kick_tune, s->kick_sweep, s->kick_pitch_s, s->kick_amp_s);
+    acid_hat_set(&s->hat, s->hat_tone, s->hat_closed_s, s->hat_open_s);
+    acid_clap_set(&s->clap, s->clap_tone, s->clap_tail_s);
+    acid_snare_set(&s->snare, s->snare_tune, s->snare_snappy, s->snare_decay_s);
     s->pitch_log2 = s->target_log2 = pitch;
 }
 
@@ -228,7 +254,7 @@ static void bass_on(acid_synth_t *s, int note, int vel)
     }
     s->held_at[s->nheld] = s->now;
     s->held[s->nheld++] = (int8_t)note;
-    voice_note(s, note, vel > ACCENT_VEL, slide);
+    voice_note(s, note + s->transpose, vel > ACCENT_VEL, slide);
 }
 
 static void bass_off(acid_synth_t *s, int note)
@@ -250,7 +276,7 @@ static void bass_release(acid_synth_t *s, int note)
     held_remove(s, note);
     if (top && s->nheld > 0) {
         // Отпустили верхнюю при зажатой нижней: глайд обратно, как в 303.
-        s->target_log2 = log2f(acid_midi_to_hz(s->held[s->nheld - 1]));
+        s->target_log2 = log2f(acid_midi_to_hz(s->held[s->nheld - 1] + s->transpose));
         s->gliding = 1;
     }
 }
@@ -262,7 +288,10 @@ static void drum_on(acid_synth_t *s, int note, int vel)
     if (note == 36) {
         acid_kick_trigger(&s->kick);
         s->kick_vel = v;
-    } else if (note >= 38 && note <= 40) {
+    } else if (note == 38 || note == 40) {
+        acid_snare_trigger(&s->snare);
+        s->snare_vel = v;
+    } else if (note == 39) {
         acid_clap_trigger(&s->clap);
         s->clap_vel = v;
     } else if (note == 42 || note == 44 || note == 46) {
@@ -281,22 +310,77 @@ static float expo(int v, float a, float b)
     return a * exp2f((float)v / 127.0f * log2f(b / a));
 }
 
+// CC энкодеров BSP по порядку на панели (стандартная раскладка Arturia): 0 - энкодер 1.
+static const uint8_t ENC_CC[16] = {10, 74, 71, 76, 77, 93, 73, 75, 114, 18, 19, 16, 17, 91, 79, 72};
+
+static void page_mix(acid_synth_t *s, int slot, int v)
+{
+    switch (slot) {
+    case 1: s->master = lin(v, 0.0f, 1.0f); break;
+    case 2: s->drive = expo(v, 0.3f, 3.0f); break;
+    case 3: s->bass_gain = lin(v, 0.0f, 1.5f); break;
+    case 4: s->kick_gain = lin(v, 0.0f, 2.0f); break;
+    case 5: s->hat_gain = lin(v, 0.0f, 0.6f); break;
+    case 6: s->clap_gain = lin(v, 0.0f, 1.2f); break;
+    case 7: s->snare_gain = lin(v, 0.0f, 1.5f); break;
+    default: break;
+    }
+}
+
+static void page_drums(acid_synth_t *s, int slot, int v)
+{
+    switch (slot) {
+    case 1: s->kick_tune = expo(v, 35.0f, 80.0f); break;
+    case 2: s->kick_sweep = lin(v, 0.0f, 300.0f); break;
+    case 3: s->kick_pitch_s = expo(v, 0.005f, 0.1f); break;
+    case 4: s->kick_amp_s = expo(v, 0.04f, 0.5f); break;
+    case 5: s->hat_tone = expo(v, 3000.0f, 12000.0f); break;
+    case 6: s->hat_closed_s = expo(v, 0.005f, 0.08f); break;
+    case 7: s->hat_open_s = expo(v, 0.05f, 0.8f); break;
+    case 8: s->clap_tone = expo(v, 600.0f, 3000.0f); break;
+    case 9: s->clap_tail_s = expo(v, 0.03f, 0.4f); break;
+    case 10: s->snare_tune = expo(v, 120.0f, 350.0f); break;
+    case 11: s->snare_snappy = lin(v, 0.0f, 1.0f); break;
+    case 12: s->snare_decay_s = expo(v, 0.03f, 0.3f); break;
+    default: return;
+    }
+    acid_kick_set(&s->kick, s->kick_tune, s->kick_sweep, s->kick_pitch_s, s->kick_amp_s);
+    acid_hat_set(&s->hat, s->hat_tone, s->hat_closed_s, s->hat_open_s);
+    acid_clap_set(&s->clap, s->clap_tone, s->clap_tail_s);
+    acid_snare_set(&s->snare, s->snare_tune, s->snare_snappy, s->snare_decay_s);
+}
+
+static void page_bass(acid_synth_t *s, int slot, int v)
+{
+    switch (slot) {
+    case 1: s->cut_base = expo(v, 60.0f, 3000.0f); break;
+    case 2: s->res = lin(v, 0.0f, 0.97f); break;
+    case 3: s->env_hz = lin(v, 0.0f, 6000.0f); break;
+    case 4: s->decay_s = expo(v, 0.05f, 1.5f); break;
+    case 5: s->accent_amt = lin(v, 1.0f, 2.0f); break;
+    case 6: s->wave = v >= 64; break;
+    case 7: s->glide_coef = expf(-1.0f / (expo(v, 0.01f, 0.3f) * s->sr)); break;
+    case 8: s->transpose = (v * 25) / 128 - 12; break; // -12..+12, центр 0
+    default: break;
+    }
+}
+
 static void control_change(acid_synth_t *s, int num, int v)
 {
-    switch (num) {
-    case 10: s->cut_base = expo(v, 60.0f, 3000.0f); break;
-    case 74: s->res = lin(v, 0.0f, 0.97f); break;
-    case 71: s->env_hz = lin(v, 0.0f, 6000.0f); break;
-    case 76: s->decay_s = expo(v, 0.05f, 1.5f); break;
-    case 77: s->accent_amt = lin(v, 1.0f, 2.0f); break;
-    case 93: s->wave = v >= 64; break;
-    case 75: s->bass_gain = lin(v, 0.0f, 1.5f); break;
-    case 114: s->kick_gain = lin(v, 0.0f, 2.0f); break;
-    case 18: s->hat_gain = lin(v, 0.0f, 0.6f); break;
-    case 19: s->clap_gain = lin(v, 0.0f, 1.2f); break;
-    case 17: s->drive = expo(v, 0.3f, 3.0f); break;
-    case 91: s->master = lin(v, 0.0f, 1.0f); break;
-    default: break;
+    int slot = -1;
+    for (int i = 0; i < 16; i++) {
+        if (ENC_CC[i] == num) {
+            slot = i;
+        }
+    }
+    if (slot == 0) {
+        s->page = v * PAGES / 128; // зоны хода энкодера 1
+    } else if (s->page == 0) {
+        page_mix(s, slot, v);
+    } else if (s->page == 1) {
+        page_drums(s, slot, v);
+    } else {
+        page_bass(s, slot, v);
     }
 }
 
@@ -390,6 +474,7 @@ void acid_synth_render(acid_synth_t *s, float *out, size_t n)
         y += s->kick_gain * s->kick_vel * acid_kick_next(&s->kick);
         y += s->hat_gain * s->hat_vel * acid_hat_next(&s->hat);
         y += s->clap_gain * s->clap_vel * acid_clap_next(&s->clap);
+        y += s->snare_gain * s->snare_vel * acid_snare_next(&s->snare);
         out[i] = s->master * OUT_PEAK * acid_tanh(s->drive * y);
     }
 }

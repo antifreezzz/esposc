@@ -3,10 +3,6 @@
 #include <math.h>
 
 #define PI_F 3.14159265f
-#define KICK_LOW_HZ 50.0f
-#define KICK_SWEEP_HZ 100.0f // старт 150 Гц
-#define KICK_PITCH_S 0.03f
-#define KICK_AMP_S 0.08f
 
 void acid_kick_init(acid_kick_t *k, float sr)
 {
@@ -14,7 +10,7 @@ void acid_kick_init(acid_kick_t *k, float sr)
     k->pitch_env = 0.0f;
     k->amp_env = 0.0f;
     k->sr = sr;
-    acid_kick_set(k, KICK_LOW_HZ, KICK_SWEEP_HZ, KICK_PITCH_S, KICK_AMP_S);
+    acid_kick_set(k, ACID_KICK_LOW_HZ, ACID_KICK_SWEEP_HZ, ACID_KICK_PITCH_S, ACID_KICK_AMP_S);
 }
 
 void acid_kick_set(acid_kick_t *k, float low_hz, float sweep_hz, float pitch_s, float amp_s)

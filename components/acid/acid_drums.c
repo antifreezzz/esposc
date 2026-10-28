@@ -3,18 +3,18 @@
 #include <math.h>
 
 #define PI_F 3.14159265f
-#define HAT_HZ 7000.0f
-#define HAT_CLOSED_S 0.02f
-#define HAT_OPEN_S 0.2f
-#define CLAP_HZ 1200.0f
+#define HAT_HZ ACID_HAT_HZ
+#define HAT_CLOSED_S ACID_HAT_CLOSED_S
+#define HAT_OPEN_S ACID_HAT_OPEN_S
+#define CLAP_HZ ACID_CLAP_HZ
 #define CLAP_Q 1.5f
 #define CLAP_BURST_S 0.003f
-#define CLAP_TAIL_S 0.1f
+#define CLAP_TAIL_S ACID_CLAP_TAIL_S
 #define CLAP_BURSTS 3
 #define SILENT 1e-5f
-#define SNARE_TUNE_HZ 180.0f
-#define SNARE_SNAPPY 0.6f
-#define SNARE_DECAY_S 0.08f
+#define SNARE_TUNE_HZ ACID_SNARE_TUNE_HZ
+#define SNARE_SNAPPY ACID_SNARE_SNAPPY
+#define SNARE_DECAY_S ACID_SNARE_DECAY_S
 #define SNARE_NOISE_HZ 2000.0f
 #define SNARE_PITCH_S 0.02f
 

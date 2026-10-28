@@ -34,6 +34,7 @@ typedef struct {
     acid_kick_t kick;
     acid_hat_t hat;
     acid_clap_t clap;
+    acid_snare_t snare;
     int kick_on;       // прямая бочка (только в режиме фиксированного паттерна)
 
     // Аранжировка.
@@ -50,9 +51,16 @@ typedef struct {
     float env_hz;      // глубина огибающей фильтра обычной ноты, Гц
     float decay_s;     // спад огибающей фильтра обычной ноты
     float accent_amt;  // усиление громкости акцента
-    float bass_gain, kick_gain, hat_gain, clap_gain;
+    float bass_gain, kick_gain, hat_gain, clap_gain, snare_gain;
     float drive, master;
-    float kick_vel, hat_vel, clap_vel; // velocity последнего удара, 0..1
+    float kick_vel, hat_vel, clap_vel, snare_vel; // velocity последнего удара, 0..1
+    int transpose;     // полутоны, live
+    // Звук ударки (ручки страницы 1): сеттеры голосов берут все параметры сразу.
+    float kick_tune, kick_sweep, kick_pitch_s, kick_amp_s;
+    float hat_tone, hat_closed_s, hat_open_s;
+    float clap_tone, clap_tail_s;
+    float snare_tune, snare_snappy, snare_decay_s;
+    int page;          // страница ручек: 0 микс, 1 ударка, 2 бас
 
     // Live-режим: ноты от MIDI, свой секвенсор молчит.
     int live;

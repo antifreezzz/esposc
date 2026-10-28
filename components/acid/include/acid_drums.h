@@ -3,6 +3,16 @@
 
 #include "acid_noise.h"
 
+// Стартовые значения звука ударки.
+#define ACID_HAT_HZ 7000.0f
+#define ACID_HAT_CLOSED_S 0.02f
+#define ACID_HAT_OPEN_S 0.2f
+#define ACID_CLAP_HZ 1200.0f
+#define ACID_CLAP_TAIL_S 0.1f
+#define ACID_SNARE_TUNE_HZ 180.0f
+#define ACID_SNARE_SNAPPY 0.6f
+#define ACID_SNARE_DECAY_S 0.08f
+
 // Хэт: шум через ФВЧ ~7 кГц, закрытый короткий, открытый длинный.
 typedef struct {
     uint32_t rng;
