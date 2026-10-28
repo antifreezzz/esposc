@@ -31,12 +31,32 @@ static float max_kick_env(int bars)
     return worst;
 }
 
+// Максимум огибающих бочки и клэпа на bars тактов вперёд.
+static void max_drum_env(int bars, float *kick, float *clap)
+{
+    float x;
+    int end_bar = s.bar + bars;
+    *kick = *clap = 0.0f;
+    while (s.bar < end_bar) {
+        acid_synth_render(&s, &x, 1);
+        if (s.bar >= end_bar) {
+            break; // этот сэмпл уже первый в следующем такте
+        }
+        *kick = s.kick.amp_env > *kick ? s.kick.amp_env : *kick;
+        *clap = s.clap.env > *clap ? s.clap.env : *clap;
+    }
+}
+
 TEST(test_track_break_has_no_kick)
 {
     acid_synth_init(&s, SR);
     render_to(0, 40, 0, 0.0f);    // секция 11
     render_to(0, 40, 4, 0.0f);    // хвост бочки с такта 39 успел затухнуть
-    CHECK(max_kick_env(7) < 0.01f); // такты 40..47 (брейк)
+    float kick, clap;
+    max_drum_env(8, &kick, &clap); // такты 40..47 целиком (брейк, включая филл на 47)
+    CHECK(kick < 0.01f);
+    CHECK(clap < 0.01f);
+    CHECK(s.bar == 48);
     CHECK(max_kick_env(4) > 0.9f);  // 48..51 (дроп)
 }
 
@@ -57,6 +77,25 @@ TEST(test_track_loops_and_mutates)
     render_to(1, 0, 0, 0.0f);
     CHECK(s.cycle == 1 && s.bar == 0);
     CHECK(memcmp(s.mut[ACID_PAT_A], acid_patterns[ACID_PAT_A], sizeof s.mut[0]) != 0);
+
+    // Шов без щелчка: в первые 5 мс круга скачок не больше атаки бочки.
+    float prev, x, jump = 0.0f;
+    acid_synth_render(&s, &prev, 1);
+    for (int i = 0; i < 240; i++) {
+        acid_synth_render(&s, &x, 1);
+        jump = fabsf(x - prev) > jump ? fabsf(x - prev) : jump;
+        prev = x;
+    }
+    CHECK(jump < 0.3f);
+
+    // Мутация ровно одна на круг: seed = 1, и до конца круга паттерны не меняются.
+    acid_step_t want[ACID_PAT_COUNT][16];
+    for (int p = 0; p < ACID_PAT_COUNT; p++) {
+        acid_mutate(want[p], acid_patterns[p], 16, 1);
+    }
+    CHECK(memcmp(s.mut, want, sizeof want) == 0);
+    render_to(1, 63, 15, 0.0f);
+    CHECK(memcmp(s.mut, want, sizeof want) == 0);
 }
 
 TEST(test_track_long_render)
