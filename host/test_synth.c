@@ -53,7 +53,7 @@ TEST(test_synth_stress_peak)
     }
     acid_synth_init(&s, SR);
     acid_synth_set_pattern(&s, loud, 16);
-    s.res = 1.0f;
+    s.slot[0].res = 1.0f;
     stats_t st = render_stats(30.0f);
     CHECK(st.finite);
     CHECK(st.peak <= PEAK_6DB);
@@ -93,7 +93,7 @@ TEST(test_synth_slide_glides)
     float x;
     while (!(s.seq.index == 1 && s.seq.pos >= 480)) {
         acid_synth_render(&s, &x, 1);
-        min_amp = s.amp.value < min_amp ? s.amp.value : min_amp;
+        min_amp = s.slot[0].amp.value < min_amp ? s.slot[0].amp.value : min_amp;
     }
     float hz = acid_synth_pitch_hz(&s);
     CHECK(hz > 111.0f);
@@ -128,8 +128,8 @@ TEST(test_synth_accent_on_slid_note)
     acid_synth_set_pattern(&s, pat, 3);
     s.kick_on = 0;
     render_until(1, 100);
-    CHECK(s.gliding);
-    CHECK(s.accent_gain > 1.0f);
+    CHECK(s.slot[0].gliding);
+    CHECK(s.slot[0].accent_gain > 1.0f);
 }
 
 TEST(test_synth_slid_note_without_accent_drops_accent)
@@ -140,8 +140,8 @@ TEST(test_synth_slid_note_without_accent_drops_accent)
     acid_synth_set_pattern(&s, pat, 3);
     s.kick_on = 0;
     render_until(1, 100);
-    CHECK(s.gliding);
-    CHECK_NEAR(s.accent_gain, 1.0f, 1e-6);
+    CHECK(s.slot[0].gliding);
+    CHECK_NEAR(s.slot[0].accent_gain, 1.0f, 1e-6);
 }
 
 TEST(test_pcm_convert)
