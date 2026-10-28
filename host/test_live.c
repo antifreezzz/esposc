@@ -224,6 +224,75 @@ TEST(test_live_off_restarts_track)
     CHECK(s.kick.amp_env > 0.1f); // бочка автопилота на месте
 }
 
+TEST(test_live_soft_drum_hit_audible)
+{
+    live();
+    on(DRUMS, 36, 127);
+    float loud = peak(2400);
+    live();
+    on(DRUMS, 36, 10);
+    CHECK(peak(2400) > loud * 0.4f); // слабый удар пэда должен быть слышен
+}
+
+TEST(test_live_bass_bounce_merged)
+{
+    // Дребезг пэда: нота 10 мс, отпускание, через 30 мс та же нота снова.
+    live();
+    on(BASS, 45, 60);
+    rms(480);
+    off(BASS, 45);
+    int gate_dropped = 0;
+    for (int i = 0; i < 1440; i++) {
+        rms(1);
+        gate_dropped |= s.amp.gate == 0;
+    }
+    float f = s.fenv.value;
+    on(BASS, 45, 5);
+    rms(1);
+    CHECK(!gate_dropped);
+    CHECK(s.fenv.value <= f); // огибающая не перезапущена: одна нота, а не две
+    off(BASS, 45);
+    rms(9600);
+    CHECK(s.amp.gate == 0);
+}
+
+TEST(test_live_short_note_still_ends)
+{
+    live();
+    on(BASS, 45, 100);
+    rms(480);
+    off(BASS, 45);
+    rms(4800);
+    CHECK(s.amp.gate == 0);
+}
+
+TEST(test_live_fast_repeat_retriggers)
+{
+    // Настоящий быстрый повтор (дальше окна склейки) играет новую ноту.
+    live();
+    on(BASS, 45, 100);
+    rms(2880);
+    off(BASS, 45);
+    rms(2880);
+    on(BASS, 45, 100);
+    rms(1);
+    CHECK(s.fenv.value > 0.99f);
+}
+
+TEST(test_live_short_note_then_other_note_retriggers)
+{
+    // Короткая нота и сразу другая: не слайд, а новая нота.
+    live();
+    on(BASS, 45, 100);
+    rms(480);
+    off(BASS, 45);
+    rms(480);
+    on(BASS, 50, 100);
+    rms(1);
+    CHECK(s.fenv.value > 0.99f);
+    CHECK_NEAR(acid_synth_pitch_hz(&s), acid_midi_to_hz(50), 0.5f);
+}
+
 int main(void)
 {
     RUN(test_live_silent_until_note);
@@ -238,5 +307,10 @@ int main(void)
     RUN(test_live_stop_silences);
     RUN(test_live_transitions_no_click);
     RUN(test_live_off_restarts_track);
+    RUN(test_live_soft_drum_hit_audible);
+    RUN(test_live_bass_bounce_merged);
+    RUN(test_live_short_note_still_ends);
+    RUN(test_live_fast_repeat_retriggers);
+    RUN(test_live_short_note_then_other_note_retriggers);
     TEST_MAIN_END();
 }

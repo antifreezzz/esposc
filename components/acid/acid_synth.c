@@ -24,6 +24,9 @@
 #define BASS_CH 4      // MIDI канал 5: SEQ1
 #define DRUM_CH 1      // MIDI канал 2: барабаны и пэды Control mode
 #define HELD_MAX 8
+#define BOUNCE_S 0.025f    // нота короче этого - возможно дребезг пэда BSP
+#define MERGE_S 0.05f      // повтор той же ноты в этом окне от нажатия склеивается с ней
+#define DRUM_VEL_FLOOR 0.3f // громкость самого слабого удара пэда
 
 void acid_synth_init(acid_synth_t *s, float sr)
 {
@@ -60,6 +63,8 @@ void acid_synth_init(acid_synth_t *s, float sr)
     s->kick_vel = s->hat_vel = s->clap_vel = 1.0f;
     s->live = 0;
     s->nheld = 0;
+    s->now = 0;
+    s->pend_note = -1;
 
     s->arr_on = 1;
     s->started = 0;
@@ -163,6 +168,7 @@ void acid_synth_set_live(acid_synth_t *s, int on)
         s->arr_on = 0;
         s->kick_on = 0;
         s->nheld = 0;
+        s->pend_note = -1;
         s->gliding = 0;
         s->res = RES;
         s->wave = 0;
@@ -193,25 +199,52 @@ static void held_remove(acid_synth_t *s, int note)
     int j = 0;
     for (int i = 0; i < s->nheld; i++) {
         if (s->held[i] != note) {
+            s->held_at[j] = s->held_at[i];
             s->held[j++] = s->held[i];
         }
     }
     s->nheld = j;
 }
 
+static void bass_release(acid_synth_t *s, int note);
+
 static void bass_on(acid_synth_t *s, int note, int vel)
 {
+    if (s->pend_note == note) {
+        // Дребезг: та же нота сразу после короткого нажатия - это продолжение той же ноты.
+        s->pend_note = -1;
+        return;
+    }
+    if (s->pend_note >= 0) {
+        bass_release(s, s->pend_note); // короткая нота закончилась, новая не слайдит из неё
+        s->pend_note = -1;
+    }
     held_remove(s, note);
     int slide = s->nheld > 0;
     if (s->nheld == HELD_MAX) {
         memmove(s->held, s->held + 1, HELD_MAX - 1); // вытесняем самую старую
+        memmove(s->held_at, s->held_at + 1, (HELD_MAX - 1) * sizeof s->held_at[0]);
         s->nheld--;
     }
+    s->held_at[s->nheld] = s->now;
     s->held[s->nheld++] = (int8_t)note;
     voice_note(s, note, vel > ACCENT_VEL, slide);
 }
 
 static void bass_off(acid_synth_t *s, int note)
+{
+    for (int i = 0; i < s->nheld; i++) {
+        if (s->held[i] == note && s->now - s->held_at[i] < (uint32_t)(BOUNCE_S * s->sr)) {
+            // Слишком короткое нажатие: отпустим позже, если не придёт повтор.
+            s->pend_note = note;
+            s->pend_at = s->held_at[i] + (uint32_t)(MERGE_S * s->sr);
+            return;
+        }
+    }
+    bass_release(s, note);
+}
+
+static void bass_release(acid_synth_t *s, int note)
 {
     int top = s->nheld > 0 && s->held[s->nheld - 1] == note;
     held_remove(s, note);
@@ -224,7 +257,8 @@ static void bass_off(acid_synth_t *s, int note)
 
 static void drum_on(acid_synth_t *s, int note, int vel)
 {
-    float v = (float)vel / 127.0f;
+    // Пэды BSP при мягкой игре дают velocity 3-30: без пола такие удары не слышны.
+    float v = DRUM_VEL_FLOOR + (1.0f - DRUM_VEL_FLOOR) * (float)vel / 127.0f;
     if (note == 36) {
         acid_kick_trigger(&s->kick);
         s->kick_vel = v;
@@ -290,6 +324,7 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
         break;
     case ACID_MIDI_STOP:
         s->nheld = 0; // защита от залипших нот
+        s->pend_note = -1;
         s->gliding = 0;
         break;
     default:
@@ -318,6 +353,11 @@ static float control_update(acid_synth_t *s)
 void acid_synth_render(acid_synth_t *s, float *out, size_t n)
 {
     for (size_t i = 0; i < n; i++) {
+        s->now++;
+        if (s->pend_note >= 0 && (int32_t)(s->now - s->pend_at) >= 0) {
+            bass_release(s, s->pend_note);
+            s->pend_note = -1;
+        }
         int step = s->live ? -1 : acid_seq_tick(&s->seq);
         if (step >= 0) {
             if (s->arr_on) {
