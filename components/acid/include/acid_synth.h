@@ -9,10 +9,21 @@
 #include "acid_kick.h"
 #include "acid_midi.h"
 #include "acid_osc.h"
+#include "acid_plaits.h"
 #include "acid_seq.h"
 
-// Синт-слот: голос 303, его ручки и стек нот. Слот 0 играет автопилот и SEQ1, слот 1 - SEQ2.
+#define ACID_TYPES (1 + ACID_PLAITS_MODELS) // 0 - наш 303, 1..24 - модели Plaits
+#define ACID_KNOBS 16
+
+// Синт-слот: тип синтеза, голоса 303 и Plaits, ручки по типам, стек нот.
+// Слот 0 играет автопилот и SEQ1, слот 1 - SEQ2.
 typedef struct {
+    int type;          // звучащий тип
+    int sel_type;      // выбор с BSP; автопилот играет 303, выбор ждёт возвращения BSP
+    int next_type;     // куда переходим после ухода звука
+    int fade;          // смена типа: > 0 уход звука, < 0 приход, сэмплов осталось
+    uint8_t knob[ACID_TYPES][ACID_KNOBS]; // сырые CC энкодеров по типам, 0xFF - не трогали
+
     acid_osc_t osc;
     acid_ladder_t flt;
     acid_decay_t fenv;
@@ -41,6 +52,15 @@ typedef struct {
     uint32_t now;      // сэмплов с init
     int pend_note;     // короткая нота с отложенным отпусканием (дребезг пэда), -1 если нет
     uint32_t pend_at;  // когда отпустить
+    // Plaits.
+    acid_plaits_t *plaits;
+    acid_plaits_params_t pp;
+    float pbuf[ACID_PLAITS_BLOCK];
+    int ppos;          // позиция в pbuf
+    int retrig;        // новая нота: опустить триггер на один блок
+    int accented;      // текущая нота с акцентом
+    float p_accent;    // насколько обычная нота тише акцентной, 0..0.75
+    int idle;          // блоков тишины подряд: молчащий Plaits не считаем
 } acid_slot_t;
 
 #define ACID_SLOTS 2
@@ -80,7 +100,11 @@ typedef struct {
     int page;          // страница ручек: 0 микс, 1 ударка, 2 синт 1, 3 синт 2
 
     int live;          // live-режим: ноты от MIDI, свой секвенсор молчит
+    int save;          // сменили тип: память ручек пора записать
 } acid_synth_t;
+
+// Память ручек для flash: метка, типы и сырые ручки обоих синтов.
+#define ACID_SYNTH_BLOB (4 + ACID_SLOTS * (1 + ACID_TYPES * ACID_KNOBS))
 
 // Режим трека по умолчанию.
 void acid_synth_init(acid_synth_t *s, float sr);
@@ -92,6 +116,12 @@ void acid_synth_render(acid_synth_t *s, float *out, size_t n);
 void acid_synth_render_slot(acid_synth_t *s, int k, float *out, size_t n);
 void acid_synth_render_with(acid_synth_t *s, float *out, size_t n, const float *slot1);
 float acid_synth_pitch_hz(const acid_synth_t *s); // высота слота 0
+// 1 и сброс флага, если с прошлого вызова сменили тип синтеза (пора записать память во flash).
+int acid_synth_take_save(acid_synth_t *s);
+// Память ручек в blob размера ACID_SYNTH_BLOB и обратно. import: 1 - применено, 0 - чужой blob.
+size_t acid_synth_export(const acid_synth_t *s, void *buf, size_t cap);
+int acid_synth_import(acid_synth_t *s, const void *buf, size_t len);
+// s перед первым init должен быть обнулён (static): init создаёт голоса Plaits один раз.
 // 1: live-режим, ждём MIDI; 0: автопилот с начала трека. Голоса не обрываются.
 void acid_synth_set_live(acid_synth_t *s, int on);
 // Событие MIDI в live-режиме (вне его игнорируется): синт 1 канал 5, синт 2 канал 6, барабаны канал 2,

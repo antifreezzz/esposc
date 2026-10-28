@@ -358,6 +358,8 @@ TEST(test_live_slot_knobs_independent)
 {
     live();
     page(3);
+    cc(ENC[2], 0); // синт 2 тоже 303 (по умолчанию он FM)
+    rms(960);
     cc(ENC[3], 0);
     CHECK_NEAR(s.slot[1].cut_base, 60.0f, 0.1f);
     CHECK(s.slot[0].cut_base > 400.0f);
@@ -374,8 +376,9 @@ TEST(test_live_stop_silences_both)
     on(SEQ2, 50, 100);
     rms(2400);
     send(ACID_MIDI_STOP, 0, 0, 0);
-    rms(4800);
-    CHECK(s.slot[0].amp.gate == 0 && s.slot[1].amp.gate == 0);
+    CHECK(s.slot[0].nheld == 0 && s.slot[1].nheld == 0);
+    rms(48000); // хвост Plaits (синт 2 по умолчанию FM) доигрывает сам
+    CHECK(s.slot[0].amp.gate == 0);
     CHECK(rms(480) < 1e-3f);
 }
 

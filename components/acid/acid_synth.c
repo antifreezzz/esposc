@@ -32,9 +32,30 @@
 #define PAGES 4
 #define PAGE_SYNTH1 2
 #define MIX_CHUNK 64 // кусок буфера слота 1 в общем рендере
+#define FADE_N 192     // 4 мс ухода и столько же прихода при смене типа синтеза
+#define PLAITS_GAIN 1.0f // уровень Plaits относительно 303
+#define IDLE_BLOCKS 400  // 100 мс точной тишины без гейта: молчащий Plaits не считаем
+#define SEQ2_TYPE 11     // синт 2 по умолчанию: FM 2-op (модель Plaits 10)
+#define PLAITS_ACCENT 0.4f // обычная нота Plaits тише акцентной на столько
+#define KNOB_NONE 0xFF
+#define TYPE_ENC 1       // энкодер 2 на странице синта
+static const uint8_t BLOB_MAGIC[4] = {'A', 'S', '5', 1};
 
-static void slot_init(acid_slot_t *v, float sr)
+static void type_defaults(acid_synth_t *s, acid_slot_t *v);
+
+static void slot_init(acid_slot_t *v, float sr, int type)
 {
+    v->type = v->sel_type = v->next_type = type;
+    v->fade = 0;
+    memset(v->knob, KNOB_NONE, sizeof v->knob);
+    if (!v->plaits) {
+        v->plaits = acid_plaits_create(); // один раз: s обнулён до первого init
+    }
+    v->pp = (acid_plaits_params_t){0};
+    v->ppos = ACID_PLAITS_BLOCK;
+    v->retrig = 0;
+    v->accented = 0;
+    v->idle = IDLE_BLOCKS;
     v->osc = (acid_osc_t){0};
     acid_ladder_reset(&v->flt);
     acid_decay_init(&v->fenv, FENV_NORMAL_S, sr);
@@ -63,8 +84,10 @@ void acid_synth_init(acid_synth_t *s, float sr)
 {
     s->sr = sr;
     for (int k = 0; k < ACID_SLOTS; k++) {
-        slot_init(&s->slot[k], sr);
+        slot_init(&s->slot[k], sr, k == 1 ? SEQ2_TYPE : 0);
+        type_defaults(s, &s->slot[k]);
     }
+    s->save = 0;
     s->last_flags = 0;
     acid_kick_init(&s->kick, sr);
     acid_hat_init(&s->hat, sr);
@@ -162,12 +185,14 @@ static void voice_note(acid_synth_t *s, acid_slot_t *v, int note, int accent, in
     v->target_log2 = log2f(acid_midi_to_hz(note));
     // Акцент громкости действует и на слайде, огибающие при этом не перезапускаются.
     v->accent_gain = accent ? v->accent_amt : 1.0f;
+    v->accented = accent != 0;
     if (slide) {
         v->gliding = 1;
         return;
     }
     v->gliding = 0;
     v->pitch_log2 = v->target_log2;
+    v->retrig = 1;
     acid_decay_set(&v->fenv, accent ? v->decay_s * FENV_ACCENT_RATIO : v->decay_s, s->sr);
     acid_decay_trigger(&v->fenv, 1.0f);
     float env = accent ? v->env_hz * (FENV_ACCENT_HZ / FENV_NORMAL_HZ) : v->env_hz;
@@ -197,12 +222,15 @@ void acid_synth_set_live(acid_synth_t *s, int on)
         s->arr_on = 0;
         s->kick_on = 0;
         for (int k = 0; k < ACID_SLOTS; k++) {
-            s->slot[k].nheld = 0;
-            s->slot[k].pend_note = -1;
-            s->slot[k].gliding = 0;
+            acid_slot_t *v = &s->slot[k];
+            v->nheld = 0;
+            v->pend_note = -1;
+            v->gliding = 0;
+            // Выбор с BSP: тип и его ручки (автопилот мог поменять срез и форму волны 303).
+            v->type = v->next_type = v->sel_type;
+            v->fade = 0;
+            type_defaults(s, v);
         }
-        s->slot[0].res = RES;
-        s->slot[0].wave = 0;
         return;
     }
     // Трек с начала, но состояние голосов сохраняем, чтобы не щёлкнуть.
@@ -215,11 +243,24 @@ void acid_synth_set_live(acid_synth_t *s, int on)
     acid_synth_init(s, s->sr);
     for (int k = 0; k < ACID_SLOTS; k++) {
         acid_slot_t *v = &s->slot[k];
+        if (k == 1) {
+            // Автопилот слот 1 не играет: доигрывает хвост своим типом, стек пуст.
+            *v = keep[k];
+            v->nheld = 0;
+            v->pend_note = -1;
+            v->gliding = 0;
+            v->type = v->next_type;
+            v->fade = 0;
+            continue;
+        }
         v->osc = keep[k].osc;
         v->flt = keep[k].flt;
         v->amp = keep[k].amp;
         v->fenv = keep[k].fenv;
         v->pitch_log2 = v->target_log2 = keep[k].pitch_log2;
+        // Автопилот играет 303, выбор и ручки ждут BSP.
+        v->sel_type = keep[k].sel_type;
+        memcpy(v->knob, keep[k].knob, sizeof v->knob);
     }
     s->kick = kick;
     s->hat = hat;
@@ -364,8 +405,14 @@ static void page_drums(acid_synth_t *s, int slot, int v)
     acid_snare_set(&s->snare, s->snare_tune, s->snare_snappy, s->snare_decay_s);
 }
 
-// Страница синта: энкодер 2 - тип синтеза, дальше ручки 303.
-static void page_synth(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
+static float bip(int v)
+{
+    float x = (float)(v - 64) / 63.0f;
+    return x < -1.0f ? -1.0f : x;
+}
+
+// Ручки 303, slot - индекс энкодера с 0.
+static void knob_303(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
 {
     switch (slot) {
     case 2: sl->cut_base = expo(v, 60.0f, 3000.0f); break;
@@ -377,6 +424,101 @@ static void page_synth(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
     case 8: sl->glide_coef = expf(-1.0f / (expo(v, 0.01f, 0.3f) * s->sr)); break;
     case 9: sl->transpose = (v * 25) / 128 - 12; break; // -12..+12, центр 0
     default: break;
+    }
+}
+
+static void knob_plaits(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
+{
+    acid_plaits_params_t *p = &sl->pp;
+    switch (slot) {
+    case 2: p->harmonics = lin(v, 0.0f, 1.0f); break;
+    case 3: p->timbre = lin(v, 0.0f, 1.0f); break;
+    case 4: p->morph = lin(v, 0.0f, 1.0f); break;
+    case 5: p->decay = lin(v, 0.0f, 1.0f); break;
+    case 6: p->lpg_colour = lin(v, 0.0f, 1.0f); break;
+    case 7: sl->glide_coef = expf(-1.0f / (expo(v, 0.01f, 0.3f) * s->sr)); break;
+    case 8: sl->transpose = (v * 25) / 128 - 12; break;
+    case 9: p->timbre_env = bip(v); break;
+    case 10: p->morph_env = bip(v); break;
+    case 11: p->fm_env = bip(v); break;
+    case 12: sl->p_accent = lin(v, 0.0f, 0.75f); break;
+    default: break;
+    }
+}
+
+static void knob_apply(acid_synth_t *s, acid_slot_t *v, int slot, int val)
+{
+    if (v->type == 0) {
+        knob_303(s, v, slot, val);
+    } else {
+        knob_plaits(s, v, slot, val);
+    }
+}
+
+// Умолчания звучащего типа и поверх них запомненные ручки этого типа.
+static void type_defaults(acid_synth_t *s, acid_slot_t *v)
+{
+    v->glide_coef = expf(-1.0f / (GLIDE_S * s->sr));
+    v->transpose = 0;
+    if (v->type == 0) {
+        v->cut_base = FIXED_CUTOFF_HZ;
+        v->env_hz = FENV_NORMAL_HZ;
+        v->decay_s = FENV_NORMAL_S;
+        v->accent_amt = ACCENT_GAIN;
+        v->res = RES;
+        v->wave = 0;
+    } else {
+        acid_plaits_params_t *p = &v->pp;
+        p->model = v->type - 1;
+        p->harmonics = p->timbre = p->morph = 0.5f;
+        p->decay = 0.3f; // хвост ~0.1 с: под секвенсор
+        p->lpg_colour = 0.5f;
+        p->timbre_env = p->morph_env = p->fm_env = 0.0f;
+        v->p_accent = PLAITS_ACCENT;
+    }
+    for (int i = TYPE_ENC + 1; i < ACID_KNOBS; i++) {
+        if (v->knob[v->type][i] != KNOB_NONE) {
+            knob_apply(s, v, i, v->knob[v->type][i]);
+        }
+    }
+}
+
+// Звук уже ушёл: переключаем тип, звучащая нота продолжается новым голосом.
+static void type_switch(acid_synth_t *s, acid_slot_t *v)
+{
+    v->type = v->next_type;
+    s->save = 1;
+    type_defaults(s, v);
+    if (v->nheld > 0) {
+        voice_note(s, v, v->held[v->nheld - 1] + v->transpose, v->accented, 0);
+        v->ctrl_left = 0;
+    }
+    v->ppos = ACID_PLAITS_BLOCK;
+    v->fade = -FADE_N;
+}
+
+static void type_request(acid_slot_t *v, int t)
+{
+    v->sel_type = t;
+    v->next_type = t;
+    if (v->fade > 0 || t == v->type) {
+        return; // уже уходим (тип возьмём последний) или он и так звучит
+    }
+    // Уход с текущей громкости: если ещё шёл приход, без скачка.
+    v->fade = v->fade < 0 ? FADE_N + v->fade : FADE_N;
+    if (v->fade == 0) {
+        v->fade = 1;
+    }
+}
+
+// Страница синта: энкодер 2 - тип синтеза, дальше ручки типа (запоминаются по типам).
+static void page_synth(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
+{
+    if (slot == TYPE_ENC) {
+        type_request(sl, v * ACID_TYPES / 128);
+    } else if (slot > TYPE_ENC) {
+        sl->knob[sl->type][slot] = (uint8_t)v;
+        knob_apply(s, sl, slot, v);
     }
 }
 
@@ -460,6 +602,33 @@ static void slot_tick(acid_slot_t *v)
     }
 }
 
+// Сэмпл голоса Plaits с громкостью слота: блоки по 12, молчащий голос не считаем.
+static float plaits_next(acid_slot_t *v, int gate)
+{
+    if (v->gliding) {
+        v->pitch_log2 = v->target_log2 + (v->pitch_log2 - v->target_log2) * v->glide_coef;
+    }
+    if (v->ppos == ACID_PLAITS_BLOCK) {
+        v->ppos = 0;
+        if (!gate && v->idle >= IDLE_BLOCKS) {
+            memset(v->pbuf, 0, sizeof v->pbuf);
+        } else {
+            acid_plaits_params_t *p = &v->pp;
+            p->note = 12.0f * (v->pitch_log2 - log2f(440.0f)) + 69.0f;
+            p->trigger = gate && !v->retrig;
+            v->retrig = 0;
+            p->level = gate ? (v->accented ? 1.0f : 1.0f - v->p_accent) : 0.0f;
+            acid_plaits_render(v->plaits, p, v->pbuf, ACID_PLAITS_BLOCK);
+            int quiet = !gate;
+            for (int i = 0; i < ACID_PLAITS_BLOCK && quiet; i++) {
+                quiet = v->pbuf[i] == 0.0f;
+            }
+            v->idle = quiet ? v->idle + 1 : 0;
+        }
+    }
+    return v->pbuf[v->ppos++] * (PLAITS_GAIN * v->gain);
+}
+
 // Сэмпл голоса 303 с громкостью слота.
 static float voice_next(acid_synth_t *s, acid_slot_t *v, int gate)
 {
@@ -479,12 +648,37 @@ static float voice_next(acid_synth_t *s, acid_slot_t *v, int gate)
     return y * (acid_amp_next(&v->amp) * v->accent_gain * v->gain);
 }
 
+// Громкость смены типа: уход, переключение, приход.
+static float fade_step(acid_synth_t *s, acid_slot_t *v)
+{
+    if (v->fade > 0) {
+        float g = (float)v->fade / FADE_N;
+        if (--v->fade == 0) {
+            type_switch(s, v);
+        }
+        return g;
+    }
+    float g = (float)(FADE_N + v->fade) / FADE_N;
+    v->fade++;
+    return g;
+}
+
+// Сэмпл слота с громкостью: голос его типа, при смене типа - с уходом и приходом.
+static float slot_next(acid_synth_t *s, acid_slot_t *v, int gate)
+{
+    float y = v->type == 0 ? voice_next(s, v, gate) : plaits_next(v, gate);
+    if (v->fade != 0) {
+        y *= fade_step(s, v);
+    }
+    return y;
+}
+
 void acid_synth_render_slot(acid_synth_t *s, int k, float *out, size_t n)
 {
     acid_slot_t *v = &s->slot[k];
     for (size_t i = 0; i < n; i++) {
         slot_tick(v);
-        out[i] = voice_next(s, v, v->nheld > 0);
+        out[i] = slot_next(s, v, v->nheld > 0);
     }
 }
 
@@ -507,7 +701,7 @@ void acid_synth_render_with(acid_synth_t *s, float *out, size_t n, const float *
             s->last_flags = s->seq.steps[step].flags;
             v->ctrl_left = 0; // новая нота: пересчитать сразу
         }
-        float y = voice_next(s, v, s->live ? v->nheld > 0 : acid_seq_gate(&s->seq));
+        float y = slot_next(s, v, s->live ? v->nheld > 0 : acid_seq_gate(&s->seq));
         y += s->kick_gain * s->kick_vel * acid_kick_next(&s->kick);
         y += s->hat_gain * s->hat_vel * acid_hat_next(&s->hat);
         y += s->clap_gain * s->clap_vel * acid_clap_next(&s->clap);
@@ -527,4 +721,50 @@ void acid_synth_render(acid_synth_t *s, float *out, size_t n)
         acid_synth_render_slot(s, 1, slot1, m);
         acid_synth_render_with(s, out + off, m, slot1);
     }
+}
+
+
+int acid_synth_take_save(acid_synth_t *s)
+{
+    int r = s->save;
+    s->save = 0;
+    return r;
+}
+
+size_t acid_synth_export(const acid_synth_t *s, void *buf, size_t cap)
+{
+    if (cap < ACID_SYNTH_BLOB) {
+        return 0;
+    }
+    uint8_t *b = buf;
+    memcpy(b, BLOB_MAGIC, sizeof BLOB_MAGIC);
+    b += sizeof BLOB_MAGIC;
+    for (int k = 0; k < ACID_SLOTS; k++) {
+        *b++ = (uint8_t)s->slot[k].sel_type;
+        memcpy(b, s->slot[k].knob, sizeof s->slot[k].knob);
+        b += sizeof s->slot[k].knob;
+    }
+    return ACID_SYNTH_BLOB;
+}
+
+int acid_synth_import(acid_synth_t *s, const void *buf, size_t len)
+{
+    const uint8_t *b = buf;
+    if (len != ACID_SYNTH_BLOB || memcmp(b, BLOB_MAGIC, sizeof BLOB_MAGIC) != 0) {
+        return 0;
+    }
+    b += sizeof BLOB_MAGIC;
+    for (int k = 0; k < ACID_SLOTS; k++) {
+        acid_slot_t *v = &s->slot[k];
+        v->sel_type = b[0] < ACID_TYPES ? b[0] : 0;
+        memcpy(v->knob, b + 1, sizeof v->knob);
+        b += 1 + sizeof v->knob;
+        if (s->live || k == 1) {
+            // Автопилот играет слотом 0 как 303: его выбор применится с BSP.
+            v->type = v->next_type = v->sel_type;
+            v->fade = 0;
+            type_defaults(s, v);
+        }
+    }
+    return 1;
 }
