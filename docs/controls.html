@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>esposc: управление с BeatStep Pro</title>
+<style>
+  :root {
+    --bg: #15161a; --panel: #1f2127; --panel2: #262931; --line: #353945;
+    --text: #e6e6e6; --dim: #9096a3; --acc: #ffb547; --mix: #6fc3ff;
+    --drums: #ff6f7d; --s1: #ffb547; --s2: #8be38b; --off: #4a4f5c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 60px; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: .3px; }
+  h2 { font-size: 18px; margin: 36px 0 12px; color: var(--acc); }
+  p.lead { color: var(--dim); margin: 0 0 20px; }
+  code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+
+  /* схема */
+  .flow { display: flex; gap: 10px; align-items: stretch; flex-wrap: wrap; }
+  .box {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 14px; flex: 1 1 150px;
+  }
+  .box b { display: block; margin-bottom: 4px; }
+  .box small { color: var(--dim); }
+  .arrow { align-self: center; color: var(--dim); font-size: 22px; }
+  .tag { display: inline-block; border-radius: 4px; padding: 0 6px; font-size: 12px; font-weight: 600; color: #111; }
+
+  /* вкладки страниц */
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .tab {
+    background: var(--panel); border: 1px solid var(--line); color: var(--text);
+    border-radius: 8px; padding: 8px 14px; cursor: pointer; font: inherit;
+  }
+  .tab[aria-selected="true"] { border-color: var(--c); box-shadow: inset 0 -3px 0 var(--c); }
+  .tab .q { color: var(--dim); font-size: 12px; margin-left: 6px; }
+
+  /* контроллер */
+  .bsp {
+    background: linear-gradient(#24262d, #1b1c21); border: 1px solid var(--line);
+    border-radius: 14px; padding: 18px; position: relative;
+  }
+  .bsp-title { color: var(--dim); font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 10px; }
+  .grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 10px; }
+  .enc {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 6px 8px; text-align: center; min-height: 128px; position: relative;
+  }
+  .enc .n { position: absolute; top: 5px; left: 8px; font-size: 11px; color: var(--dim); }
+  .knob {
+    width: 46px; height: 46px; border-radius: 50%; margin: 6px auto 8px; position: relative;
+    background: radial-gradient(circle at 35% 30%, #5a5f6c, #2a2d35 70%);
+    border: 2px solid var(--off);
+  }
+  .knob::after {
+    content: ""; position: absolute; left: 50%; top: 4px; width: 3px; height: 14px;
+    background: var(--off); transform: translateX(-50%); border-radius: 2px;
+  }
+  .enc.on .knob { border-color: var(--c); }
+  .enc.on .knob::after { background: var(--c); }
+  .enc .l { font-weight: 600; font-size: 13px; line-height: 1.2; }
+  .enc .h { color: var(--dim); font-size: 11.5px; margin-top: 3px; line-height: 1.25; }
+  .enc.off .l { color: var(--off); font-weight: 400; }
+  .enc.page { border-color: #6c7180; border-style: dashed; }
+  .zones { display: flex; margin-top: 6px; border-radius: 4px; overflow: hidden; font-size: 10px; }
+  .zones span { flex: 1; padding: 2px 0; color: #111; font-weight: 700; opacity: .45; }
+  .zones span.cur { opacity: 1; }
+
+  /* модели */
+  .synthsel { display: flex; gap: 8px; margin: 14px 0 10px; flex-wrap: wrap; align-items: center; }
+  .synthsel .lab { color: var(--dim); margin-right: 4px; }
+  .models { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+  .model {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 6px 9px; cursor: pointer; text-align: left; color: var(--text); font: inherit; font-size: 13px;
+  }
+  .model .t { color: var(--dim); font-size: 11px; display: block; }
+  .model[aria-pressed="true"] { border-color: var(--c); background: var(--panel2); }
+  .model.p303 { border-style: dashed; }
+  .meter {
+    margin: 12px 0 4px; height: 26px; border-radius: 6px; background: var(--panel); border: 1px solid var(--line);
+    position: relative; overflow: hidden;
+  }
+  .meter .fill { position: absolute; top: 0; bottom: 0; background: var(--c); opacity: .85; }
+  .meter .tick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line); }
+  .meter-cap { display: flex; justify-content: space-between; color: var(--dim); font-size: 12px; }
+  .info {
+    margin-top: 12px; background: var(--panel); border-left: 3px solid var(--c);
+    border-radius: 6px; padding: 10px 14px;
+  }
+
+  /* карточки советов */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .card b { display: block; margin-bottom: 4px; }
+  .card p { margin: 0; color: var(--dim); font-size: 14px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  td, th { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; }
+  th { color: var(--dim); font-weight: 500; }
+
+  @media (max-width: 760px) {
+    .grid { grid-template-columns: repeat(4, 1fr); }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>esposc: управление с BeatStep Pro</h1>
+  <p class="lead">Ударка и два независимых синта. Каждый синт играет 303 или одну из 24 моделей Plaits.</p>
+
+  <h2>Кто что играет</h2>
+  <div class="flow">
+    <div class="box"><b>Drum <span class="tag" style="background:var(--drums)">канал 2</span></b>
+      <small>36 бочка, 38/40 малый, 39 клэп, 42/44 закрытый хэт, 46 открытый</small></div>
+    <div class="box"><b>SEQ1 <span class="tag" style="background:var(--s1)">канал 5</span></b>
+      <small>синт 1, по умолчанию 303</small></div>
+    <div class="box"><b>SEQ2 <span class="tag" style="background:var(--s2)">канал 6</span></b>
+      <small>синт 2, по умолчанию FM 2-op</small></div>
+    <div class="arrow">→</div>
+    <div class="box"><b>ESP32-S3</b><small>ядро 1: ударка и синт 1<br>ядро 0: синт 2</small></div>
+    <div class="arrow">→</div>
+    <div class="box"><b>USB DAC</b><small>48 кГц, стерео</small></div>
+  </div>
+
+  <h2>Энкодеры по страницам</h2>
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <div class="bsp">
+    <div class="bsp-title">BeatStep Pro, 16 энкодеров</div>
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <div id="typebox">
+    <div class="synthsel">
+      <span class="lab">Тип синтеза на энкодере 2. Нажми на модель, чтобы увидеть её ручки:</span>
+    </div>
+    <div class="models" id="models"></div>
+    <div class="meter" id="meter"></div>
+    <div class="meter-cap"><span>0, левый край: 303</span><span id="range"></span><span>127</span></div>
+    <div class="info" id="info"></div>
+  </div>
+
+  <h2>Как это себя ведёт</h2>
+  <div class="cards">
+    <div class="card"><b>Смена типа на лету</b>
+      <p>Звук уходит за 4 мс, тип меняется, новый звук приходит за 4 мс. Нажатая нота продолжает звучать уже новым типом.</p></div>
+    <div class="card"><b>Память ручек</b>
+      <p>У каждого типа в каждом синте свои ручки. Ушёл на другой тип и вернулся: звук прежний. Тип, которого не касался, стартует с умолчаний.</p></div>
+    <div class="card"><b>Сохранение во flash</b>
+      <p>После смены типа, когда выход помолчит 1 секунду. В логе строка <code>knobs saved</code>. После перезагрузки всё возвращается.</p></div>
+    <div class="card"><b>Длина гейта важна</b>
+      <p>Plaits держит ноту, пока она нажата. Энкодер 6 задаёт хвост после отпускания. 303 по-прежнему играет своей огибающей.</p></div>
+    <div class="card"><b>Слайд и акцент</b>
+      <p>Перекрытые ноты скользят без новой атаки. Velocity выше 100 это акцент. У Plaits энкодер 13 решает, насколько обычная нота тише.</p></div>
+    <div class="card"><b>Без BSP</b>
+      <p>Включается автопилот: акид-трек на 303. С BSP возвращаются выбранные типы и ручки.</p></div>
+  </div>
+</main>
+
+<script>
+const C = { mix: "var(--mix)", drums: "var(--drums)", s1: "var(--s1)", s2: "var(--s2)" };
+
+const PAGES = [
+  { id: "mix", name: "Микс", q: "1-я четверть", c: C.mix, knobs: [
+    ["Мастер", "общая громкость"], ["Drive", "перегруз на выходе"],
+    ["Синт 1", "громкость"], ["Синт 2", "громкость"],
+    ["Бочка", "громкость"], ["Хэты", "громкость"], ["Клэп", "громкость"], ["Малый", "громкость"] ] },
+  { id: "drums", name: "Ударка", q: "2-я четверть", c: C.drums, knobs: [
+    ["Бочка: тон", "35-80 Гц"], ["Бочка: свип", "глубина удара"], ["Бочка: свип, время", ""], ["Бочка: длина", ""],
+    ["Хэт: тон", "3-12 кГц"], ["Закрытый: длина", ""], ["Открытый: длина", ""],
+    ["Клэп: тон", ""], ["Клэп: хвост", ""],
+    ["Малый: тон", "120-350 Гц"], ["Малый: сетка", "шум"], ["Малый: длина", ""] ] },
+  { id: "s1", name: "Синт 1", q: "3-я четверть, по умолчанию", c: C.s1, synth: true },
+  { id: "s2", name: "Синт 2", q: "4-я четверть", c: C.s2, synth: true },
+];
+
+const K303 = [
+  ["Cutoff", "срез фильтра"], ["Resonance", ""], ["Env", "глубина огибающей фильтра"],
+  ["Decay", "спад огибающей"], ["Accent", "сила акцента"], ["Wave", "пила / меандр"],
+  ["Glide", "время слайда"], ["Transpose", "±12, центр 0"] ];
+
+// Порядок движков Plaits; H/T/M по мануалу Plaits, примерно.
+const MODELS = [
+  ["VA + фильтр", "резонанс", "срез фильтра", "форма волны"],
+  ["Phase distortion", "частота модулятора", "глубина искажения", "асимметрия"],
+  ["DX7, банк 1", "выбор патча (32)", "уровни модуляторов", "растяжка огибающих"],
+  ["DX7, банк 2", "выбор патча (32)", "уровни модуляторов", "растяжка огибающих"],
+  ["DX7, банк 3", "выбор патча (32)", "уровни модуляторов", "растяжка огибающих"],
+  ["Wave terrain", "выбор поверхности", "радиус пути", "смещение пути"],
+  ["String machine", "аккорд", "хорус и фильтр", "форма волны"],
+  ["Chiptune", "аккорд", "арпеджио", "скважность"],
+  ["VA, две волны", "расстройка", "меандр, PW и синк", "пила, форма"],
+  ["Waveshaping", "форма шейпера", "фолдинг", "асимметрия"],
+  ["FM 2-op", "отношение частот", "индекс модуляции", "обратная связь"],
+  ["Granular formant", "отношение формант", "частота форманты", "ширина форманты"],
+  ["Additive", "число гармоник", "главная гармоника", "форма спектра"],
+  ["Wavetable", "банк", "строка", "столбец"],
+  ["Chords", "тип аккорда", "обращение", "форма волны"],
+  ["Speech", "тип синтеза речи", "голос, сдвиг формант", "фонема, слово"],
+  ["Swarm", "разброс высоты", "плотность", "длина зёрен"],
+  ["Filtered noise", "тип фильтра", "частота клока", "резонанс"],
+  ["Particle", "разброс частоты", "плотность", "фильтр, реверб"],
+  ["String", "неоднородность", "яркость возбуждения", "длина звона"],
+  ["Modal", "материал", "яркость удара", "длина звона"],
+  ["Bass drum", "атака, перегруз", "яркость", "длина"],
+  ["Snare drum", "тон и шум", "баланс мод", "длина"],
+  ["Hi-hat", "металл и шум", "срез ВЧ", "длина"],
+];
+
+const sel = { page: 2, type: { s1: 0, s2: 11 } };
+
+function vRange(t) {
+  return [Math.ceil(t * 128 / 25), Math.ceil((t + 1) * 128 / 25) - 1];
+}
+
+function typeName(t) { return t === 0 ? "303" : MODELS[t - 1][0]; }
+
+function synthKnobs(t) {
+  if (t === 0) return K303;
+  const m = MODELS[t - 1];
+  return [
+    ["Harmonics", m[1]], ["Timbre", m[2]], ["Morph", m[3]],
+    ["Decay", "хвост после отпускания"], ["LPG colour", "от фильтра к чистой громкости"],
+    ["Glide", "время слайда"], ["Transpose", "±12, центр 0"],
+    ["Timbre env", "огибающая ноты → timbre, центр 0"], ["Morph env", "огибающая ноты → morph, центр 0"],
+    ["Pitch env", "огибающая ноты → высота, центр 0"], ["Accent", "насколько обычная нота тише"] ];
+}
+
+function render() {
+  const p = PAGES[sel.page];
+  document.documentElement.style.setProperty("--c", p.c);
+
+  const tabs = document.getElementById("tabs");
+  tabs.innerHTML = "";
+  PAGES.forEach((pg, i) => {
+    const b = document.createElement("button");
+    b.className = "tab"; b.role = "tab"; b.style.setProperty("--c", pg.c);
+    b.setAttribute("aria-selected", i === sel.page);
+    b.innerHTML = `${pg.name}<span class="q">${pg.q}</span>`;
+    b.onclick = () => { sel.page = i; render(); };
+    tabs.appendChild(b);
+  });
+
+  let knobs = p.knobs;
+  if (p.synth) knobs = [["Тип синтеза", typeName(sel.type[p.id])], ...synthKnobs(sel.type[p.id])];
+
+  const grid = document.getElementById("grid");
+  grid.innerHTML = "";
+  for (let i = 0; i < 16; i++) {
+    const d = document.createElement("div");
+    d.className = "enc";
+    let inner = `<span class="n">${i + 1}</span><div class="knob"></div>`;
+    if (i === 0) {
+      d.classList.add("page", "on");
+      inner += `<div class="l">Страница</div><div class="zones">` +
+        PAGES.map((pg, j) => `<span style="background:${pg.c}" class="${j === sel.page ? "cur" : ""}">${j + 1}</span>`).join("") +
+        `</div>`;
+    } else if (knobs[i - 1]) {
+      d.classList.add("on");
+      inner += `<div class="l">${knobs[i - 1][0]}</div><div class="h">${knobs[i - 1][1]}</div>`;
+    } else {
+      d.classList.add("off");
+      inner += `<div class="l">не занят</div>`;
+    }
+    d.innerHTML = inner;
+    grid.appendChild(d);
+  }
+
+  const tb = document.getElementById("typebox");
+  tb.style.display = p.synth ? "" : "none";
+  if (!p.synth) return;
+
+  const cur = sel.type[p.id];
+  const models = document.getElementById("models");
+  models.innerHTML = "";
+  for (let t = 0; t <= 24; t++) {
+    const b = document.createElement("button");
+    b.className = "model" + (t === 0 ? " p303" : "");
+    b.setAttribute("aria-pressed", t === cur);
+    const r = vRange(t);
+    b.innerHTML = `${t}. ${typeName(t)}<span class="t">энкодер 2: ${r[0]}-${r[1]}</span>`;
+    b.onclick = () => { sel.type[p.id] = t; render(); };
+    models.appendChild(b);
+  }
+
+  const meter = document.getElementById("meter");
+  const r = vRange(cur);
+  meter.innerHTML = "";
+  for (let t = 1; t <= 24; t++) {
+    const tk = document.createElement("div");
+    tk.className = "tick"; tk.style.left = (vRange(t)[0] / 128 * 100) + "%";
+    meter.appendChild(tk);
+  }
+  const f = document.createElement("div");
+  f.className = "fill";
+  f.style.left = (r[0] / 128 * 100) + "%";
+  f.style.width = ((r[1] - r[0] + 1) / 128 * 100) + "%";
+  meter.appendChild(f);
+  document.getElementById("range").textContent = `${typeName(cur)}: значения ${r[0]}-${r[1]}`;
+
+  const info = document.getElementById("info");
+  if (cur === 0) {
+    info.innerHTML = "<b>303.</b> Классический акид-бас: пила или меандр через резонансный фильтр. Ручки как на старой странице баса, сдвинуты на один энкодер вправо.";
+  } else {
+    const m = MODELS[cur - 1];
+    let extra = "";
+    if (cur >= 3 && cur <= 5) extra = " Огибающие задаёт сам патч DX7.";
+    if (cur >= 20) extra = " Эта модель звенит сама: длину звука в основном задаёт Morph.";
+    info.innerHTML = `<b>${m[0]}</b>, модель Plaits ${cur - 1}. ` +
+      `Harmonics: ${m[1]}. Timbre: ${m[2]}. Morph: ${m[3]}.${extra}`;
+  }
+}
+
+render();
+</script>
+</body>
+</html>
