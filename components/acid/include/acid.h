@@ -7,5 +7,6 @@
 #include "acid_noise.h"
 #include "acid_drums.h"
 #include "acid_arr.h"
+#include "acid_midi.h"
 #include "acid_synth.h"
 #include "acid_pcm.h"
