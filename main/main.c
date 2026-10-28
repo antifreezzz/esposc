@@ -8,8 +8,9 @@
 #include "usb_host_task.h"
 
 #define SR 48000
-#define BLOCK 480 // 10 мс
-#define CHUNK 32  // MIDI применяется между кусками: джиттер ~0.7 мс
+#define BLOCK 96 // 2 мс: короткий блок - меньше задержка от ноты до звука
+#define BLOCK_US (BLOCK * 1000000 / SR)
+#define CHUNK 32  // MIDI применяется между кусками; рендер идёт рывками, так что реальный джиттер ~5 мс
 #define STATS_PERIOD_US (10 * 1000 * 1000)
 
 static const char *TAG = "main";
@@ -48,6 +49,9 @@ static void synth_task(void *arg)
             while (midi_in_receive(&stale)) {
                 // Пока свистка не было, накопились старые события: выбрасываем.
             }
+            if (live) {
+                acid_synth_set_live(&s_synth, 1); // вместе с событиями ушли и note off: чистим стек нот
+            }
         }
         if (midi_in_connected() != live) {
             live = midi_in_connected();
@@ -67,12 +71,12 @@ static void synth_task(void *arg)
 
         if (t0 >= next_stats) {
             uint32_t u = audio_out_underruns();
-            if (u != last_underruns || worst_us > 7000) {
-                ESP_LOGW(TAG, "underruns %lu (+%lu), xfer errors %lu, worst render %lld us of 10000",
+            if (u != last_underruns || worst_us > BLOCK_US * 7 / 10) {
+                ESP_LOGW(TAG, "underruns %lu (+%lu), xfer errors %lu, worst render %lld us of %d",
                          (unsigned long)u, (unsigned long)(u - last_underruns),
-                         (unsigned long)audio_out_transfer_errors(), worst_us);
+                         (unsigned long)audio_out_transfer_errors(), worst_us, BLOCK_US);
             } else {
-                ESP_LOGI(TAG, "ok, worst render %lld us of 10000", worst_us);
+                ESP_LOGI(TAG, "ok, worst render %lld us of %d", worst_us, BLOCK_US);
             }
             last_underruns = u;
             worst_us = 0;
