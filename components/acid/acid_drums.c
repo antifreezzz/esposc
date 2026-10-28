@@ -12,6 +12,11 @@
 #define CLAP_TAIL_S 0.1f
 #define CLAP_BURSTS 3
 #define SILENT 1e-5f
+#define SNARE_TUNE_HZ 180.0f
+#define SNARE_SNAPPY 0.6f
+#define SNARE_DECAY_S 0.08f
+#define SNARE_NOISE_HZ 2000.0f
+#define SNARE_PITCH_S 0.02f
 
 static float coef(float tau_s, float sr)
 {
@@ -22,12 +27,22 @@ void acid_hat_init(acid_hat_t *h, float sr)
 {
     h->rng = 0x9e3779b9u;
     h->svf = (acid_svf_t){0};
-    h->g = tanf(PI_F * HAT_HZ / sr);
     h->k = 1.4f;
     h->env = 0.0f;
-    h->coef_closed = coef(HAT_CLOSED_S, sr);
-    h->coef_open = coef(HAT_OPEN_S, sr);
+    h->sr = sr;
+    h->coef = h->coef_closed = 0.0f;
+    h->coef_open = 1.0f;
+    acid_hat_set(h, HAT_HZ, HAT_CLOSED_S, HAT_OPEN_S);
     h->coef = h->coef_closed;
+}
+
+void acid_hat_set(acid_hat_t *h, float tone_hz, float closed_s, float open_s)
+{
+    int was_open = h->coef == h->coef_open;
+    h->g = tanf(PI_F * tone_hz / h->sr);
+    h->coef_closed = coef(closed_s, h->sr);
+    h->coef_open = coef(open_s, h->sr);
+    h->coef = was_open ? h->coef_open : h->coef_closed;
 }
 
 void acid_hat_trigger(acid_hat_t *h, int open)
@@ -53,13 +68,19 @@ void acid_clap_init(acid_clap_t *c, float sr)
 {
     c->rng = 0x85ebca6bu;
     c->svf = (acid_svf_t){0};
-    c->g = tanf(PI_F * CLAP_HZ / sr);
     c->k = 1.0f / CLAP_Q;
     c->env = 0.0f;
     c->burst_coef = coef(CLAP_BURST_S, sr);
-    c->tail_coef = coef(CLAP_TAIL_S, sr);
     c->t = -1;
     c->burst_step = (int)(0.01f * sr);
+    c->sr = sr;
+    acid_clap_set(c, CLAP_HZ, CLAP_TAIL_S);
+}
+
+void acid_clap_set(acid_clap_t *c, float tone_hz, float tail_s)
+{
+    c->g = tanf(PI_F * tone_hz / c->sr);
+    c->tail_coef = coef(tail_s, c->sr);
 }
 
 void acid_clap_trigger(acid_clap_t *c)
@@ -86,5 +107,54 @@ float acid_clap_next(acid_clap_t *c)
         c->env = 0.0f;
         c->t = -1;
     }
+    return y;
+}
+
+void acid_snare_init(acid_snare_t *s, float sr)
+{
+    s->rng = 0x27d4eb2du;
+    s->svf = (acid_svf_t){0};
+    s->g = tanf(PI_F * SNARE_NOISE_HZ / sr);
+    s->k = 1.4f;
+    s->phase = 0.0f;
+    s->pitch_env = 0.0f;
+    s->pitch_coef = coef(SNARE_PITCH_S, sr);
+    s->body_env = s->noise_env = 0.0f;
+    s->sr = sr;
+    acid_snare_set(s, SNARE_TUNE_HZ, SNARE_SNAPPY, SNARE_DECAY_S);
+}
+
+void acid_snare_set(acid_snare_t *s, float tune_hz, float snappy, float decay_s)
+{
+    s->tune_hz = tune_hz;
+    s->snappy = snappy;
+    s->noise_coef = coef(decay_s, s->sr);
+    s->body_coef = coef(decay_s * 0.5f, s->sr); // корпус короче пружин
+}
+
+void acid_snare_trigger(acid_snare_t *s)
+{
+    s->phase = 0.0f;
+    s->pitch_env = 1.0f;
+    s->body_env = s->noise_env = 1.0f;
+}
+
+float acid_snare_next(acid_snare_t *s)
+{
+    if (s->body_env < SILENT && s->noise_env < SILENT) {
+        s->body_env = s->noise_env = 0.0f;
+        return 0.0f;
+    }
+    float body = sinf(2.0f * PI_F * s->phase) * s->body_env;
+    s->phase += s->tune_hz * (1.0f + 0.5f * s->pitch_env) / s->sr;
+    if (s->phase >= 1.0f) {
+        s->phase -= 1.0f;
+    }
+    float bp, hp;
+    acid_svf_bp_hp(&s->svf, acid_noise(&s->rng), s->g, s->k, &bp, &hp);
+    float y = body * (1.0f - 0.7f * s->snappy) + hp * s->noise_env * s->snappy;
+    s->pitch_env *= s->pitch_coef;
+    s->body_env *= s->body_coef;
+    s->noise_env *= s->noise_coef;
     return y;
 }
