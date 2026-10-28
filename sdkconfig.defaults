@@ -7,3 +7,5 @@ CONFIG_COMPILER_OPTIMIZATION_PERF=y
 # Меньше звука в полёте: 2 трансфера по 2 мс (задержка ноты)
 CONFIG_UAC_NUM_ISOC_URBS=2
 CONFIG_UAC_NUM_PACKETS_PER_URB=2
+# Два синта Plaits: запас по процессору
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
