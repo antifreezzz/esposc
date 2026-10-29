@@ -548,6 +548,106 @@ TEST(test_delay_no_stale_tail)
     CHECK(zero);
 }
 
+// --- Статтер ---
+
+static acid_stutter_t st;
+
+#define ST_ZONE(z) (2 + (z) * 127 / 4) // ручка в зоне z: 0 1/4, 1 1/8, 2 1/16, 3 1/32
+
+static float yb[48000];
+
+TEST(test_stutter_off_bitexact)
+{
+    acid_stutter_init(&st, SR);
+    acid_stutter_set(&st, 0);
+    CHECK(!acid_stutter_active(&st));
+    uint32_t rnd = 17;
+    int exact = 1;
+    for (int i = 0; i < 4800; i++) {
+        float x = acid_noise(&rnd);
+        exact &= acid_stutter_next(&st, x) == x;
+    }
+    CHECK(exact);
+}
+
+// Выход периодичен с периодом n на [from, to).
+static int periodic(int n, int from, int to)
+{
+    int ok = 1;
+    for (int i = from; i < to; i++) {
+        ok &= yb[i] == yb[i - n];
+    }
+    return ok;
+}
+
+TEST(test_stutter_repeats_sixteenth)
+{
+    acid_stutter_init(&st, SR);
+    acid_stutter_set(&st, ST_ZONE(2)); // 1/16 при 120 BPM = 6000
+    CHECK(acid_stutter_active(&st));
+    for (int i = 0; i < 48000; i++) {
+        yb[i] = acid_stutter_next(&st, (float)i / 100000.0f); // нарастающая пила: без петли не повторяется
+    }
+    CHECK(periodic(6000, 12000, 48000));
+    CHECK(yb[1000] == 1000.0f / 100000.0f); // во время записи выход - вход
+}
+
+TEST(test_stutter_shorter_while_on)
+{
+    acid_stutter_init(&st, SR);
+    acid_stutter_set(&st, ST_ZONE(2));
+    for (int i = 0; i < 10000; i++) {
+        acid_stutter_next(&st, (float)i / 100000.0f);
+    }
+    acid_stutter_set(&st, ST_ZONE(3)); // 1/32 = 3000: крутится начало куска
+    for (int i = 0; i < 48000; i++) {
+        yb[i] = acid_stutter_next(&st, (float)(i + 10000) / 100000.0f);
+    }
+    CHECK(periodic(3000, 3000, 48000));
+    CHECK(st.len == 3000);
+}
+
+TEST(test_stutter_click_free)
+{
+    // 210 Гц: в петлю 1/16 (6000) не целое число периодов, шов без кроссфейда щёлкнет.
+    acid_stutter_init(&st, SR);
+    float prev = 0.0f, own = 0.0f, j = 0.0f;
+    int t = 0;
+    for (; t < 4800; t++) {
+        float y = acid_stutter_next(&st, 0.5f * sinf(2.0f * PI_F * 210.0f * (float)t / SR));
+        own = fabsf(y - prev) > own ? fabsf(y - prev) : own;
+        prev = y;
+    }
+    acid_stutter_set(&st, ST_ZONE(2));
+    for (int i = 0; i < MS(200); i++, t++) {
+        float y = acid_stutter_next(&st, 0.5f * sinf(2.0f * PI_F * 210.0f * (float)t / SR));
+        j = fabsf(y - prev) > j ? fabsf(y - prev) : j;
+        prev = y;
+    }
+    acid_stutter_set(&st, 0);
+    for (int i = 0; i < MS(50); i++, t++) {
+        float y = acid_stutter_next(&st, 0.5f * sinf(2.0f * PI_F * 210.0f * (float)t / SR));
+        j = fabsf(y - prev) > j ? fabsf(y - prev) : j;
+        prev = y;
+    }
+    CHECK(j < own + 0.02f);
+    CHECK(!acid_stutter_active(&st));
+}
+
+TEST(test_stutter_long_fits)
+{
+    acid_stutter_init(&st, SR);
+    acid_stutter_set_spb(&st, 48000.0f); // 60 BPM: 1/4 = 48000
+    acid_stutter_set(&st, ST_ZONE(0));
+    CHECK(st.len + ACID_STUTTER_SEAM <= ACID_STUTTER_LEN);
+    CHECK(st.len >= ACID_STUTTER_LEN / 4);
+    int fin = 1;
+    for (int i = 0; i < 96000; i++) {
+        fin &= isfinite(acid_stutter_next(&st, 0.5f));
+    }
+    CHECK(fin);
+}
+
 int main(void)
 {
     RUN(test_pump_neutral);
@@ -579,5 +679,10 @@ int main(void)
     RUN(test_delay_time_change_smooth);
     RUN(test_delay_long_time_fits);
     RUN(test_delay_no_stale_tail);
+    RUN(test_stutter_off_bitexact);
+    RUN(test_stutter_repeats_sixteenth);
+    RUN(test_stutter_shorter_while_on);
+    RUN(test_stutter_click_free);
+    RUN(test_stutter_long_fits);
     TEST_MAIN_END();
 }

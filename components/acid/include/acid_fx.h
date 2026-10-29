@@ -72,3 +72,25 @@ void acid_delay_set_spb(acid_delay_t *d, float spb);
 float acid_delay_next(acid_delay_t *d, float in); // in - сумма посылов, возврат - повторы
 int acid_delay_active(const acid_delay_t *d);     // 0: в буфере одни нули, next можно не звать
 float acid_delay_time_samples(const acid_delay_t *d); // целевая задержка
+
+// Статтер: записать кусок доли такта и крутить по кругу, пока ручка не в 0.
+#define ACID_STUTTER_LEN 24000 // 0.5 с
+#define ACID_STUTTER_SEAM 96   // 2 мс кроссфейда на шве петли
+
+typedef struct {
+    int16_t buf[ACID_STUTTER_LEN];
+    float spb;
+    int knob;
+    int on;          // запись или петля (ручка не в 0)
+    int looping;     // кусок записан, крутим
+    int len;         // длина петли
+    int rec;         // сколько записано (до len + шов)
+    int pos;         // позиция в петле
+    float wet, xstep; // доля петли в выходе и её шаг (2 мс)
+} acid_stutter_t;
+
+void acid_stutter_init(acid_stutter_t *st, float sr);
+void acid_stutter_set(acid_stutter_t *st, int knob); // 0 выкл, 1..127 - 4 зоны: 1/4, 1/8, 1/16, 1/32
+void acid_stutter_set_spb(acid_stutter_t *st, float spb);
+float acid_stutter_next(acid_stutter_t *st, float in);
+int acid_stutter_active(const acid_stutter_t *st);

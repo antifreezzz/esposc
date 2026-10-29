@@ -295,3 +295,90 @@ float acid_delay_time_samples(const acid_delay_t *d)
 {
     return d->d_target;
 }
+
+#define STUTTER_SCALE 16384.0f
+
+// Доли четверти по зонам: 1/4, 1/8, 1/16, 1/32.
+static const float STUTTER_DIVS[4] = {1.0f, 0.5f, 0.25f, 0.125f};
+
+static int stutter_len(const acid_stutter_t *st)
+{
+    float t = st->spb * STUTTER_DIVS[(st->knob - 1) * 4 / 127];
+    while (t > (float)(ACID_STUTTER_LEN - ACID_STUTTER_SEAM)) {
+        t *= 0.5f;
+    }
+    return (int)t;
+}
+
+void acid_stutter_init(acid_stutter_t *st, float sr)
+{
+    st->spb = sr * 0.5f;
+    st->knob = 0;
+    st->on = st->looping = 0;
+    st->len = st->rec = st->pos = 0;
+    st->wet = 0.0f;
+    st->xstep = 1.0f / (float)ACID_STUTTER_SEAM;
+}
+
+void acid_stutter_set(acid_stutter_t *st, int knob)
+{
+    st->knob = knob;
+    if (!knob) {
+        st->on = 0; // петля доигрывает, пока wet уходит в 0
+        return;
+    }
+    int len = stutter_len(st);
+    if (!st->on || len + ACID_STUTTER_SEAM > st->rec) {
+        st->rec = st->pos = 0; // включили или кусок мал: пишем заново
+        st->looping = 0;
+    } else if (st->looping) {
+        st->pos %= len; // короче: крутится начало куска
+    }
+    st->len = len;
+    st->on = 1;
+}
+
+void acid_stutter_set_spb(acid_stutter_t *st, float spb)
+{
+    st->spb = spb; // длина петли меняется со следующим включением
+}
+
+float acid_stutter_next(acid_stutter_t *st, float in)
+{
+    float loop = in;
+    if (st->rec < st->len + ACID_STUTTER_SEAM) {
+        // Пишем кусок и ещё шов: продолжение звука нужно для кроссфейда на стыке петли.
+        float x = in * STUTTER_SCALE;
+        x = x > 32767.0f ? 32767.0f : (x < -32767.0f ? -32767.0f : x);
+        st->buf[st->rec++] = (int16_t)x;
+        st->looping |= st->rec > st->len;
+    }
+    if (st->looping) {
+        int k = st->pos;
+        float y = (float)st->buf[k];
+        if (k < ACID_STUTTER_SEAM) {
+            // Начало прохода: от продолжения записи (стык непрерывен) к началу куска.
+            float a = (float)k * (1.0f / ACID_STUTTER_SEAM);
+            y = a * y + (1.0f - a) * (float)st->buf[st->len + k];
+        }
+        loop = y * (1.0f / STUTTER_SCALE);
+        st->pos = k + 1 < st->len ? k + 1 : 0;
+    }
+    if (st->on) {
+        st->wet = st->wet + st->xstep < 1.0f ? st->wet + st->xstep : 1.0f;
+    } else {
+        st->wet -= st->xstep;
+        if (st->wet <= 0.0f) {
+            st->wet = 0.0f;
+            st->looping = 0;
+            st->rec = st->len = 0;
+            return in;
+        }
+    }
+    return st->wet == 1.0f ? loop : in + st->wet * (loop - in);
+}
+
+int acid_stutter_active(const acid_stutter_t *st)
+{
+    return st->on || st->wet > 0.0f;
+}
