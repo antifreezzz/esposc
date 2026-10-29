@@ -31,6 +31,7 @@ void acid_tonal_init(acid_tonal_t *t)
     memset(t->raw, 0, sizeof t->raw);
     t->bar_len = 0;
     t->ticks = 0;
+    t->armed = 0;
     t->step = 0;
     t->dir = 1;
     t->rnd = 0x9E3779B9u;
@@ -77,6 +78,7 @@ void acid_tonal_set(acid_tonal_t *t, int enc, int v)
 void acid_tonal_start(acid_tonal_t *t)
 {
     t->ticks = 0;
+    t->armed = 1;
     t->step = 0;
     t->dir = 1;
     t->bar_len = t->len * ACID_TONAL_BAR;
@@ -115,6 +117,10 @@ int acid_tonal_tick(acid_tonal_t *t)
 {
     if (t->len == 0) {
         t->bar_len = 0;
+        return 0;
+    }
+    if (t->armed) {
+        t->armed = 0;
         return 0;
     }
     if (++t->ticks < (uint32_t)t->bar_len) {
@@ -174,5 +180,5 @@ int acid_tonal_moves(const acid_tonal_t *t, int slot)
 
 uint32_t acid_tonal_ticks_left(const acid_tonal_t *t)
 {
-    return (uint32_t)t->bar_len - t->ticks;
+    return (uint32_t)t->bar_len - t->ticks + (uint32_t)t->armed;
 }

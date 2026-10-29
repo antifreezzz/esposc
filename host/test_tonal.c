@@ -79,8 +79,8 @@ TEST(test_tonal_bar_boundary)
     acid_tonal_init(&t);
     enc(2, 1);
     acid_tonal_start(&t);
-    CHECK(ticks(95) == 0);
-    CHECK(acid_tonal_tick(&t) == 1);
+    CHECK(ticks(96) == 0); // первый тик после Start - сильная доля такта 1
+    CHECK(acid_tonal_tick(&t) == 1); // 97-й - сильная доля такта 2
     CHECK(acid_tonal_step(&t) == 1);
     enc(2, 2);
     CHECK(ticks(96) == 1); // текущий шаг доигрывает старую длину
@@ -147,7 +147,7 @@ TEST(test_tonal_start_resets)
     CHECK(acid_tonal_step(&t) == 2);
     acid_tonal_start(&t);
     CHECK(acid_tonal_step(&t) == 0);
-    CHECK(acid_tonal_ticks_left(&t) == 192);
+    CHECK(acid_tonal_ticks_left(&t) == 193);
 }
 
 TEST(test_tonal_len_change_next_boundary)
@@ -157,8 +157,8 @@ TEST(test_tonal_len_change_next_boundary)
     acid_tonal_start(&t);
     ticks(100);
     enc(2, 1);
-    CHECK(ticks(283) == 0);
-    CHECK(acid_tonal_tick(&t) == 1); // 384-й
+    CHECK(ticks(284) == 0);
+    CHECK(acid_tonal_tick(&t) == 1); // 385-й
     CHECK(ticks(95) == 0);
     CHECK(acid_tonal_tick(&t) == 1);
 }
@@ -250,7 +250,7 @@ TEST(test_tonal_step_follows_cycle)
     step_val(2, 69);
     acid_tonal_start(&t);
     CHECK(acid_tonal_note(&t, 45) == 45);
-    ticks(96);
+    ticks(97);
     CHECK(acid_tonal_note(&t, 45) == 50);
 }
 

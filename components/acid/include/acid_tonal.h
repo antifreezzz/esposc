@@ -18,6 +18,7 @@ typedef struct {
     int8_t raw[ACID_TONAL_STEPS]; // шаги, значение на экране - 64
     int bar_len;   // длина шага в тиках, защёлкнута на последней границе
     uint32_t ticks;
+    int armed;     // ждём первый тик после Start: это сильная доля такта 1, он не считается
     int step, dir;
     uint32_t rnd;
 } acid_tonal_t;
