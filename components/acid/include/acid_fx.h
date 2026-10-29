@@ -52,7 +52,7 @@ float acid_crush_next(acid_crush_t *c, float x);
 int acid_crush_active(const acid_crush_t *c);
 
 // Дилэй по темпу: буфер 16 бит во внутренней RAM, ФНЧ в петле, время плывёт как у ленты.
-#define ACID_DELAY_LEN 36000 // 0.75 с при 48 кГц
+#define ACID_DELAY_LEN 36864 // 0.77 с: 3/8 на 120 BPM (36000) влезает
 
 typedef struct {
     float sr;
@@ -75,7 +75,7 @@ int acid_delay_active(const acid_delay_t *d);     // 0: в буфере одни
 float acid_delay_time_samples(const acid_delay_t *d); // целевая задержка
 
 // Статтер: записать кусок доли такта и крутить по кругу, пока ручка не в 0.
-#define ACID_STUTTER_LEN 24000 // 0.5 с
+#define ACID_STUTTER_LEN 24576 // 0.51 с: 1/4 на 120 BPM (24000) и шов влезают
 #define ACID_STUTTER_SEAM 96   // 2 мс кроссфейда на шве петли
 
 typedef struct {
@@ -87,6 +87,9 @@ typedef struct {
     int len;         // длина петли
     int rec;         // сколько записано (до len + шов)
     int pos;         // позиция в петле
+    int restart;     // ждём ухода петли в 0, потом пишем заново длиной new_len
+    int new_len;
+    int opos, xf;    // старая головка при укорочении и сколько сэмплов ещё сводить с ней
     float wet, xstep; // доля петли в выходе и её шаг (2 мс)
 } acid_stutter_t;
 

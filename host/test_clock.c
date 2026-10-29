@@ -72,6 +72,28 @@ TEST(test_clock_keeps_tempo_without_ticks)
     CHECK_NEAR(acid_clock_spb(&c), 28800.0f, 1.0f);
 }
 
+// Шаг темпа BSP - 1 BPM: меньше гистерезиса, но должен дойти до наружу.
+TEST(test_clock_tracks_one_bpm_step)
+{
+    acid_clock_t c;
+    acid_clock_init(&c, SR);
+    uint32_t t = 0, r = 1;
+    ticks(&c, &t, 96, 1000, 0, &r); // 120
+    ticks(&c, &t, 200, 992, 0, &r); // ~121 BPM: 992 сэмпла на тик
+    CHECK_NEAR(acid_clock_spb(&c), 992.0f * 24.0f, 992.0f * 24.0f * 0.001f);
+    ticks(&c, &t, 200, 1000, 0, &r); // назад к 120
+    CHECK_NEAR(acid_clock_spb(&c), 24000.0f, 24.0f);
+}
+
+TEST(test_clock_cold_start_121)
+{
+    acid_clock_t c;
+    acid_clock_init(&c, SR);
+    uint32_t t = 0, r = 1;
+    ticks(&c, &t, 200, 992, 0, &r);
+    CHECK_NEAR(acid_clock_spb(&c), 992.0f * 24.0f, 992.0f * 24.0f * 0.001f);
+}
+
 int main(void)
 {
     RUN(test_clock_default_120);
@@ -79,5 +101,7 @@ int main(void)
     RUN(test_clock_jitter_stable);
     RUN(test_clock_clamps_range);
     RUN(test_clock_keeps_tempo_without_ticks);
+    RUN(test_clock_tracks_one_bpm_step);
+    RUN(test_clock_cold_start_121);
     TEST_MAIN_END();
 }

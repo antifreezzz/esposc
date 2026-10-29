@@ -4,7 +4,8 @@
 
 #define BPM_MIN 60.0f
 #define BPM_MAX 200.0f
-#define HYST 0.015f // темп меняется, только если ушёл больше чем на 1.5%
+#define HYST 0.015f  // скачок темпа больше 1.5% - сразу
+#define DRIFT 0.002f // смещение больше 0.2% одним знаком целое окно - тоже
 #define GAP 4u      // интервал больше 4 средних - разрыв (клок пропадал)
 
 void acid_clock_init(acid_clock_t *c, float sr)
@@ -13,6 +14,7 @@ void acid_clock_init(acid_clock_t *c, float sr)
     c->have_last = 0;
     c->n = c->pos = 0;
     c->gap = 0;
+    c->drift = 0;
     c->spb = sr * 60.0f / 120.0f;
 }
 
@@ -56,8 +58,19 @@ void acid_clock_tick(acid_clock_t *c, uint32_t now)
     float spb = (float)sum / (float)c->n * ACID_CLOCK_PPQN;
     float lo = c->sr * 60.0f / BPM_MAX, hi = c->sr * 60.0f / BPM_MIN;
     spb = spb < lo ? lo : (spb > hi ? hi : spb);
-    if (fabsf(spb - c->spb) > HYST * c->spb) {
+    float e = spb - c->spb;
+    if (fabsf(e) > HYST * c->spb) {
         c->spb = spb;
+        c->drift = 0;
+    } else if (fabsf(e) > DRIFT * c->spb) {
+        // Знак смещения в знаке счётчика: смена стороны начинает счёт заново.
+        c->drift = e > 0.0f ? (c->drift > 0 ? c->drift + 1 : 1) : (c->drift < 0 ? c->drift - 1 : -1);
+        if (c->drift >= ACID_CLOCK_WIN || c->drift <= -ACID_CLOCK_WIN) {
+            c->spb = spb;
+            c->drift = 0;
+        }
+    } else {
+        c->drift = 0;
     }
 }
 

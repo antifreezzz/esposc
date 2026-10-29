@@ -169,8 +169,10 @@ float acid_djf_next(acid_djf_t *f, float in)
     if (f->g != f->g_target || f->k != f->k_target) {
         // Срез едет к цели: коэффициенты заново (деление дорогое, на месте не считаем).
         float dg = f->g_target - f->g, dk = f->k_target - f->k;
-        f->g = fabsf(dg) < 1e-6f * f->g_target ? f->g_target : f->g + dg * f->smooth;
-        f->k = fabsf(dk) < 1e-6f ? f->k_target : f->k + dk * f->smooth;
+        // Шаг меньше точности float - дальше не сдвинется: ставим цель ровно.
+        float g = f->g + dg * f->smooth, k = f->k + dk * f->smooth;
+        f->g = g == f->g || fabsf(dg) < 1e-4f * f->g_target ? f->g_target : g;
+        f->k = k == f->k || fabsf(dk) < 1e-4f * f->k_target ? f->k_target : k;
         djf_coefs(f);
     }
 
@@ -282,6 +284,7 @@ float acid_delay_next(acid_delay_t *d, float in)
     float pos = (float)d->w - d->d;
     pos += pos < 0.0f ? (float)ACID_DELAY_LEN : 0.0f;
     int i0 = (int)pos;
+    i0 = i0 < ACID_DELAY_LEN ? i0 : i0 - ACID_DELAY_LEN; // pos чуть меньше 0 округляется ровно в LEN
     float f = pos - (float)i0;
     int i1 = i0 + 1 < ACID_DELAY_LEN ? i0 + 1 : 0;
     float r = ((float)d->buf[i0] + f * (float)(d->buf[i1] - d->buf[i0])) * (1.0f / DELAY_SCALE);
@@ -329,6 +332,7 @@ void acid_stutter_init(acid_stutter_t *st, float sr)
     st->knob = 0;
     st->on = st->looping = 0;
     st->len = st->rec = st->pos = 0;
+    st->restart = st->new_len = st->opos = st->xf = 0;
     st->wet = 0.0f;
     st->xstep = 1.0f / (float)ACID_STUTTER_SEAM;
 }
@@ -338,16 +342,32 @@ void acid_stutter_set(acid_stutter_t *st, int knob)
     st->knob = knob;
     if (!knob) {
         st->on = 0; // петля доигрывает, пока wet уходит в 0
+        st->restart = 0;
         return;
     }
     int len = stutter_len(st);
-    if (!st->on || len + ACID_STUTTER_SEAM > st->rec) {
-        st->rec = st->pos = 0; // включили или кусок мал: пишем заново
-        st->looping = 0;
-    } else if (st->looping) {
-        st->pos %= len; // короче: крутится начало куска
+    if (!st->looping) {
+        // Включили или ещё пишем: пишем заново, на выходе пока живой звук - щелчка нет.
+        st->rec = st->pos = 0;
+        st->len = len;
+        st->on = 1;
+        st->restart = 0;
+        return;
     }
-    st->len = len;
+    if (st->on && !st->restart && len == st->len) {
+        return;
+    }
+    if (st->on && !st->restart && len < st->len && len + ACID_STUTTER_SEAM <= st->rec) {
+        // Короче: крутится начало куска. Старая головка доигрывает 2 мс по записанному продолжению.
+        st->opos = st->pos;
+        st->xf = ACID_STUTTER_SEAM;
+        st->pos %= len;
+        st->len = len;
+        return;
+    }
+    // Длиннее или включили во время ухода: петля уходит в 0, затем запись заново.
+    st->restart = 1;
+    st->new_len = len;
     st->on = 1;
 }
 
@@ -374,17 +394,24 @@ float acid_stutter_next(acid_stutter_t *st, float in)
             float a = (float)k * (1.0f / ACID_STUTTER_SEAM);
             y = a * y + (1.0f - a) * (float)st->buf[st->len + k];
         }
+        if (st->xf > 0) {
+            float a = 1.0f - (float)st->xf * (1.0f / ACID_STUTTER_SEAM);
+            y = a * y + (1.0f - a) * (float)st->buf[st->opos++];
+            st->xf--;
+        }
         loop = y * (1.0f / STUTTER_SCALE);
         st->pos = k + 1 < st->len ? k + 1 : 0;
     }
-    if (st->on) {
+    if (st->on && !st->restart) {
         st->wet = st->wet + st->xstep < 1.0f ? st->wet + st->xstep : 1.0f;
     } else {
         st->wet -= st->xstep;
         if (st->wet <= 0.0f) {
             st->wet = 0.0f;
             st->looping = 0;
-            st->rec = st->len = 0;
+            st->rec = st->pos = st->xf = 0;
+            st->len = st->restart ? st->new_len : 0;
+            st->restart = 0;
             return in;
         }
     }

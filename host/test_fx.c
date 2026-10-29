@@ -603,7 +603,7 @@ TEST(test_stutter_shorter_while_on)
     for (int i = 0; i < 48000; i++) {
         yb[i] = acid_stutter_next(&st, (float)(i + 10000) / 100000.0f);
     }
-    CHECK(periodic(3000, 3000, 48000));
+    CHECK(periodic(3000, 6000, 48000)); // первые 2 мс после смены сводятся со старой головкой
     CHECK(st.len == 3000);
 }
 
@@ -648,6 +648,94 @@ TEST(test_stutter_long_fits)
     CHECK(fin);
 }
 
+// --- Правки по ревью этапа 7 ---
+
+// Медленно докрутили из 1/8 в 1/16, пока шла запись: статтер не должен замолчать.
+TEST(test_stutter_slow_dial_into_shorter_zone)
+{
+    acid_stutter_init(&st, SR);
+    acid_stutter_set(&st, ST_ZONE(1)); // 1/8 = 12000
+    for (int i = 0; i < 7000; i++) {
+        acid_stutter_next(&st, (float)i / 100000.0f);
+    }
+    acid_stutter_set(&st, ST_ZONE(2)); // 1/16 = 6000, записано уже больше
+    for (int i = 0; i < 40000; i++) {
+        yb[i] = acid_stutter_next(&st, (float)(i + 7000) / 100000.0f);
+    }
+    CHECK(periodic(6000, 20000, 40000));
+}
+
+// Синус через статтер, наибольший скачок соседних сэмплов; set - что сделать на шаге step.
+static float stutter_jump(const int *steps, const int *knobs, int nsteps, int total)
+{
+    acid_stutter_init(&st, SR);
+    float prev = 0.0f, j = 0.0f;
+    int s = 0;
+    for (int t = 0; t < total; t++) {
+        while (s < nsteps && steps[s] == t) {
+            acid_stutter_set(&st, knobs[s++]);
+        }
+        float y = acid_stutter_next(&st, 0.5f * sinf(2.0f * PI_F * 233.7f * (float)t / SR));
+        j = t > 0 && fabsf(y - prev) > j ? fabsf(y - prev) : j;
+        prev = y;
+    }
+    return j;
+}
+
+#define OWN_233 (0.5f * 2.0f * PI_F * 233.7f / SR) // наибольший шаг самого синуса
+
+TEST(test_stutter_length_change_click_free)
+{
+    const int steps[] = {1000, MS(300), MS(500), MS(900)};
+    const int knobs[] = {ST_ZONE(2), ST_ZONE(3), ST_ZONE(1), ST_ZONE(2)};
+    CHECK(stutter_jump(steps, knobs, 4, MS(1300)) < OWN_233 + 0.02f);
+}
+
+TEST(test_stutter_reengage_during_fade)
+{
+    const int steps[] = {1000, MS(200), MS(200) + 48, MS(500), MS(500)};
+    const int knobs[] = {ST_ZONE(2), 0, ST_ZONE(2), 0, ST_ZONE(3)};
+    CHECK(stutter_jump(steps, knobs, 5, MS(900)) < OWN_233 + 0.02f);
+}
+
+// На 120 BPM самые длинные доли влезают целиком.
+TEST(test_longest_zones_fit_at_120)
+{
+    delay_ready(4, 0, 127);
+    CHECK_NEAR(acid_delay_time_samples(&dl), 36000.0f, 0.5f);
+    acid_stutter_init(&st, SR);
+    acid_stutter_set(&st, ST_ZONE(0));
+    CHECK(st.len == 24000);
+}
+
+// Чтение чуть позади точки записи не выходит за буфер: из тишины - тишина.
+TEST(test_delay_read_wrap_in_bounds)
+{
+    delay_ready(1, 0, 127);
+    dl.d = dl.d_target = 1000.0005f;
+    int zero = 1;
+    for (int i = 0; i < 2 * ACID_DELAY_LEN; i++) {
+        zero &= acid_delay_next(&dl, 0.0f) == 0.0f;
+    }
+    CHECK(zero);
+}
+
+// Поворот ручки в том же режиме: срез доезжает до цели ровно, коэффициенты снова в кэше.
+TEST(test_djf_settles_after_knob_move)
+{
+    acid_djf_t f;
+    djf_at(&f, 10, 0);
+    for (int i = 0; i < 4800; i++) {
+        acid_djf_next(&f, 0.0f);
+    }
+    acid_djf_set(&f, 61, 90);
+    for (int i = 0; i < 48000; i++) {
+        acid_djf_next(&f, 0.0f);
+    }
+    CHECK(f.g == f.g_target);
+    CHECK(f.k == f.k_target);
+}
+
 int main(void)
 {
     RUN(test_pump_neutral);
@@ -684,5 +772,11 @@ int main(void)
     RUN(test_stutter_shorter_while_on);
     RUN(test_stutter_click_free);
     RUN(test_stutter_long_fits);
+    RUN(test_stutter_slow_dial_into_shorter_zone);
+    RUN(test_stutter_length_change_click_free);
+    RUN(test_stutter_reengage_during_fade);
+    RUN(test_longest_zones_fit_at_120);
+    RUN(test_delay_read_wrap_in_bounds);
+    RUN(test_djf_settles_after_knob_move);
     TEST_MAIN_END();
 }
