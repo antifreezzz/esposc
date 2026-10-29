@@ -29,8 +29,10 @@
 #define MERGE_S 0.05f      // повтор той же ноты в этом окне от нажатия склеивается с ней
 #define DRUM_VEL_FLOOR 0.3f // громкость самого слабого удара пэда
 #define SNARE_GAIN 0.8f
-#define PAGES 5
+#define PAGES 6
 #define PAGE_FX 4
+#define PAGE_TONAL 5
+#define EARLY_NOTE 480 // нота моложе 10 мс на границе шага - на новый шаг сразу (джиттер MIDI)
 #define PAGE_SYNTH1 2
 #define MIX_CHUNK 64 // кусок буфера слота 1 в общем рендере
 #define FADE_N 192     // 4 мс ухода и столько же прихода при смене типа синтеза
@@ -118,6 +120,7 @@ void acid_synth_init(acid_synth_t *s, float sr)
     acid_pump_init(&s->pump, sr);
     acid_djf_init(&s->djf, sr);
     acid_clock_init(&s->clock, sr);
+    acid_tonal_init(&s->tonal);
     s->clock_now = 0;
     acid_crush_init(&s->crush);
     acid_delay_init(&s->delay, sr);
@@ -297,7 +300,16 @@ static void held_remove(acid_slot_t *v, int note)
     v->nheld = j;
 }
 
-static void note_release(acid_slot_t *v, int note);
+static void note_release(acid_synth_t *s, acid_slot_t *v, int note);
+
+// Нота BSP со сдвигом слоя тональности и транспозицией синта.
+static int slot_note(const acid_synth_t *s, const acid_slot_t *v, int note)
+{
+    if (acid_tonal_moves(&s->tonal, (int)(v - s->slot))) {
+        note = acid_tonal_note(&s->tonal, note);
+    }
+    return note + v->transpose;
+}
 
 static void note_on(acid_synth_t *s, acid_slot_t *v, int note, int vel)
 {
@@ -307,7 +319,7 @@ static void note_on(acid_synth_t *s, acid_slot_t *v, int note, int vel)
         return;
     }
     if (v->pend_note >= 0) {
-        note_release(v, v->pend_note); // короткая нота закончилась, новая не слайдит из неё
+        note_release(s, v, v->pend_note); // короткая нота закончилась, новая не слайдит из неё
         v->pend_note = -1;
     }
     held_remove(v, note);
@@ -319,7 +331,7 @@ static void note_on(acid_synth_t *s, acid_slot_t *v, int note, int vel)
     }
     v->held_at[v->nheld] = v->now;
     v->held[v->nheld++] = (int8_t)note;
-    voice_note(s, v, note + v->transpose, vel > ACCENT_VEL, slide);
+    voice_note(s, v, slot_note(s, v, note), vel > ACCENT_VEL, slide);
     v->ctrl_left = 0; // новая нота: пересчитать сразу
 }
 
@@ -333,16 +345,16 @@ static void note_off(acid_synth_t *s, acid_slot_t *v, int note)
             return;
         }
     }
-    note_release(v, note);
+    note_release(s, v, note);
 }
 
-static void note_release(acid_slot_t *v, int note)
+static void note_release(acid_synth_t *s, acid_slot_t *v, int note)
 {
     int top = v->nheld > 0 && v->held[v->nheld - 1] == note;
     held_remove(v, note);
     if (top && v->nheld > 0) {
         // Отпустили верхнюю при зажатой нижней: глайд обратно, как в 303.
-        v->target_log2 = log2f(acid_midi_to_hz(v->held[v->nheld - 1] + v->transpose));
+        v->target_log2 = log2f(acid_midi_to_hz(slot_note(s, v, v->held[v->nheld - 1])));
         v->gliding = 1;
     }
 }
@@ -515,7 +527,7 @@ static void type_switch(acid_synth_t *s, acid_slot_t *v)
     s->save = 1;
     type_defaults(s, v);
     if (v->nheld > 0) {
-        voice_note(s, v, v->held[v->nheld - 1] + v->transpose, v->accented, 0);
+        voice_note(s, v, slot_note(s, v, v->held[v->nheld - 1]), v->accented, 0);
         v->ctrl_left = 0;
     }
     v->ppos = ACID_PLAITS_BLOCK;
@@ -587,8 +599,34 @@ static void control_change(acid_synth_t *s, int num, int v)
         page_drums(s, slot, v);
     } else if (s->page == PAGE_FX) {
         page_fx(s, slot, v);
+    } else if (s->page == PAGE_TONAL) {
+        acid_tonal_set(&s->tonal, slot, v);
     } else {
         page_synth(s, &s->slot[s->page - PAGE_SYNTH1], slot, v);
+    }
+}
+
+// Граница шага слоя: звучащие ноты синтов по режиму энкодера 6, свежая нота - сразу на новый шаг.
+static void tonal_boundary(acid_synth_t *s)
+{
+    for (int k = 0; k < ACID_SLOTS; k++) {
+        acid_slot_t *v = &s->slot[k];
+        if (v->nheld == 0 || !acid_tonal_moves(&s->tonal, k)) {
+            continue;
+        }
+        int young = v->now - v->held_at[v->nheld - 1] < EARLY_NOTE;
+        int mode = young ? 2 : s->tonal.held_mode;
+        if (mode == 0) {
+            continue;
+        }
+        v->target_log2 = log2f(acid_midi_to_hz(slot_note(s, v, v->held[v->nheld - 1])));
+        if (mode == 1) {
+            v->gliding = 1;
+        } else {
+            v->pitch_log2 = v->target_log2; // прыжок без перезапуска огибающих
+            v->gliding = 0;
+            v->ctrl_left = 0;
+        }
     }
 }
 
@@ -620,8 +658,14 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
             acid_delay_set_spb(&s->delay, acid_clock_spb(&s->clock));
             acid_stutter_set_spb(&s->stutter, acid_clock_spb(&s->clock));
         }
+        if (acid_tonal_tick(&s->tonal)) {
+            tonal_boundary(s);
+        }
         break;
     }
+    case ACID_MIDI_START:
+        acid_tonal_start(&s->tonal);
+        break;
     case ACID_MIDI_STOP:
         for (int k = 0; k < ACID_SLOTS; k++) {
             s->slot[k].nheld = 0; // защита от залипших нот
@@ -653,11 +697,11 @@ static float control_update(acid_synth_t *s, acid_slot_t *v)
 }
 
 // Время слота: отложенное отпускание короткой ноты.
-static void slot_tick(acid_slot_t *v)
+static void slot_tick(acid_synth_t *s, acid_slot_t *v)
 {
     v->now++;
     if (v->pend_note >= 0 && (int32_t)(v->now - v->pend_at) >= 0) {
-        note_release(v, v->pend_note);
+        note_release(s, v, v->pend_note);
         v->pend_note = -1;
     }
 }
@@ -737,7 +781,7 @@ void acid_synth_render_slot(acid_synth_t *s, int k, float *out, size_t n)
 {
     acid_slot_t *v = &s->slot[k];
     for (size_t i = 0; i < n; i++) {
-        slot_tick(v);
+        slot_tick(s, v);
         out[i] = slot_next(s, v, v->nheld > 0);
     }
 }
@@ -754,7 +798,7 @@ void acid_synth_render_with(acid_synth_t *s, float *out, size_t n, const float *
 {
     acid_slot_t *v = &s->slot[0];
     for (size_t i = 0; i < n; i++) {
-        slot_tick(v);
+        slot_tick(s, v);
         int step = s->live ? -1 : acid_seq_tick(&s->seq);
         if (step >= 0) {
             if (s->arr_on) {

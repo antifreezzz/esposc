@@ -13,6 +13,7 @@
 #include "acid_osc.h"
 #include "acid_plaits.h"
 #include "acid_seq.h"
+#include "acid_tonal.h"
 
 #define ACID_TYPES (1 + ACID_PLAITS_MODELS) // 0 - наш 303, 1..24 - модели Plaits
 #define ACID_KNOBS 16
@@ -109,7 +110,8 @@ typedef struct {
     acid_stutter_t stutter;
     float send1, send2, send_drums; // посылы в дилэй 0..1
     int dl_time, dl_fb, dl_tone;    // сырые ручки дилэя
-    int page;          // страница ручек: 0 микс, 1 ударка, 2 синт 1, 3 синт 2, 4 эффекты
+    acid_tonal_t tonal; // страница 5: круг транспозиций синтов по тактам
+    int page;          // страница ручек: 0 микс, 1 ударка, 2 синт 1, 3 синт 2, 4 эффекты, 5 тональность
 
     int live;          // live-режим: ноты от MIDI, свой секвенсор молчит
     int save;          // сменили тип: память ручек пора записать
