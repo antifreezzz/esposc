@@ -214,18 +214,16 @@ TEST(test_pump_release_is_recovery_time)
 
 TEST(test_djf_map)
 {
-    for (int k = 62; k <= 66; k++) {
-        CHECK(acid_djf_cutoff_hz(k) == 0.0f);
-    }
-    CHECK_NEAR(acid_djf_cutoff_hz(61), 18000.0f, 1500.0f);
+    CHECK(acid_djf_cutoff_hz(64) == 0.0f); // обход только ровно на 64
+    CHECK_NEAR(acid_djf_cutoff_hz(63), 18000.0f, 1500.0f);
     CHECK_NEAR(acid_djf_cutoff_hz(0), 150.0f, 15.0f);
-    CHECK_NEAR(acid_djf_cutoff_hz(67), 20.0f, 3.0f);
+    CHECK_NEAR(acid_djf_cutoff_hz(65), 20.0f, 3.0f);
     CHECK_NEAR(acid_djf_cutoff_hz(127), 3000.0f, 300.0f);
     int up = 1;
-    for (int k = 1; k <= 61; k++) {
+    for (int k = 1; k <= 63; k++) {
         up &= acid_djf_cutoff_hz(k) > acid_djf_cutoff_hz(k - 1);
     }
-    for (int k = 68; k <= 127; k++) {
+    for (int k = 66; k <= 127; k++) {
         up &= acid_djf_cutoff_hz(k) > acid_djf_cutoff_hz(k - 1);
     }
     CHECK(up);
@@ -233,12 +231,12 @@ TEST(test_djf_map)
 
 TEST(test_djf_q_ramp)
 {
-    CHECK_NEAR(acid_djf_q(61, 127), 0.7f, 0.01f);
-    CHECK_NEAR(acid_djf_q(49, 127), 8.0f, 0.1f);
+    CHECK_NEAR(acid_djf_q(63, 127), 0.7f, 0.01f);
+    CHECK_NEAR(acid_djf_q(51, 127), 8.0f, 0.1f);
     CHECK_NEAR(acid_djf_q(0, 127), 8.0f, 0.1f);
     CHECK_NEAR(acid_djf_q(0, 0), 0.7f, 0.01f);
-    CHECK_NEAR(acid_djf_q(67, 127), 0.7f, 0.01f);
-    CHECK_NEAR(acid_djf_q(79, 127), 8.0f, 0.1f);
+    CHECK_NEAR(acid_djf_q(65, 127), 0.7f, 0.01f);
+    CHECK_NEAR(acid_djf_q(77, 127), 8.0f, 0.1f);
 }
 
 TEST(test_djf_bypass_bitexact)
@@ -428,7 +426,7 @@ TEST(test_crush_bits_multiple_of_step)
 
 static acid_delay_t dl; // буфер большой: не на стеке
 
-#define DL_ZONE(z) ((z) * 128 / 5 + 1) // ручка времени в середине зоны z: 0 1/16 .. 4 3/8
+#define DL_ZONE(z) (z) // значение ручки времени = доля: 0 1/16 .. 4 3/8
 
 static void delay_ready(int zone, int fb_knob, int tone_knob)
 {
@@ -552,7 +550,7 @@ TEST(test_delay_no_stale_tail)
 
 static acid_stutter_t st;
 
-#define ST_ZONE(z) (2 + (z) * 127 / 4) // ручка в зоне z: 0 1/4, 1 1/8, 2 1/16, 3 1/32
+#define ST_ZONE(z) ((z) + 1) // значение ручки: 1 1/4, 2 1/8, 3 1/16, 4 1/32
 
 static float yb[48000];
 
@@ -698,6 +696,35 @@ TEST(test_stutter_reengage_during_fade)
     CHECK(stutter_jump(steps, knobs, 5, MS(900)) < OWN_233 + 0.02f);
 }
 
+// Значение ручки времени = доля, вне 0..4 - игнор; после включения 3/16.
+TEST(test_delay_time_is_screen_value)
+{
+    acid_delay_init(&dl, SR);
+    CHECK(dl.time_knob == 2);
+    acid_delay_set(&dl, 1, 0, 127);
+    CHECK_NEAR(acid_delay_time_samples(&dl), 12000.0f, 0.5f);
+    acid_delay_set(&dl, 5, 0, 127);
+    CHECK_NEAR(acid_delay_time_samples(&dl), 12000.0f, 0.5f);
+    acid_delay_set(&dl, 127, 0, 127);
+    CHECK_NEAR(acid_delay_time_samples(&dl), 12000.0f, 0.5f);
+    acid_delay_set(&dl, 4, 0, 127);
+    CHECK_NEAR(acid_delay_time_samples(&dl), 36000.0f, 0.5f);
+}
+
+// Значение ручки статтера = доля (1..4), вне - игнор.
+TEST(test_stutter_is_screen_value)
+{
+    acid_stutter_init(&st, SR);
+    acid_stutter_set(&st, 2); // 1/8 = 12000
+    CHECK(st.len == 12000);
+    acid_stutter_set(&st, 5);
+    CHECK(st.knob == 2 && st.len == 12000);
+    acid_stutter_set(&st, 127);
+    CHECK(st.knob == 2 && st.on);
+    acid_stutter_set(&st, 0);
+    CHECK(!st.on);
+}
+
 // На 120 BPM самые длинные доли влезают целиком.
 TEST(test_longest_zones_fit_at_120)
 {
@@ -778,5 +805,7 @@ int main(void)
     RUN(test_longest_zones_fit_at_120);
     RUN(test_delay_read_wrap_in_bounds);
     RUN(test_djf_settles_after_knob_move);
+    RUN(test_delay_time_is_screen_value);
+    RUN(test_stutter_is_screen_value);
     TEST_MAIN_END();
 }

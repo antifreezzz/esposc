@@ -428,6 +428,14 @@ static float bip(int v)
     return x < -1.0f ? -1.0f : x;
 }
 
+// Транспозиция: на экране 64 - без сдвига, 52..76 - -12..+12 полутонов, остальное игнор.
+static void transpose_set(acid_slot_t *sl, int v)
+{
+    if (v >= 52 && v <= 76) {
+        sl->transpose = v - 64;
+    }
+}
+
 // Ручки 303, slot - индекс энкодера с 0.
 static void knob_303(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
 {
@@ -437,9 +445,9 @@ static void knob_303(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
     case 4: sl->env_hz = lin(v, 0.0f, 6000.0f); break;
     case 5: sl->decay_s = expo(v, 0.05f, 1.5f); break;
     case 6: sl->accent_amt = lin(v, 1.0f, 2.0f); break;
-    case 7: sl->wave = v >= 64; break;
+    case 7: sl->wave = v <= 1 ? v : sl->wave; break; // 0 пила, 1 меандр
     case 8: sl->glide_coef = expf(-1.0f / (expo(v, 0.01f, 0.3f) * s->sr)); break;
-    case 9: sl->transpose = (v * 25) / 128 - 12; break; // -12..+12, центр 0
+    case 9: transpose_set(sl, v); break;
     default: break;
     }
 }
@@ -454,7 +462,7 @@ static void knob_plaits(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
     case 5: p->decay = lin(v, 0.0f, 1.0f); break;
     case 6: p->lpg_colour = lin(v, 0.0f, 1.0f); break;
     case 7: sl->glide_coef = expf(-1.0f / (expo(v, 0.01f, 0.3f) * s->sr)); break;
-    case 8: sl->transpose = (v * 25) / 128 - 12; break;
+    case 8: transpose_set(sl, v); break;
     case 9: p->timbre_env = bip(v); break;
     case 10: p->morph_env = bip(v); break;
     case 11: p->fm_env = bip(v); break;
@@ -537,7 +545,7 @@ static void page_fx(acid_synth_t *s, int slot, int v)
     case 3: s->send1 = lin(v, 0.0f, 1.0f); break;
     case 4: s->send2 = lin(v, 0.0f, 1.0f); break;
     case 5: s->send_drums = lin(v, 0.0f, 1.0f); break;
-    case 6: s->dl_time = v; break;
+    case 6: s->dl_time = v <= 4 ? v : s->dl_time; break;
     case 7: s->dl_fb = v; break;
     case 8: s->dl_tone = v; break;
     case 9: acid_stutter_set(&s->stutter, v); break;
@@ -552,7 +560,9 @@ static void page_fx(acid_synth_t *s, int slot, int v)
 static void page_synth(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
 {
     if (slot == TYPE_ENC) {
-        type_request(sl, v * ACID_TYPES / 128);
+        if (v < ACID_TYPES) {
+            type_request(sl, v); // значение на экране = номер типа, остальное игнор
+        }
     } else if (slot > TYPE_ENC) {
         sl->knob[sl->type][slot] = (uint8_t)v;
         knob_apply(s, sl, slot, v);

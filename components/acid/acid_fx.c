@@ -7,8 +7,8 @@
 #define PUMP_ATTACK_S 0.003f
 #define SMOOTH_S 0.005f // сглаживание глубины, среза и резонанса
 #define XFADE_S 0.005f  // кроссфейд смены режима фильтра
-#define DEAD_LO 62      // мёртвая зона ручки фильтра 62..66
-#define DEAD_HI 66
+#define DEAD_LO 64      // обход только ровно на 64: щелчки BSP чёткие, мёртвая зона не нужна
+#define DEAD_HI 64
 #define LP_LO_HZ 150.0f
 #define LP_HI_HZ 18000.0f
 #define HP_LO_HZ 20.0f
@@ -236,12 +236,12 @@ int acid_crush_active(const acid_crush_t *c)
 #define DELAY_TONE_LO 500.0f
 #define DELAY_TONE_HI 12000.0f
 
-// Доли четверти по зонам ручки времени: 1/16, 1/8, 3/16, 1/4, 3/8.
+// Доли четверти по значению ручки времени 0..4: 1/16, 1/8, 3/16, 1/4, 3/8.
 static const float DELAY_DIVS[5] = {0.25f, 0.5f, 0.75f, 1.0f, 1.5f};
 
 static void delay_target(acid_delay_t *d)
 {
-    float t = d->spb * DELAY_DIVS[d->time_knob * 5 / 128];
+    float t = d->spb * DELAY_DIVS[d->time_knob];
     while (t > (float)(ACID_DELAY_LEN - 2)) {
         t *= 0.5f; // при медленном темпе доля не влезает: вдвое короче
     }
@@ -256,13 +256,15 @@ void acid_delay_init(acid_delay_t *d, float sr)
     d->lp = 0.0f;
     d->zero_run = ACID_DELAY_LEN;
     d->spb = sr * 0.5f;
-    acid_delay_set(d, 2 * 128 / 5 + 1, 53, 83); // 3/16, fb ~0.4, тон ~4 кГц
+    acid_delay_set(d, 2, 53, 83); // 3/16, fb ~0.4, тон ~4 кГц
     d->d = d->d_target;
 }
 
 void acid_delay_set(acid_delay_t *d, int time_knob, int fb_knob, int tone_knob)
 {
-    d->time_knob = time_knob;
+    if (time_knob <= 4) {
+        d->time_knob = time_knob; // вне списка долей: время прежнее
+    }
     d->fb = (float)fb_knob * 0.95f / 127.0f;
     float fc = DELAY_TONE_LO * powf(DELAY_TONE_HI / DELAY_TONE_LO, (float)tone_knob / 127.0f);
     d->tone = 1.0f - expf(-2.0f * PI_F * fc / d->sr);
@@ -314,12 +316,12 @@ float acid_delay_time_samples(const acid_delay_t *d)
 
 #define STUTTER_SCALE 16384.0f
 
-// Доли четверти по зонам: 1/4, 1/8, 1/16, 1/32.
+// Доли четверти по значению ручки 1..4: 1/4, 1/8, 1/16, 1/32.
 static const float STUTTER_DIVS[4] = {1.0f, 0.5f, 0.25f, 0.125f};
 
 static int stutter_len(const acid_stutter_t *st)
 {
-    float t = st->spb * STUTTER_DIVS[(st->knob - 1) * 4 / 127];
+    float t = st->spb * STUTTER_DIVS[st->knob - 1];
     while (t > (float)(ACID_STUTTER_LEN - ACID_STUTTER_SEAM)) {
         t *= 0.5f;
     }
@@ -339,6 +341,9 @@ void acid_stutter_init(acid_stutter_t *st, float sr)
 
 void acid_stutter_set(acid_stutter_t *st, int knob)
 {
+    if (knob > 4) {
+        return; // вне списка долей: игнор
+    }
     st->knob = knob;
     if (!knob) {
         st->on = 0; // петля доигрывает, пока wet уходит в 0

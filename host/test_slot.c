@@ -47,13 +47,27 @@ static float rms(int n)
 // Тип синтеза энкодером 2 на текущей странице синта, с ожиданием затухания и прихода.
 static void type(int t)
 {
-    cc(2, (t * 128 + 24) / 25);
+    cc(2, t);
     rms(960);
 }
 
 static float slot_hz(int k)
 {
     return exp2f(s.slot[k].pitch_log2);
+}
+
+TEST(test_slot_type_is_screen_value)
+{
+    type(3);
+    CHECK(s.slot[0].type == 3);
+    type(24);
+    CHECK(s.slot[0].type == 24);
+    type(25); // вне списка: игнор
+    CHECK(s.slot[0].type == 24);
+    type(127);
+    CHECK(s.slot[0].type == 24);
+    type(0);
+    CHECK(s.slot[0].type == 0);
 }
 
 TEST(test_slot_defaults)
@@ -179,7 +193,7 @@ static void check_switch(int t)
 {
     rms(4800);
     float before = max_jump(960);
-    cc(2, (t * 128 + 24) / 25);
+    cc(2, t);
     float during = max_jump(2 * 192 + 48);
     CHECK(s.slot[0].type == t);
     float after = max_jump(960);
@@ -253,7 +267,7 @@ TEST(test_slot_plaits_page)
     off(BASS, 45);
     rms(4800);
 
-    cc(9, 127); // транспонирование +12
+    cc(9, 76); // транспонирование +12
     cc(8, 0);   // самый быстрый глайд
     on(BASS, 45, 100);
     rms(480);
@@ -328,6 +342,7 @@ TEST(test_slot_autopilot_keeps_choice)
 int main(void)
 {
     RUN(test_slot_defaults);
+    RUN(test_slot_type_is_screen_value);
     RUN(test_slot_type_select);
     RUN(test_slot_plaits_plays);
     RUN(test_slot_plaits_level);

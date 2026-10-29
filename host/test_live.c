@@ -200,20 +200,28 @@ TEST(test_live_bass_page)
     CHECK_NEAR(s.slot[0].res, 0.97f, 1e-4f);
     cc(ENC[8], 0);
     CHECK(s.slot[0].wave == 0);
-    cc(ENC[8], 127);
+    cc(ENC[8], 1);
     CHECK(s.slot[0].wave == 1);
+    cc(ENC[8], 2); // вне списка: игнор
+    CHECK(s.slot[0].wave == 1);
+    cc(ENC[8], 0);
+    CHECK(s.slot[0].wave == 0);
 }
 
 TEST(test_live_transpose)
 {
     live();
     page(2);
-    cc(ENC[10], 127); // +12
+    cc(ENC[10], 65); // 64 - без транспозиции, 65 - +1
+    CHECK(s.slot[0].transpose == 1);
+    cc(ENC[10], 51); // вне -12..+12: игнор
+    CHECK(s.slot[0].transpose == 1);
+    cc(ENC[10], 76); // +12
     on(BASS, 45, 100);
     rms(480);
     CHECK_NEAR(acid_synth_pitch_hz(&s), 220.0f, 1.0f);
     off(BASS, 45);
-    cc(ENC[10], 0); // -12
+    cc(ENC[10], 52); // -12
     rms(4800);
     on(BASS, 45, 100);
     rms(480);
@@ -678,7 +686,7 @@ TEST(test_live_stutter_repeats)
     on(BASS, 45, 127);
     on(DRUMS, 42, 127);
     acid_synth_render(&s, buf, (size_t)MS(100));
-    cc(18, 97); // 1/32 при 120 BPM = 3000 сэмплов
+    cc(18, 4); // 1/32 при 120 BPM = 3000 сэмплов
     acid_synth_render(&s, buf, 12000);
     float md = 0.0f;
     for (int i = 6200; i < 12000; i++) {
@@ -694,7 +702,7 @@ TEST(test_live_fx_page_back_to_neutral)
     cc(10, 4);
     cc(74, 64);
     cc(76, 127);
-    cc(18, 64);
+    cc(18, 2);
     acid_synth_render(&s2, buf2, (size_t)MS(100));
     cc(74, 0);
     cc(76, 0);
