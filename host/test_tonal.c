@@ -178,6 +178,22 @@ TEST(test_tonal_nsteps_shrink_clamps)
     CHECK(s[0] == 0);
 }
 
+// Слой включили посреди такта: граница всё равно на тактовой черте от Start.
+TEST(test_tonal_enable_mid_bar_aligns)
+{
+    acid_tonal_init(&t);
+    acid_tonal_start(&t);
+    ticks(51); // сильная доля и 50 тиков такта 1
+    enc(2, 1);
+    CHECK(ticks(45) == 0);
+    CHECK(acid_tonal_tick(&t) == 1); // 97-й тик - такт 2
+    enc(2, 0);
+    ticks(130);
+    enc(2, 2); // включили в такте 3: граница через два тактовых черты
+    CHECK(ticks(96 - 34 + 96 - 1) == 0);
+    CHECK(acid_tonal_tick(&t) == 1);
+}
+
 TEST(test_tonal_off_when_len_zero)
 {
     acid_tonal_init(&t);
@@ -277,6 +293,7 @@ int main(void)
     RUN(test_tonal_start_resets);
     RUN(test_tonal_len_change_next_boundary);
     RUN(test_tonal_nsteps_shrink_clamps);
+    RUN(test_tonal_enable_mid_bar_aligns);
     RUN(test_tonal_off_when_len_zero);
     RUN(test_tonal_chromatic);
     RUN(test_tonal_scale_major);

@@ -29,8 +29,9 @@ void acid_tonal_init(acid_tonal_t *t)
     t->scale = 0;
     t->tonic = 0;
     memset(t->raw, 0, sizeof t->raw);
-    t->bar_len = 0;
-    t->ticks = 0;
+    t->cur_len = 0;
+    t->phase = 0;
+    t->bars = 0;
     t->armed = 0;
     t->step = 0;
     t->dir = 1;
@@ -53,8 +54,9 @@ void acid_tonal_set(acid_tonal_t *t, int enc, int v)
     switch (enc) {
     case 1:
         ok = pick(v, 0, 16, &t->len);
-        if (ok && t->bar_len == 0) {
-            t->bar_len = t->len * ACID_TONAL_BAR; // включили слой: первая граница через длину шага
+        if (ok && t->cur_len == 0) {
+            t->cur_len = t->len; // включили слой: шаг идёт с ближайшей тактовой черты
+            t->bars = 0;
         }
         break;
     case 2: ok = pick(v, 1, ACID_TONAL_STEPS, &t->nsteps); break;
@@ -77,11 +79,12 @@ void acid_tonal_set(acid_tonal_t *t, int enc, int v)
 
 void acid_tonal_start(acid_tonal_t *t)
 {
-    t->ticks = 0;
+    t->phase = 0;
+    t->bars = 0;
     t->armed = 1;
     t->step = 0;
     t->dir = 1;
-    t->bar_len = t->len * ACID_TONAL_BAR;
+    t->cur_len = t->len;
 }
 
 static int next_step(acid_tonal_t *t)
@@ -115,19 +118,23 @@ static int next_step(acid_tonal_t *t)
 
 int acid_tonal_tick(acid_tonal_t *t)
 {
-    if (t->len == 0) {
-        t->bar_len = 0;
-        return 0;
-    }
     if (t->armed) {
         t->armed = 0;
         return 0;
     }
-    if (++t->ticks < (uint32_t)t->bar_len) {
+    if (++t->phase < ACID_TONAL_BAR) {
         return 0;
     }
-    t->ticks = 0;
-    t->bar_len = t->len * ACID_TONAL_BAR; // новая длина действует с этой границы
+    t->phase = 0;
+    if (t->len == 0) {
+        t->cur_len = 0;
+        return 0;
+    }
+    if (++t->bars < t->cur_len) {
+        return 0;
+    }
+    t->bars = 0;
+    t->cur_len = t->len; // новая длина действует с этой границы
     t->step = next_step(t);
     return 1;
 }
@@ -180,5 +187,5 @@ int acid_tonal_moves(const acid_tonal_t *t, int slot)
 
 uint32_t acid_tonal_ticks_left(const acid_tonal_t *t)
 {
-    return (uint32_t)t->bar_len - t->ticks + (uint32_t)t->armed;
+    return (uint32_t)((t->cur_len - t->bars - 1) * ACID_TONAL_BAR + ACID_TONAL_BAR - t->phase + t->armed);
 }
