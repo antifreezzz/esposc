@@ -103,6 +103,13 @@ float acid_djf_q(int knob, int res_knob)
     return Q_MIN + (q - Q_MIN) * r;
 }
 
+static void djf_coefs(acid_djf_t *f)
+{
+    f->a1 = 1.0f / (1.0f + f->g * (f->g + f->k));
+    f->a2 = f->g * f->a1;
+    f->a3 = f->g * f->a2;
+}
+
 void acid_djf_init(acid_djf_t *f, float sr)
 {
     f->sr = sr;
@@ -115,6 +122,7 @@ void acid_djf_init(acid_djf_t *f, float sr)
     f->xfade = 1.0f / (XFADE_S * sr);
     f->knob = 64;
     f->res_knob = 0;
+    djf_coefs(f);
 }
 
 // Новый режим вступает: состояние с нуля, срез сразу в цель (сглаживать не от чего).
@@ -124,6 +132,7 @@ static void djf_enter(acid_djf_t *f)
     f->ic1 = f->ic2 = 0.0f;
     f->g = f->g_target;
     f->k = f->k_target;
+    djf_coefs(f);
 }
 
 void acid_djf_set(acid_djf_t *f, int knob, int res_knob)
@@ -157,13 +166,16 @@ float acid_djf_next(acid_djf_t *f, float in)
     if (f->mode == 0) {
         return in;
     }
-    f->g += (f->g_target - f->g) * f->smooth;
-    f->k += (f->k_target - f->k) * f->smooth;
+    if (f->g != f->g_target || f->k != f->k_target) {
+        // Срез едет к цели: коэффициенты заново (деление дорогое, на месте не считаем).
+        float dg = f->g_target - f->g, dk = f->k_target - f->k;
+        f->g = fabsf(dg) < 1e-6f * f->g_target ? f->g_target : f->g + dg * f->smooth;
+        f->k = fabsf(dk) < 1e-6f ? f->k_target : f->k + dk * f->smooth;
+        djf_coefs(f);
+    }
 
     // TPT SVF, как acid_svf_bp_hp в acid_noise.c.
-    float a1 = 1.0f / (1.0f + f->g * (f->g + f->k));
-    float a2 = f->g * a1;
-    float a3 = f->g * a2;
+    float a1 = f->a1, a2 = f->a2, a3 = f->a3;
     float v3 = in - f->ic2;
     float v1 = a1 * f->ic1 + a2 * v3;
     float v2 = f->ic2 + a2 * f->ic1 + a3 * v3;
@@ -206,7 +218,8 @@ float acid_crush_next(acid_crush_t *c, float x)
         x = c->hold;
     }
     if (c->step > 0.0f) {
-        x = floorf(x * c->inv_step + 0.5f) * c->step;
+        float v = x * c->inv_step;
+        x = (float)(int)(v >= 0.0f ? v + 0.5f : v - 0.5f) * c->step; // без floorf: он из libm и медленный
     }
     return x;
 }

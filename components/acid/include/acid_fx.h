@@ -24,6 +24,7 @@ typedef struct {
     float sr;
     float ic1, ic2;
     float g, k, g_target, k_target; // сглаживаются к цели посэмплово
+    float a1, a2, a3;               // коэффициенты SVF от g и k: деление только пока срез едет
     int mode, next_mode;            // 0 обход, 1 ФНЧ, 2 ФВЧ
     float wet;                      // 0..1, доля фильтра в кроссфейде
     float smooth, xfade;            // коэффициент сглаживания и шаг кроссфейда
