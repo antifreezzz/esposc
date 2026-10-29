@@ -43,6 +43,9 @@ void acid_pump_set_release(acid_pump_t *p, float tau_s)
 
 void acid_pump_hit(acid_pump_t *p, float vel)
 {
+    if (!acid_pump_active(p)) {
+        return; // при глубине 0 удары не копятся: включили пампинг - присед только от нового удара
+    }
     // Тихий удар во время возврата не поднимает присед: цель ниже e атаку не запускает.
     p->target = vel > p->target ? vel : p->target;
 }
@@ -54,6 +57,10 @@ float acid_pump_next(acid_pump_t *p)
     }
     float d = p->depth - p->depth_s;
     p->depth_s = fabsf(d) < 1e-5f ? p->depth : p->depth_s + d * p->smooth;
+    if (p->depth_s == 0.0f && p->depth == 0.0f) {
+        p->e = p->target = 0.0f; // глубина доехала до нуля: старый присед забыт
+        return 1.0f;
+    }
     if (p->target > p->e) {
         p->e += (p->target - p->e) * p->atk_coef;
         if (p->e >= 0.98f * p->target) {
@@ -62,6 +69,9 @@ float acid_pump_next(acid_pump_t *p)
     } else {
         p->target = 0.0f;
         p->e *= p->rel_coef;
+        if (p->e < 1e-6f) {
+            p->e = 0.0f; // без хвоста в субнормалах
+        }
     }
     return 1.0f - p->depth_s * p->e;
 }

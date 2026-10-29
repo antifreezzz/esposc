@@ -129,6 +129,58 @@ TEST(test_pump_depth_off_mid_dip_smooth)
     CHECK(acid_pump_next(&p) == 1.0f);
 }
 
+// Удары при глубине 0 не копятся: включили пампинг - без удара присед не начинается.
+TEST(test_pump_no_stale_dip_after_enable)
+{
+    acid_pump_t p;
+    acid_pump_init(&p, SR);
+    acid_pump_hit(&p, 1.0f);
+    for (int i = 0; i < 48000; i++) {
+        acid_pump_next(&p);
+    }
+    acid_pump_set_depth(&p, 1.0f);
+    float lo = 1.0f;
+    for (int i = 0; i < MS(200); i++) {
+        float g = acid_pump_next(&p);
+        lo = g < lo ? g : lo;
+    }
+    CHECK(lo > 0.999f);
+}
+
+// Сняли глубину посреди приседа, через время вернули: старый присед не всплывает.
+TEST(test_pump_no_stale_dip_after_reenable)
+{
+    acid_pump_t p;
+    pump_ready(&p, 0.2f);
+    acid_pump_hit(&p, 1.0f);
+    for (int i = 0; i < MS(10); i++) {
+        acid_pump_next(&p);
+    }
+    acid_pump_set_depth(&p, 0.0f);
+    for (int i = 0; i < 48000; i++) {
+        acid_pump_next(&p);
+    }
+    acid_pump_set_depth(&p, 1.0f);
+    float lo = 1.0f;
+    for (int i = 0; i < MS(200); i++) {
+        float g = acid_pump_next(&p);
+        lo = g < lo ? g : lo;
+    }
+    CHECK(lo > 0.999f);
+}
+
+// Огибающая после возврата доходит до нуля, а не висит в субнормалах.
+TEST(test_pump_envelope_reaches_zero)
+{
+    acid_pump_t p;
+    pump_ready(&p, 0.03f);
+    acid_pump_hit(&p, 1.0f);
+    for (int i = 0; i < 20 * 48000; i++) {
+        acid_pump_next(&p);
+    }
+    CHECK(p.e == 0.0f);
+}
+
 // --- DJ-фильтр ---
 
 TEST(test_djf_map)
@@ -274,6 +326,9 @@ int main(void)
     RUN(test_pump_velocity);
     RUN(test_pump_soft_hit_keeps_dip);
     RUN(test_pump_depth_off_mid_dip_smooth);
+    RUN(test_pump_no_stale_dip_after_enable);
+    RUN(test_pump_no_stale_dip_after_reenable);
+    RUN(test_pump_envelope_reaches_zero);
     RUN(test_djf_map);
     RUN(test_djf_q_ramp);
     RUN(test_djf_bypass_bitexact);
