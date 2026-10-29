@@ -2,25 +2,36 @@
 #include "test.h"
 
 #include <math.h>
+#include <string.h>
 
 #define SR 48000.0f
 #define BASS 4  // MIDI канал 5
 #define DRUMS 1 // MIDI канал 2
 #define SEQ2 5  // MIDI канал 6
 
-static acid_synth_t s;
-static float buf[48000];
+static acid_synth_t s, s2;
+static acid_synth_t *cur = &s; // куда идут send/on/off/cc
+static float buf[48000], buf2[48000];
 
 static void live(void)
 {
     acid_synth_init(&s, SR);
     acid_synth_set_live(&s, 1);
+    cur = &s;
+}
+
+// Оба экземпляра в live, команды идут в s.
+static void live2(void)
+{
+    acid_synth_init(&s2, SR);
+    acid_synth_set_live(&s2, 1);
+    live();
 }
 
 static void send(uint8_t type, uint8_t ch, uint8_t d1, uint8_t d2)
 {
     acid_midi_event_t e = {.type = type, .ch = ch, .d1 = d1, .d2 = d2};
-    acid_synth_midi(&s, &e);
+    acid_synth_midi(cur, &e);
 }
 
 static void on(uint8_t ch, uint8_t note, uint8_t vel) { send(ACID_MIDI_NOTE_ON, ch, note, vel); }
@@ -478,6 +489,129 @@ TEST(test_live_short_note_then_other_note_retriggers)
     CHECK_NEAR(acid_synth_pitch_hz(&s), acid_midi_to_hz(50), 0.5f);
 }
 
+#define MS(x) ((int)((x) * SR / 1000.0f))
+
+// --- Этап 6: пампинг и DJ-фильтр (страница 0, энкодеры 10-13 = CC 18, 19, 16, 17) ---
+
+static float rms_of(acid_synth_t *x, int n)
+{
+    acid_synth_render(x, buf, (size_t)n);
+    double sq = 0.0;
+    for (int i = 0; i < n; i++) {
+        sq += (double)buf[i] * buf[i];
+    }
+    return (float)sqrt(sq / n);
+}
+
+TEST(test_live_pump_ghost_kick)
+{
+    live();
+    cc(10, 0);   // страница микса
+    cc(93, 0);   // бочка (энкодер 6) в нуле: мерим только синт
+    cc(18, 127); // глубина
+    cc(19, 0);   // возврат 30 мс
+    on(BASS, 45, 90);
+    rms(MS(200));
+    float r0 = rms(MS(20));
+    on(DRUMS, 36, 127);
+    rms(MS(5));
+    CHECK(rms(MS(10)) < 0.3f * r0);
+    rms(MS(500));
+    CHECK(rms(MS(20)) > 0.9f * r0);
+}
+
+TEST(test_live_pump_kick_not_ducked)
+{
+    live2();
+    cc(10, 0);
+    cc(18, 127);
+    cur = &s2;
+    cc(10, 0);
+    cur = &s;
+    on(DRUMS, 36, 127);
+    cur = &s2;
+    on(DRUMS, 36, 127);
+    float a = rms_of(&s, MS(100));
+    float b = rms_of(&s2, MS(100));
+    CHECK(b > 0.0f);
+    CHECK_NEAR(a / b, 1.0f, 0.01f);
+}
+
+// Одинаковые ноты синта, бочка и хэт в оба экземпляра, рендер 1 с, буферы равны.
+static int play_same(void)
+{
+    for (int k = 0; k < 2; k++) {
+        cur = k ? &s2 : &s;
+        on(BASS, 45, 110);
+        on(DRUMS, 36, 127);
+        on(DRUMS, 42, 100);
+    }
+    cur = &s;
+    acid_synth_render(&s, buf, 48000);
+    acid_synth_render(&s2, buf2, 48000);
+    return memcmp(buf, buf2, sizeof buf) == 0;
+}
+
+TEST(test_live_pump_depth0_no_effect)
+{
+    live2();
+    cc(10, 0);
+    cc(18, 0);
+    CHECK(play_same());
+}
+
+TEST(test_live_fx_back_to_neutral_bitexact)
+{
+    live2();
+    cur = &s2;
+    cc(10, 0);
+    cc(18, 127);
+    cc(16, 20);
+    acid_synth_render(&s2, buf2, (size_t)MS(100));
+    cc(18, 0);
+    cc(16, 64);
+    acid_synth_render(&s2, buf2, (size_t)MS(200));
+    cur = &s;
+    acid_synth_render(&s, buf, (size_t)MS(300)); // тот же сдвиг времени
+    CHECK(!acid_pump_active(&s2.pump) && !acid_djf_active(&s2.djf)); // снова прежний путь микса
+    CHECK(play_same());
+}
+
+TEST(test_live_djf_cuts_highs)
+{
+    live2();
+    cc(10, 0);
+    cc(16, 0); // ФНЧ 150 Гц
+    float a = 0.0f, b = 0.0f;
+    for (int i = 0; i < 10; i++) {
+        cur = &s;
+        on(DRUMS, 42, 127);
+        cur = &s2;
+        on(DRUMS, 42, 127);
+        a += rms_of(&s, MS(100));
+        b += rms_of(&s2, MS(100));
+    }
+    cur = &s;
+    CHECK(a < 0.2f * b);
+}
+
+TEST(test_live_djf_resonance_bounded)
+{
+    live();
+    cc(10, 0);
+    cc(16, 70); // ФВЧ у самого низа
+    cc(17, 127);
+    int ok = 1;
+    for (int i = 0; i < 4; i++) {
+        on(DRUMS, 36, 127);
+        acid_synth_render(&s, buf, 24000);
+        for (int j = 0; j < 24000; j++) {
+            ok &= isfinite(buf[j]) && fabsf(buf[j]) <= 0.5f + 1e-6f;
+        }
+    }
+    CHECK(ok);
+}
+
 int main(void)
 {
     RUN(test_live_silent_until_note);
@@ -495,6 +629,12 @@ int main(void)
     RUN(test_live_drum_page);
     RUN(test_live_snare_and_clap_notes);
     RUN(test_live_ignores_other_channels);
+    RUN(test_live_pump_ghost_kick);
+    RUN(test_live_pump_kick_not_ducked);
+    RUN(test_live_pump_depth0_no_effect);
+    RUN(test_live_fx_back_to_neutral_bitexact);
+    RUN(test_live_djf_cuts_highs);
+    RUN(test_live_djf_resonance_bounded);
     RUN(test_live_stop_silences);
     RUN(test_live_transitions_no_click);
     RUN(test_live_off_restarts_track);
