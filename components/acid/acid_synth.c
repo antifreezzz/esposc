@@ -42,7 +42,7 @@
 #define PLAITS_ACCENT 0.4f // обычная нота Plaits тише акцентной на столько
 #define KNOB_NONE 0xFF
 #define TYPE_ENC 1       // энкодер 2 на странице синта
-static const uint8_t BLOB_MAGIC[4] = {'A', 'S', '5', 1};
+static const uint8_t BLOB_MAGIC[4] = {'A', 'S', '5', 2}; // 2: + ручки слоя тональности
 
 static void type_defaults(acid_synth_t *s, acid_slot_t *v);
 
@@ -601,6 +601,7 @@ static void control_change(acid_synth_t *s, int num, int v)
         page_fx(s, slot, v);
     } else if (s->page == PAGE_TONAL) {
         acid_tonal_set(&s->tonal, slot, v);
+        s->save = 1; // квадрат - часть композиции, переживает перезагрузку
     } else {
         page_synth(s, &s->slot[s->page - PAGE_SYNTH1], slot, v);
     }
@@ -878,6 +879,7 @@ size_t acid_synth_export(const acid_synth_t *s, void *buf, size_t cap)
         memcpy(b, s->slot[k].knob, sizeof s->slot[k].knob);
         b += sizeof s->slot[k].knob;
     }
+    memcpy(b, s->tonal.knob, sizeof s->tonal.knob);
     return ACID_SYNTH_BLOB;
 }
 
@@ -898,6 +900,11 @@ int acid_synth_import(acid_synth_t *s, const void *buf, size_t len)
             v->type = v->next_type = v->sel_type;
             v->fade = 0;
             type_defaults(s, v);
+        }
+    }
+    for (int i = 0; i < ACID_TONAL_KNOBS; i++) {
+        if (b[i] != KNOB_NONE) {
+            acid_tonal_set(&s->tonal, i, b[i]);
         }
     }
     return 1;

@@ -114,11 +114,11 @@ typedef struct {
     int page;          // страница ручек: 0 микс, 1 ударка, 2 синт 1, 3 синт 2, 4 эффекты, 5 тональность
 
     int live;          // live-режим: ноты от MIDI, свой секвенсор молчит
-    int save;          // сменили тип: память ручек пора записать
+    int save;          // сменили тип или ручку слоя тональности: память ручек пора записать
 } acid_synth_t;
 
 // Память ручек для flash: метка, типы и сырые ручки обоих синтов.
-#define ACID_SYNTH_BLOB (4 + ACID_SLOTS * (1 + ACID_TYPES * ACID_KNOBS))
+#define ACID_SYNTH_BLOB (4 + ACID_SLOTS * (1 + ACID_TYPES * ACID_KNOBS) + ACID_TONAL_KNOBS)
 
 // Режим трека по умолчанию.
 void acid_synth_init(acid_synth_t *s, float sr);

@@ -324,6 +324,42 @@ TEST(test_slot_export_import)
     CHECK(acid_synth_import(&b, blob, sizeof blob) == 0);
 }
 
+// Ручки страницы 5 (слой тональности) уходят в blob и возвращаются; CC страницы 5 просит записи.
+TEST(test_tonal_blob_roundtrip)
+{
+    static acid_synth_t b;
+    live();
+    acid_synth_take_save(&s);
+    page(5);
+    CHECK(acid_synth_take_save(&s) == 0);
+    cc(2, 2);   // длина 2 такта
+    CHECK(acid_synth_take_save(&s) == 1);
+    cc(7, 3);   // дорийский
+    cc(12, 70); // шаг 4 = +6
+    static uint8_t blob[ACID_SYNTH_BLOB];
+    CHECK(acid_synth_export(&s, blob, sizeof blob) == ACID_SYNTH_BLOB);
+    acid_synth_init(&b, SR);
+    acid_synth_set_live(&b, 1);
+    CHECK(acid_synth_import(&b, blob, sizeof blob) == 1);
+    CHECK(b.tonal.len == 2);
+    CHECK(b.tonal.scale == 3);
+    CHECK(b.tonal.raw[3] == 6);
+    CHECK(b.tonal.nsteps == 4); // не трогали - умолчание
+}
+
+// Blob прежней версии (магия AS5 1) не применяется.
+TEST(test_blob_old_magic_rejected)
+{
+    static acid_synth_t b;
+    live();
+    static uint8_t blob[ACID_SYNTH_BLOB];
+    acid_synth_export(&s, blob, sizeof blob);
+    const uint8_t old[4] = {'A', 'S', '5', 1};
+    memcpy(blob, old, sizeof old);
+    acid_synth_init(&b, SR);
+    CHECK(acid_synth_import(&b, blob, sizeof blob) == 0);
+}
+
 TEST(test_slot_autopilot_keeps_choice)
 {
     // Отключение BSP: автопилот играет 303, выбор и ручки синта возвращаются с BSP.
@@ -354,6 +390,8 @@ int main(void)
     RUN(test_slot_idle_plaits_silent);
     RUN(test_slot_save_flag);
     RUN(test_slot_export_import);
+    RUN(test_tonal_blob_roundtrip);
+    RUN(test_blob_old_magic_rejected);
     RUN(test_slot_autopilot_keeps_choice);
     TEST_MAIN_END();
 }
