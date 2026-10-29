@@ -70,7 +70,7 @@ uint32_t acid_tonal_ticks_left(const acid_tonal_t *t); // тиков до гра
   - `test_tonal_len_change_next_boundary`: len 4, 100 тиков, len 1 -> граница ещё на 384-м тике, следующая через 96.
   - `test_tonal_nsteps_shrink_clamps`: step 5 из 8, nsteps 4 -> на следующей границе step 0, `step()` до неё < 8.
   - `test_tonal_chromatic`: шаг 1 = 67 -> `note(60) == 63`.
-  - `test_tonal_scale_major`: scale 1, tonic 0, шаг +2 (66): E64 -> G67, B71 -> D74 (перенос октавы), F#66 -> G#68.
+  - `test_tonal_scale_major`: scale 1, tonic 0, шаг +2 (66): E64 -> G67, B71 -> D74 (перенос октавы), F#66 -> A#70 (F -> A плюс остаток).
   - `test_tonal_scale_down_octave`: до-мажор, шаг -7 (57): C60 -> C48; клип: шаг 52 в ладу = -7.
   - `test_tonal_scale_tonic`: ля-минор (scale 2, tonic 9), шаг +1: A57 -> B59, E64 -> F65.
   - `test_tonal_pentatonic`: scale 7, tonic 9 (A минорная пентатоника A C D E G), шаг +1: A57 -> C60, G67 -> A69.
