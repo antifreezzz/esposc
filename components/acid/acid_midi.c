@@ -14,8 +14,10 @@ int acid_midi_parse(const uint8_t *buf, size_t len, acid_midi_event_t *out, int 
             e.type = ACID_MIDI_NOTE_OFF;
         } else if (cin == 0xB) {
             e.type = ACID_MIDI_CC;
-        } else if (cin == 0xF && p[1] == 0xFC) {
-            e.type = ACID_MIDI_STOP;
+        } else if (cin == 0xF && (p[1] == 0xFC || p[1] == 0xF8 || p[1] == 0xFA || p[1] == 0xFB)) {
+            e.type = p[1] == 0xFC ? ACID_MIDI_STOP
+                   : p[1] == 0xF8 ? ACID_MIDI_CLOCK
+                   : p[1] == 0xFA ? ACID_MIDI_START : ACID_MIDI_CONTINUE;
             e.ch = 0;
         } else {
             continue;
