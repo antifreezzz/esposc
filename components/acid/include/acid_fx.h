@@ -35,3 +35,16 @@ float acid_djf_next(acid_djf_t *f, float in);
 int acid_djf_active(const acid_djf_t *f);                 // 0: обход и кроссфейд закончен
 float acid_djf_cutoff_hz(int knob);                       // 0 в мёртвой зоне 62..66
 float acid_djf_q(int knob, int res_knob);
+
+// Хруст: меньше разрядность и удержание сэмпла (понижение частоты). Обе ручки 0 - выключен.
+typedef struct {
+    int bits_knob, rate_knob;
+    float step, inv_step; // шаг квантования, 0 - без квантования
+    int factor, cnt;      // удерживать сэмпл factor раз
+    float hold;
+} acid_crush_t;
+
+void acid_crush_init(acid_crush_t *c);
+void acid_crush_set(acid_crush_t *c, int bits_knob, int rate_knob); // 0..127 каждая
+float acid_crush_next(acid_crush_t *c, float x);
+int acid_crush_active(const acid_crush_t *c);

@@ -176,3 +176,41 @@ int acid_djf_active(const acid_djf_t *f)
 {
     return f->mode != 0 || f->next_mode != 0;
 }
+
+void acid_crush_init(acid_crush_t *c)
+{
+    c->hold = 0.0f;
+    c->cnt = 0;
+    acid_crush_set(c, 0, 0);
+}
+
+void acid_crush_set(acid_crush_t *c, int bits_knob, int rate_knob)
+{
+    c->bits_knob = bits_knob;
+    c->rate_knob = rate_knob;
+    // 16 бит у первого щелчка, 3 бита на 127; шаг на диапазоне -1..1.
+    int bits = 16 - bits_knob * 13 / 127;
+    c->step = bits_knob ? 2.0f / (float)(1 << bits) : 0.0f;
+    c->inv_step = bits_knob ? 1.0f / c->step : 0.0f;
+    c->factor = rate_knob ? (int)(powf(32.0f, (float)rate_knob / 127.0f) + 0.5f) : 1;
+}
+
+float acid_crush_next(acid_crush_t *c, float x)
+{
+    if (c->factor > 1) {
+        if (c->cnt == 0) {
+            c->hold = x;
+        }
+        c->cnt = c->cnt + 1 < c->factor ? c->cnt + 1 : 0;
+        x = c->hold;
+    }
+    if (c->step > 0.0f) {
+        x = floorf(x * c->inv_step + 0.5f) * c->step;
+    }
+    return x;
+}
+
+int acid_crush_active(const acid_crush_t *c)
+{
+    return c->bits_knob != 0 || c->rate_knob != 0;
+}

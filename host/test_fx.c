@@ -347,6 +347,83 @@ TEST(test_djf_far_jump_no_click)
     CHECK(fin);
 }
 
+// --- Хруст ---
+
+TEST(test_crush_off_bitexact)
+{
+    acid_crush_t c;
+    acid_crush_init(&c);
+    acid_crush_set(&c, 0, 0);
+    CHECK(!acid_crush_active(&c));
+    uint32_t rnd = 3;
+    int exact = 1;
+    for (int i = 0; i < 4800; i++) {
+        float x = acid_noise(&rnd);
+        exact &= acid_crush_next(&c, x) == x;
+    }
+    CHECK(exact);
+}
+
+TEST(test_crush_3_bits)
+{
+    acid_crush_t c;
+    acid_crush_init(&c);
+    acid_crush_set(&c, 127, 0);
+    CHECK(acid_crush_active(&c));
+    float lv[64];
+    int n = 0;
+    for (int i = 0; i < 4800; i++) {
+        float y = acid_crush_next(&c, 0.9f * sinf(2.0f * PI_F * 100.0f * (float)i / SR));
+        int seen = 0;
+        for (int k = 0; k < n; k++) {
+            seen |= lv[k] == y;
+        }
+        if (!seen && n < 64) {
+            lv[n++] = y;
+        }
+    }
+    CHECK(n <= 9);
+    CHECK(n >= 5);
+}
+
+TEST(test_crush_rate_holds_32)
+{
+    acid_crush_t c;
+    acid_crush_init(&c);
+    acid_crush_set(&c, 0, 127);
+    uint32_t rnd = 5;
+    float prev = acid_crush_next(&c, acid_noise(&rnd));
+    int run = 1, min_run = 1000, changes = 0;
+    for (int i = 0; i < 4800; i++) {
+        float y = acid_crush_next(&c, acid_noise(&rnd));
+        if (y != prev) {
+            changes++;
+            min_run = changes > 1 && run < min_run ? run : min_run;
+            run = 0;
+        }
+        run++;
+        prev = y;
+    }
+    CHECK(changes > 100);
+    CHECK(min_run >= 32);
+}
+
+TEST(test_crush_bits_multiple_of_step)
+{
+    acid_crush_t c;
+    acid_crush_init(&c);
+    acid_crush_set(&c, 64, 0);
+    uint32_t rnd = 9;
+    int ok = 1;
+    for (int i = 0; i < 4800; i++) {
+        float y = acid_crush_next(&c, acid_noise(&rnd));
+        float q = y / c.step;
+        ok &= fabsf(q - roundf(q)) < 1e-3f;
+    }
+    CHECK(ok);
+    CHECK(c.step > 0.0f && c.step < 0.01f);
+}
+
 int main(void)
 {
     RUN(test_pump_neutral);
@@ -368,5 +445,9 @@ int main(void)
     RUN(test_djf_knob_step_no_zipper);
     RUN(test_djf_cross_centre_no_click);
     RUN(test_djf_far_jump_no_click);
+    RUN(test_crush_off_bitexact);
+    RUN(test_crush_3_bits);
+    RUN(test_crush_rate_holds_32);
+    RUN(test_crush_bits_multiple_of_step);
     TEST_MAIN_END();
 }
