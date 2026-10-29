@@ -46,8 +46,6 @@ TEST(test_midi_stop)
 TEST(test_midi_ignores_other_messages)
 {
     const uint8_t p[] = {
-        0x0F, 0xF8, 0x00, 0x00, // clock
-        0x0F, 0xFA, 0x00, 0x00, // start
         0x0F, 0xFE, 0x00, 0x00, // active sensing
         0x04, 0xF0, 0x7F, 0x7F, // sysex start
         0x07, 0x06, 0x02, 0xF7, // sysex end
@@ -56,6 +54,19 @@ TEST(test_midi_ignores_other_messages)
     };
     CHECK(parse(p, sizeof p) == 1);
     CHECK(ev[0].type == ACID_MIDI_STOP);
+}
+
+TEST(test_midi_clock_start_continue)
+{
+    const uint8_t p[] = {
+        0x0F, 0xF8, 0x00, 0x00, // clock
+        0x0F, 0xFA, 0x00, 0x00, // start
+        0x0F, 0xFB, 0x00, 0x00, // continue
+    };
+    CHECK(parse(p, sizeof p) == 3);
+    CHECK(ev[0].type == ACID_MIDI_CLOCK);
+    CHECK(ev[1].type == ACID_MIDI_START);
+    CHECK(ev[2].type == ACID_MIDI_CONTINUE);
 }
 
 TEST(test_midi_parse_multi_and_padding)
@@ -92,6 +103,7 @@ int main(void)
     RUN(test_midi_cc);
     RUN(test_midi_stop);
     RUN(test_midi_ignores_other_messages);
+    RUN(test_midi_clock_start_continue);
     RUN(test_midi_parse_multi_and_padding);
     RUN(test_midi_masks_data_bytes);
     TEST_MAIN_END();

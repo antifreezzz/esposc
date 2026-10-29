@@ -5,6 +5,7 @@
 #include "acid_arr.h"
 #include "acid_drums.h"
 #include "acid_env.h"
+#include "acid_clock.h"
 #include "acid_filter.h"
 #include "acid_fx.h"
 #include "acid_kick.h"
@@ -100,7 +101,15 @@ typedef struct {
     float snare_tune, snare_snappy, snare_decay_s;
     acid_pump_t pump;  // пампинг от ноты бочки (страница 0, энкодеры 10-11)
     acid_djf_t djf;    // DJ-фильтр мастера (страница 0, энкодеры 12-13)
-    int page;          // страница ручек: 0 микс, 1 ударка, 2 синт 1, 3 синт 2
+    // Страница 4: хруст, дилэй, статтер по темпу MIDI clock.
+    acid_clock_t clock;
+    uint32_t clock_now; // сэмплов с init: время для тиков клока
+    acid_crush_t crush;
+    acid_delay_t delay;
+    acid_stutter_t stutter;
+    float send1, send2, send_drums; // посылы в дилэй 0..1
+    int dl_time, dl_fb, dl_tone;    // сырые ручки дилэя
+    int page;          // страница ручек: 0 микс, 1 ударка, 2 синт 1, 3 синт 2, 4 эффекты
 
     int live;          // live-режим: ноты от MIDI, свой секвенсор молчит
     int save;          // сменили тип: память ручек пора записать

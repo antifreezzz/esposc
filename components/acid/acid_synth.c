@@ -29,7 +29,8 @@
 #define MERGE_S 0.05f      // повтор той же ноты в этом окне от нажатия склеивается с ней
 #define DRUM_VEL_FLOOR 0.3f // громкость самого слабого удара пэда
 #define SNARE_GAIN 0.8f
-#define PAGES 4
+#define PAGES 5
+#define PAGE_FX 4
 #define PAGE_SYNTH1 2
 #define MIX_CHUNK 64 // кусок буфера слота 1 в общем рендере
 #define FADE_N 192     // 4 мс ухода и столько же прихода при смене типа синтеза
@@ -116,6 +117,15 @@ void acid_synth_init(acid_synth_t *s, float sr)
     s->snare_decay_s = ACID_SNARE_DECAY_S;
     acid_pump_init(&s->pump, sr);
     acid_djf_init(&s->djf, sr);
+    acid_clock_init(&s->clock, sr);
+    s->clock_now = 0;
+    acid_crush_init(&s->crush);
+    acid_delay_init(&s->delay, sr);
+    acid_stutter_init(&s->stutter, sr);
+    s->send1 = s->send2 = s->send_drums = 0.0f;
+    s->dl_time = s->delay.time_knob;
+    s->dl_fb = 53;
+    s->dl_tone = 83;
     s->page = PAGE_SYNTH1;
     s->live = 0;
 
@@ -382,7 +392,7 @@ static void page_mix(acid_synth_t *s, int slot, int v)
     case 7: s->clap_gain = lin(v, 0.0f, 1.2f); break;
     case 8: s->snare_gain = lin(v, 0.0f, 1.5f); break;
     case 9: acid_pump_set_depth(&s->pump, lin(v, 0.0f, 1.0f)); break;
-    case 10: acid_pump_set_release(&s->pump, expo(v, 0.03f, 0.6f)); break;
+    case 10: acid_pump_set_release(&s->pump, expo(v, 0.03f, 0.9f)); break;
     case 11: acid_djf_set(&s->djf, v, s->djf.res_knob); break;
     case 12: acid_djf_set(&s->djf, s->djf.knob, v); break;
     default: break;
@@ -418,6 +428,14 @@ static float bip(int v)
     return x < -1.0f ? -1.0f : x;
 }
 
+// Транспозиция: на экране 64 - без сдвига, 52..76 - -12..+12 полутонов, остальное игнор.
+static void transpose_set(acid_slot_t *sl, int v)
+{
+    if (v >= 52 && v <= 76) {
+        sl->transpose = v - 64;
+    }
+}
+
 // Ручки 303, slot - индекс энкодера с 0.
 static void knob_303(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
 {
@@ -427,9 +445,9 @@ static void knob_303(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
     case 4: sl->env_hz = lin(v, 0.0f, 6000.0f); break;
     case 5: sl->decay_s = expo(v, 0.05f, 1.5f); break;
     case 6: sl->accent_amt = lin(v, 1.0f, 2.0f); break;
-    case 7: sl->wave = v >= 64; break;
+    case 7: sl->wave = v <= 1 ? v : sl->wave; break; // 0 пила, 1 меандр
     case 8: sl->glide_coef = expf(-1.0f / (expo(v, 0.01f, 0.3f) * s->sr)); break;
-    case 9: sl->transpose = (v * 25) / 128 - 12; break; // -12..+12, центр 0
+    case 9: transpose_set(sl, v); break;
     default: break;
     }
 }
@@ -444,7 +462,7 @@ static void knob_plaits(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
     case 5: p->decay = lin(v, 0.0f, 1.0f); break;
     case 6: p->lpg_colour = lin(v, 0.0f, 1.0f); break;
     case 7: sl->glide_coef = expf(-1.0f / (expo(v, 0.01f, 0.3f) * s->sr)); break;
-    case 8: sl->transpose = (v * 25) / 128 - 12; break;
+    case 8: transpose_set(sl, v); break;
     case 9: p->timbre_env = bip(v); break;
     case 10: p->morph_env = bip(v); break;
     case 11: p->fm_env = bip(v); break;
@@ -518,11 +536,33 @@ static void type_request(acid_slot_t *v, int t)
     }
 }
 
+// Страница эффектов: хруст, посылы и ручки дилэя, статтер.
+static void page_fx(acid_synth_t *s, int slot, int v)
+{
+    switch (slot) {
+    case 1: acid_crush_set(&s->crush, v, s->crush.rate_knob); break;
+    case 2: acid_crush_set(&s->crush, s->crush.bits_knob, v); break;
+    case 3: s->send1 = lin(v, 0.0f, 1.0f); break;
+    case 4: s->send2 = lin(v, 0.0f, 1.0f); break;
+    case 5: s->send_drums = lin(v, 0.0f, 1.0f); break;
+    case 6: s->dl_time = v <= 4 ? v : s->dl_time; break;
+    case 7: s->dl_fb = v; break;
+    case 8: s->dl_tone = v; break;
+    case 9: acid_stutter_set(&s->stutter, v); break;
+    default: break;
+    }
+    if (slot >= 6 && slot <= 8) {
+        acid_delay_set(&s->delay, s->dl_time, s->dl_fb, s->dl_tone);
+    }
+}
+
 // Страница синта: энкодер 2 - тип синтеза, дальше ручки типа (запоминаются по типам).
 static void page_synth(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
 {
     if (slot == TYPE_ENC) {
-        type_request(sl, v * ACID_TYPES / 128);
+        if (v < ACID_TYPES) {
+            type_request(sl, v); // значение на экране = номер типа, остальное игнор
+        }
     } else if (slot > TYPE_ENC) {
         sl->knob[sl->type][slot] = (uint8_t)v;
         knob_apply(s, sl, slot, v);
@@ -545,6 +585,8 @@ static void control_change(acid_synth_t *s, int num, int v)
         page_mix(s, slot, v);
     } else if (s->page == 1) {
         page_drums(s, slot, v);
+    } else if (s->page == PAGE_FX) {
+        page_fx(s, slot, v);
     } else {
         page_synth(s, &s->slot[s->page - PAGE_SYNTH1], slot, v);
     }
@@ -571,6 +613,15 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
     case ACID_MIDI_CC:
         control_change(s, ev->d1, ev->d2);
         break;
+    case ACID_MIDI_CLOCK: {
+        float spb = acid_clock_spb(&s->clock);
+        acid_clock_tick(&s->clock, s->clock_now);
+        if (acid_clock_spb(&s->clock) != spb) {
+            acid_delay_set_spb(&s->delay, acid_clock_spb(&s->clock));
+            acid_stutter_set_spb(&s->stutter, acid_clock_spb(&s->clock));
+        }
+        break;
+    }
     case ACID_MIDI_STOP:
         for (int k = 0; k < ACID_SLOTS; k++) {
             s->slot[k].nheld = 0; // защита от залипших нот
@@ -691,6 +742,14 @@ void acid_synth_render_slot(acid_synth_t *s, int k, float *out, size_t n)
     }
 }
 
+// Хоть один эффект мастера звучит: микс по длинному пути. Иначе прежний путь, бит в бит.
+static int fx_on(const acid_synth_t *s)
+{
+    return acid_pump_active(&s->pump) || acid_djf_active(&s->djf) || acid_crush_active(&s->crush) ||
+           acid_stutter_active(&s->stutter) || acid_delay_active(&s->delay) ||
+           s->send1 != 0.0f || s->send2 != 0.0f || s->send_drums != 0.0f;
+}
+
 void acid_synth_render_with(acid_synth_t *s, float *out, size_t n, const float *slot1)
 {
     acid_slot_t *v = &s->slot[0];
@@ -711,13 +770,25 @@ void acid_synth_render_with(acid_synth_t *s, float *out, size_t n, const float *
             v->ctrl_left = 0; // новая нота: пересчитать сразу
         }
         float y = slot_next(s, v, s->live ? v->nheld > 0 : acid_seq_gate(&s->seq));
-        if (acid_pump_active(&s->pump) || acid_djf_active(&s->djf)) {
+        s->clock_now++;
+        if (fx_on(s)) {
             float kick = s->kick_gain * s->kick_vel * acid_kick_next(&s->kick);
-            y += s->hat_gain * s->hat_vel * acid_hat_next(&s->hat);
-            y += s->clap_gain * s->clap_vel * acid_clap_next(&s->clap);
-            y += s->snare_gain * s->snare_vel * acid_snare_next(&s->snare);
-            y += slot1[i];
-            y = acid_djf_next(&s->djf, kick + acid_pump_next(&s->pump) * y);
+            float drums = s->hat_gain * s->hat_vel * acid_hat_next(&s->hat);
+            drums += s->clap_gain * s->clap_vel * acid_clap_next(&s->clap);
+            drums += s->snare_gain * s->snare_vel * acid_snare_next(&s->snare);
+            // Посылы до пампинга: повторы не качаются вместе с сухим звуком.
+            float send = s->send1 * y + s->send2 * slot1[i] + s->send_drums * drums;
+            y = kick + acid_pump_next(&s->pump) * (y + drums + slot1[i]);
+            if (send != 0.0f || acid_delay_active(&s->delay)) {
+                y += acid_delay_next(&s->delay, send);
+            }
+            if (acid_stutter_active(&s->stutter)) {
+                y = acid_stutter_next(&s->stutter, y);
+            }
+            if (acid_crush_active(&s->crush)) {
+                y = acid_crush_next(&s->crush, y);
+            }
+            y = acid_djf_next(&s->djf, y);
         } else {
             // Нейтральные эффекты: прежний порядок сложения, автопилот бит в бит.
             y += s->kick_gain * s->kick_vel * acid_kick_next(&s->kick);
