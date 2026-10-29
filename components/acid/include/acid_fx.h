@@ -1,4 +1,5 @@
 #pragma once
+#include <stdint.h>
 
 // Эффекты мастера: пампинг от бочки и DJ-фильтр. Чистый DSP, о синте не знает.
 
@@ -48,3 +49,26 @@ void acid_crush_init(acid_crush_t *c);
 void acid_crush_set(acid_crush_t *c, int bits_knob, int rate_knob); // 0..127 каждая
 float acid_crush_next(acid_crush_t *c, float x);
 int acid_crush_active(const acid_crush_t *c);
+
+// Дилэй по темпу: буфер 16 бит во внутренней RAM, ФНЧ в петле, время плывёт как у ленты.
+#define ACID_DELAY_LEN 36000 // 0.75 с при 48 кГц
+
+typedef struct {
+    float sr;
+    int16_t buf[ACID_DELAY_LEN];
+    int w;           // куда пишем
+    float spb;       // сэмплов на четверть
+    int time_knob;
+    float fb;        // обратная связь 0..0.95
+    float tone;      // коэффициент ФНЧ в петле
+    float lp;        // состояние ФНЧ
+    float d, d_target; // задержка в сэмплах: текущая и цель
+    int zero_run;    // нулевых записей подряд; >= ACID_DELAY_LEN - буфер весь в нулях
+} acid_delay_t;
+
+void acid_delay_init(acid_delay_t *d, float sr); // 120 BPM, 3/16, fb 0.4, тон 4 кГц; буфер чистится
+void acid_delay_set(acid_delay_t *d, int time_knob, int fb_knob, int tone_knob);
+void acid_delay_set_spb(acid_delay_t *d, float spb);
+float acid_delay_next(acid_delay_t *d, float in); // in - сумма посылов, возврат - повторы
+int acid_delay_active(const acid_delay_t *d);     // 0: в буфере одни нули, next можно не звать
+float acid_delay_time_samples(const acid_delay_t *d); // целевая задержка

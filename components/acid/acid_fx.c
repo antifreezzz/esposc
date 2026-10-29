@@ -1,6 +1,7 @@
 #include "acid_fx.h"
 
 #include <math.h>
+#include <string.h>
 
 #define PI_F 3.14159265f
 #define PUMP_ATTACK_S 0.003f
@@ -213,4 +214,84 @@ float acid_crush_next(acid_crush_t *c, float x)
 int acid_crush_active(const acid_crush_t *c)
 {
     return c->bits_knob != 0 || c->rate_knob != 0;
+}
+
+#define DELAY_SCALE 16384.0f // запас +-2 в 16 битах
+#define DELAY_SLEW 0.5f      // задержка меняется не быстрее 0.5 сэмпла за сэмпл: высота плывёт до x1.5
+#define DELAY_TONE_LO 500.0f
+#define DELAY_TONE_HI 12000.0f
+
+// Доли четверти по зонам ручки времени: 1/16, 1/8, 3/16, 1/4, 3/8.
+static const float DELAY_DIVS[5] = {0.25f, 0.5f, 0.75f, 1.0f, 1.5f};
+
+static void delay_target(acid_delay_t *d)
+{
+    float t = d->spb * DELAY_DIVS[d->time_knob * 5 / 128];
+    while (t > (float)(ACID_DELAY_LEN - 2)) {
+        t *= 0.5f; // при медленном темпе доля не влезает: вдвое короче
+    }
+    d->d_target = t;
+}
+
+void acid_delay_init(acid_delay_t *d, float sr)
+{
+    d->sr = sr;
+    memset(d->buf, 0, sizeof d->buf);
+    d->w = 0;
+    d->lp = 0.0f;
+    d->zero_run = ACID_DELAY_LEN;
+    d->spb = sr * 0.5f;
+    acid_delay_set(d, 2 * 128 / 5 + 1, 53, 83); // 3/16, fb ~0.4, тон ~4 кГц
+    d->d = d->d_target;
+}
+
+void acid_delay_set(acid_delay_t *d, int time_knob, int fb_knob, int tone_knob)
+{
+    d->time_knob = time_knob;
+    d->fb = (float)fb_knob * 0.95f / 127.0f;
+    float fc = DELAY_TONE_LO * powf(DELAY_TONE_HI / DELAY_TONE_LO, (float)tone_knob / 127.0f);
+    d->tone = 1.0f - expf(-2.0f * PI_F * fc / d->sr);
+    delay_target(d);
+}
+
+void acid_delay_set_spb(acid_delay_t *d, float spb)
+{
+    d->spb = spb;
+    delay_target(d);
+}
+
+float acid_delay_next(acid_delay_t *d, float in)
+{
+    float dd = d->d_target - d->d;
+    d->d += dd > DELAY_SLEW ? DELAY_SLEW : (dd < -DELAY_SLEW ? -DELAY_SLEW : dd);
+
+    // Дробное чтение назад от точки записи, линейная интерполяция.
+    float pos = (float)d->w - d->d;
+    pos += pos < 0.0f ? (float)ACID_DELAY_LEN : 0.0f;
+    int i0 = (int)pos;
+    float f = pos - (float)i0;
+    int i1 = i0 + 1 < ACID_DELAY_LEN ? i0 + 1 : 0;
+    float r = ((float)d->buf[i0] + f * (float)(d->buf[i1] - d->buf[i0])) * (1.0f / DELAY_SCALE);
+
+    d->lp += (r - d->lp) * d->tone;
+    if (fabsf(d->lp) < 1e-7f) {
+        d->lp = 0.0f; // без хвоста в субнормалах
+    }
+    float x = (in + d->fb * d->lp) * DELAY_SCALE;
+    x = x > 32767.0f ? 32767.0f : (x < -32767.0f ? -32767.0f : x);
+    int16_t q = (int16_t)x; // к нулю: тихий хвост сам уходит в 0, без зацикливания на младшем бите
+    d->buf[d->w] = q;
+    d->w = d->w + 1 < ACID_DELAY_LEN ? d->w + 1 : 0;
+    d->zero_run = q ? 0 : (d->zero_run < ACID_DELAY_LEN ? d->zero_run + 1 : d->zero_run);
+    return d->lp;
+}
+
+int acid_delay_active(const acid_delay_t *d)
+{
+    return d->zero_run < ACID_DELAY_LEN || d->lp != 0.0f;
+}
+
+float acid_delay_time_samples(const acid_delay_t *d)
+{
+    return d->d_target;
 }

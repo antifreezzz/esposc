@@ -424,6 +424,130 @@ TEST(test_crush_bits_multiple_of_step)
     CHECK(c.step > 0.0f && c.step < 0.01f);
 }
 
+// --- Дилэй ---
+
+static acid_delay_t dl; // буфер большой: не на стеке
+
+#define DL_ZONE(z) ((z) * 128 / 5 + 1) // ручка времени в середине зоны z: 0 1/16 .. 4 3/8
+
+static void delay_ready(int zone, int fb_knob, int tone_knob)
+{
+    acid_delay_init(&dl, SR);
+    acid_delay_set(&dl, DL_ZONE(zone), fb_knob, tone_knob);
+    for (int i = 0; i < 48000; i++) { // время доехало до цели
+        acid_delay_next(&dl, 0.0f);
+    }
+}
+
+// Пик |y| и его позиция на отрезке [from, to) от начала, вход - x(i).
+TEST(test_delay_quarter_at_120)
+{
+    delay_ready(3, 0, 127);
+    CHECK_NEAR(acid_delay_time_samples(&dl), 24000.0f, 0.5f);
+    float pk = 0.0f;
+    int at = -1;
+    for (int i = 0; i < 30000; i++) {
+        float y = acid_delay_next(&dl, i == 0 ? 1.0f : 0.0f);
+        if (fabsf(y) > pk) {
+            pk = fabsf(y);
+            at = i;
+        }
+    }
+    CHECK(at >= 23999 && at <= 24003);
+    CHECK(pk > 0.3f);
+}
+
+// Пачка синуса 1 кГц: пики первого и второго повтора.
+static void burst_peaks(float hz, float *p1, float *p2)
+{
+    int t = (int)acid_delay_time_samples(&dl);
+    *p1 = *p2 = 0.0f;
+    for (int i = 0; i < 3 * t; i++) {
+        float x = i < 2000 ? 0.5f * sinf(2.0f * PI_F * hz * (float)i / SR) : 0.0f;
+        float y = fabsf(acid_delay_next(&dl, x));
+        if (i >= t / 2 && i < t + t / 2) {
+            *p1 = y > *p1 ? y : *p1;
+        } else if (i >= t + t / 2) {
+            *p2 = y > *p2 ? y : *p2;
+        }
+    }
+}
+
+TEST(test_delay_feedback_half)
+{
+    delay_ready(1, 67, 127); // fb 67 * 0.95 / 127 = 0.5
+    float p1, p2;
+    burst_peaks(1000.0f, &p1, &p2);
+    CHECK_NEAR(p1, 0.5f, 0.05f);
+    CHECK_NEAR(p2 / p1, 0.5f, 0.05f);
+}
+
+TEST(test_delay_tone_darkens)
+{
+    delay_ready(0, 0, 0); // ФНЧ 500 Гц
+    float p1, p2;
+    burst_peaks(5000.0f, &p1, &p2);
+    CHECK(p1 > 0.01f);
+    CHECK(p1 < 0.1f); // -14 дБ от пачки 0.5, однополюсный ФНЧ
+    CHECK(p2 == 0.0f);
+}
+
+TEST(test_delay_time_change_smooth)
+{
+    delay_ready(1, 0, 127);
+    float prev = 0.0f, own = 0.0f, j = 0.0f;
+    int t = 0;
+    for (; t < 48000; t++) {
+        float y = acid_delay_next(&dl, 0.5f * sinf(2.0f * PI_F * 200.0f * (float)t / SR));
+        own = t > 24000 && fabsf(y - prev) > own ? fabsf(y - prev) : own;
+        prev = y;
+    }
+    acid_delay_set(&dl, DL_ZONE(3), 0, 127); // 1/8 -> 1/4
+    for (int i = 0; i < 48000; i++, t++) {
+        float y = acid_delay_next(&dl, 0.5f * sinf(2.0f * PI_F * 200.0f * (float)t / SR));
+        j = fabsf(y - prev) > j ? fabsf(y - prev) : j;
+        prev = y;
+    }
+    CHECK(own > 0.01f);
+    CHECK(j < 3.0f * own);
+}
+
+TEST(test_delay_long_time_fits)
+{
+    delay_ready(4, 100, 127);
+    acid_delay_set_spb(&dl, 48000.0f); // 60 BPM: 3/8 = 72000 сэмплов
+    CHECK(acid_delay_time_samples(&dl) <= ACID_DELAY_LEN - 2);
+    CHECK(acid_delay_time_samples(&dl) >= ACID_DELAY_LEN / 4);
+    uint32_t rnd = 11;
+    int fin = 1;
+    for (int i = 0; i < 4 * 48000; i++) {
+        fin &= isfinite(acid_delay_next(&dl, i < 48000 ? 0.5f * acid_noise(&rnd) : 0.0f));
+    }
+    CHECK(fin);
+}
+
+TEST(test_delay_no_stale_tail)
+{
+    delay_ready(1, 120, 127); // fb 0.9
+    CHECK(!acid_delay_active(&dl));
+    uint32_t rnd = 13;
+    for (int i = 0; i < MS(200); i++) {
+        acid_delay_next(&dl, 0.5f * acid_noise(&rnd));
+    }
+    CHECK(acid_delay_active(&dl));
+    int n = 0;
+    while (acid_delay_active(&dl) && n < 60 * 48000) {
+        acid_delay_next(&dl, 0.0f);
+        n++;
+    }
+    CHECK(!acid_delay_active(&dl));
+    int zero = 1;
+    for (int i = 0; i < ACID_DELAY_LEN + 100; i++) {
+        zero &= acid_delay_next(&dl, 0.0f) == 0.0f;
+    }
+    CHECK(zero);
+}
+
 int main(void)
 {
     RUN(test_pump_neutral);
@@ -449,5 +573,11 @@ int main(void)
     RUN(test_crush_3_bits);
     RUN(test_crush_rate_holds_32);
     RUN(test_crush_bits_multiple_of_step);
+    RUN(test_delay_quarter_at_120);
+    RUN(test_delay_feedback_half);
+    RUN(test_delay_tone_darkens);
+    RUN(test_delay_time_change_smooth);
+    RUN(test_delay_long_time_fits);
+    RUN(test_delay_no_stale_tail);
     TEST_MAIN_END();
 }
