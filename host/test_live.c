@@ -174,14 +174,14 @@ TEST(test_live_page_select)
 {
     live();
     CHECK(s.page == 2); // до касания энкодера 1 - синт 1
-    for (int p = 0; p < 4; p++) {
+    for (int p = 0; p < 5; p++) {
         cc(ENC[1], (uint8_t)p);
         CHECK(s.page == p);
     }
-    cc(ENC[1], 4); // такой страницы нет: остаёмся
-    CHECK(s.page == 3);
+    cc(ENC[1], 5); // такой страницы нет: остаёмся
+    CHECK(s.page == 4);
     cc(ENC[1], 127);
-    CHECK(s.page == 3);
+    CHECK(s.page == 4);
     cc(ENC[1], 1);
     CHECK(s.page == 1);
 }
@@ -612,6 +612,101 @@ TEST(test_live_djf_resonance_bounded)
     CHECK(ok);
 }
 
+// --- Этап 7: страница 4 (эффекты) ---
+
+TEST(test_live_fx_delay_echo)
+{
+    live2();
+    for (int k = 0; k < 2; k++) {
+        cur = k ? &s2 : &s;
+        cc(10, 4);
+        if (!k) {
+            cc(76, 127); // посыл синта 1 в дилэй
+        }
+        on(BASS, 45, 127);
+    }
+    acid_synth_render(&s, buf, (size_t)MS(50));
+    acid_synth_render(&s2, buf2, (size_t)MS(50));
+    for (int k = 0; k < 2; k++) {
+        cur = k ? &s2 : &s;
+        off(BASS, 45);
+    }
+    cur = &s;
+    acid_synth_render(&s, buf, (size_t)MS(350));
+    acid_synth_render(&s2, buf2, (size_t)MS(350));
+    float a = rms_of(&s, MS(100));  // 400..500 мс: повтор через 3/16 (375 мс) от ноты
+    float b = rms_of(&s2, MS(100));
+    CHECK(a > 5.0f * b + 1e-4f);
+}
+
+TEST(test_live_clock_sets_delay_time)
+{
+    live();
+    for (int i = 0; i < 48; i++) {
+        send(ACID_MIDI_CLOCK, 0, 0, 0);
+        acid_synth_render(&s, buf, 1200); // 1200 сэмплов на тик = 100 BPM
+    }
+    CHECK_NEAR(acid_delay_time_samples(&s.delay), 0.75f * 28800.0f, 1.0f);
+}
+
+TEST(test_live_crush_changes_sound)
+{
+    live2();
+    for (int k = 0; k < 2; k++) {
+        cur = k ? &s2 : &s;
+        cc(10, 4);
+        if (!k) {
+            cc(74, 127); // 3 бита
+        }
+        on(BASS, 45, 127);
+    }
+    cur = &s;
+    acid_synth_render(&s, buf, 24000);
+    acid_synth_render(&s2, buf2, 24000);
+    double d = 0.0, e = 0.0;
+    for (int i = 0; i < 24000; i++) {
+        d += (double)(buf[i] - buf2[i]) * (buf[i] - buf2[i]);
+        e += (double)buf2[i] * buf2[i];
+    }
+    CHECK(e > 0.0 && d > 0.01 * e);
+}
+
+TEST(test_live_stutter_repeats)
+{
+    live();
+    cc(10, 4);
+    on(BASS, 45, 127);
+    on(DRUMS, 42, 127);
+    acid_synth_render(&s, buf, (size_t)MS(100));
+    cc(18, 97); // 1/32 при 120 BPM = 3000 сэмплов
+    acid_synth_render(&s, buf, 12000);
+    float md = 0.0f;
+    for (int i = 6200; i < 12000; i++) {
+        md = fabsf(buf[i] - buf[i - 3000]) > md ? fabsf(buf[i] - buf[i - 3000]) : md;
+    }
+    CHECK(md < 1e-6f);
+}
+
+TEST(test_live_fx_page_back_to_neutral)
+{
+    live2();
+    cur = &s2;
+    cc(10, 4);
+    cc(74, 64);
+    cc(76, 127);
+    cc(18, 64);
+    acid_synth_render(&s2, buf2, (size_t)MS(100));
+    cc(74, 0);
+    cc(76, 0);
+    cc(18, 0);
+    acid_synth_render(&s2, buf2, 40000);
+    cur = &s;
+    acid_synth_render(&s, buf, (size_t)MS(100));
+    acid_synth_render(&s, buf, 40000);
+    CHECK(!acid_crush_active(&s2.crush) && !acid_delay_active(&s2.delay) && !acid_stutter_active(&s2.stutter));
+    CHECK(play_same());
+}
+
 int main(void)
 {
     RUN(test_live_silent_until_note);
@@ -635,6 +730,11 @@ int main(void)
     RUN(test_live_fx_back_to_neutral_bitexact);
     RUN(test_live_djf_cuts_highs);
     RUN(test_live_djf_resonance_bounded);
+    RUN(test_live_fx_delay_echo);
+    RUN(test_live_clock_sets_delay_time);
+    RUN(test_live_crush_changes_sound);
+    RUN(test_live_stutter_repeats);
+    RUN(test_live_fx_page_back_to_neutral);
     RUN(test_live_stop_silences);
     RUN(test_live_transitions_no_click);
     RUN(test_live_off_restarts_track);
