@@ -382,7 +382,7 @@ static void page_mix(acid_synth_t *s, int slot, int v)
     case 7: s->clap_gain = lin(v, 0.0f, 1.2f); break;
     case 8: s->snare_gain = lin(v, 0.0f, 1.5f); break;
     case 9: acid_pump_set_depth(&s->pump, lin(v, 0.0f, 1.0f)); break;
-    case 10: acid_pump_set_release(&s->pump, expo(v, 0.03f, 0.6f)); break;
+    case 10: acid_pump_set_release(&s->pump, expo(v, 0.03f, 0.9f)); break;
     case 11: acid_djf_set(&s->djf, v, s->djf.res_knob); break;
     case 12: acid_djf_set(&s->djf, s->djf.knob, v); break;
     default: break;

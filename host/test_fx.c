@@ -181,6 +181,35 @@ TEST(test_pump_envelope_reaches_zero)
     CHECK(p.e == 0.0f);
 }
 
+// Атака линейная: дно приседа ровно через 3 мс.
+TEST(test_pump_attack_3ms)
+{
+    acid_pump_t p;
+    pump_ready(&p, 0.3f);
+    acid_pump_hit(&p, 1.0f);
+    float g = 1.0f;
+    for (int i = 0; i <= MS(3) + 1; i++) {
+        g = acid_pump_next(&p);
+    }
+    CHECK(g < 0.03f);
+}
+
+// Ручка возврата - время почти полного возврата: к T громкость > 95%, к T/2 ещё заметно ниже.
+TEST(test_pump_release_is_recovery_time)
+{
+    acid_pump_t p;
+    pump_ready(&p, 0.3f);
+    acid_pump_hit(&p, 1.0f);
+    float half = 0.0f, full = 0.0f;
+    for (int i = 0; i < MS(3) + MS(300); i++) {
+        float g = acid_pump_next(&p);
+        half = i == MS(3) + MS(150) ? g : half;
+        full = g;
+    }
+    CHECK(half < 0.9f);
+    CHECK(full > 0.95f);
+}
+
 // --- DJ-фильтр ---
 
 TEST(test_djf_map)
@@ -329,6 +358,8 @@ int main(void)
     RUN(test_pump_no_stale_dip_after_enable);
     RUN(test_pump_no_stale_dip_after_reenable);
     RUN(test_pump_envelope_reaches_zero);
+    RUN(test_pump_attack_3ms);
+    RUN(test_pump_release_is_recovery_time);
     RUN(test_djf_map);
     RUN(test_djf_q_ramp);
     RUN(test_djf_bypass_bitexact);

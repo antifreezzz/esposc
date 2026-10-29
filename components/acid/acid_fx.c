@@ -26,7 +26,7 @@ void acid_pump_init(acid_pump_t *p, float sr)
     p->sr = sr;
     p->e = p->target = 0.0f;
     p->depth = p->depth_s = 0.0f;
-    p->atk_coef = one_pole(sr, PUMP_ATTACK_S);
+    p->atk_coef = 1.0f / (PUMP_ATTACK_S * sr); // шаг линейной атаки
     p->smooth = one_pole(sr, SMOOTH_S);
     acid_pump_set_release(p, 0.15f);
 }
@@ -36,9 +36,10 @@ void acid_pump_set_depth(acid_pump_t *p, float depth)
     p->depth = depth;
 }
 
-void acid_pump_set_release(acid_pump_t *p, float tau_s)
+void acid_pump_set_release(acid_pump_t *p, float time_s)
 {
-    p->rel_coef = expf(-1.0f / (tau_s * p->sr));
+    // Время почти полного возврата: за 3.5 постоянных времени огибающая спадает до 3%.
+    p->rel_coef = expf(-3.5f / (time_s * p->sr));
 }
 
 void acid_pump_hit(acid_pump_t *p, float vel)
@@ -62,8 +63,9 @@ float acid_pump_next(acid_pump_t *p)
         return 1.0f;
     }
     if (p->target > p->e) {
-        p->e += (p->target - p->e) * p->atk_coef;
-        if (p->e >= 0.98f * p->target) {
+        p->e += p->atk_coef;
+        if (p->e >= p->target) {
+            p->e = p->target;
             p->target = 0.0f; // атака дошла: дальше возврат
         }
     } else {

@@ -6,14 +6,14 @@
 typedef struct {
     float sr;
     float e, target;      // огибающая и цель атаки (velocity удара)
-    float atk_coef, rel_coef;
+    float atk_coef, rel_coef; // шаг линейной атаки и множитель спада
     float depth, depth_s; // глубина с ручки и сглаженная
     float smooth;         // коэффициент сглаживания глубины
 } acid_pump_t;
 
 void acid_pump_init(acid_pump_t *p, float sr);           // глубина 0, возврат 0.15 с
 void acid_pump_set_depth(acid_pump_t *p, float depth);   // 0..1
-void acid_pump_set_release(acid_pump_t *p, float tau_s); // постоянная времени возврата
+void acid_pump_set_release(acid_pump_t *p, float time_s); // время почти полного возврата
 void acid_pump_hit(acid_pump_t *p, float vel);           // vel 0..1: цель max(target, vel)
 float acid_pump_next(acid_pump_t *p);                    // множитель на сэмпл
 int acid_pump_active(const acid_pump_t *p);              // 0: глубина ноль, next можно не звать
