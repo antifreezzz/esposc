@@ -6,6 +6,7 @@
 #include "acid_drums.h"
 #include "acid_env.h"
 #include "acid_filter.h"
+#include "acid_fx.h"
 #include "acid_kick.h"
 #include "acid_midi.h"
 #include "acid_osc.h"
@@ -97,6 +98,8 @@ typedef struct {
     float hat_tone, hat_closed_s, hat_open_s;
     float clap_tone, clap_tail_s;
     float snare_tune, snare_snappy, snare_decay_s;
+    acid_pump_t pump;  // пампинг от ноты бочки (страница 0, энкодеры 10-11)
+    acid_djf_t djf;    // DJ-фильтр мастера (страница 0, энкодеры 12-13)
     int page;          // страница ручек: 0 микс, 1 ударка, 2 синт 1, 3 синт 2
 
     int live;          // live-режим: ноты от MIDI, свой секвенсор молчит

@@ -114,6 +114,8 @@ void acid_synth_init(acid_synth_t *s, float sr)
     s->snare_tune = ACID_SNARE_TUNE_HZ;
     s->snare_snappy = ACID_SNARE_SNAPPY;
     s->snare_decay_s = ACID_SNARE_DECAY_S;
+    acid_pump_init(&s->pump, sr);
+    acid_djf_init(&s->djf, sr);
     s->page = PAGE_SYNTH1;
     s->live = 0;
 
@@ -342,6 +344,7 @@ static void drum_on(acid_synth_t *s, int note, int vel)
     if (note == 36) {
         acid_kick_trigger(&s->kick);
         s->kick_vel = v;
+        acid_pump_hit(&s->pump, v); // от ноты: при бочке в нуле тоже качает
     } else if (note == 38 || note == 40) {
         acid_snare_trigger(&s->snare);
         s->snare_vel = v;
@@ -378,6 +381,10 @@ static void page_mix(acid_synth_t *s, int slot, int v)
     case 6: s->hat_gain = lin(v, 0.0f, 0.6f); break;
     case 7: s->clap_gain = lin(v, 0.0f, 1.2f); break;
     case 8: s->snare_gain = lin(v, 0.0f, 1.5f); break;
+    case 9: acid_pump_set_depth(&s->pump, lin(v, 0.0f, 1.0f)); break;
+    case 10: acid_pump_set_release(&s->pump, expo(v, 0.03f, 0.6f)); break;
+    case 11: acid_djf_set(&s->djf, v, s->djf.res_knob); break;
+    case 12: acid_djf_set(&s->djf, s->djf.knob, v); break;
     default: break;
     }
 }
@@ -704,12 +711,22 @@ void acid_synth_render_with(acid_synth_t *s, float *out, size_t n, const float *
             v->ctrl_left = 0; // новая нота: пересчитать сразу
         }
         float y = slot_next(s, v, s->live ? v->nheld > 0 : acid_seq_gate(&s->seq));
-        y += s->kick_gain * s->kick_vel * acid_kick_next(&s->kick);
-        y += s->hat_gain * s->hat_vel * acid_hat_next(&s->hat);
-        y += s->clap_gain * s->clap_vel * acid_clap_next(&s->clap);
-        y += s->snare_gain * s->snare_vel * acid_snare_next(&s->snare);
-        if (slot1[i] != 0.0f) {
-            y += slot1[i]; // молчащий слот 1 не трогает y: автопилот бит в бит прежний
+        if (acid_pump_active(&s->pump) || acid_djf_active(&s->djf)) {
+            float kick = s->kick_gain * s->kick_vel * acid_kick_next(&s->kick);
+            y += s->hat_gain * s->hat_vel * acid_hat_next(&s->hat);
+            y += s->clap_gain * s->clap_vel * acid_clap_next(&s->clap);
+            y += s->snare_gain * s->snare_vel * acid_snare_next(&s->snare);
+            y += slot1[i];
+            y = acid_djf_next(&s->djf, kick + acid_pump_next(&s->pump) * y);
+        } else {
+            // Нейтральные эффекты: прежний порядок сложения, автопилот бит в бит.
+            y += s->kick_gain * s->kick_vel * acid_kick_next(&s->kick);
+            y += s->hat_gain * s->hat_vel * acid_hat_next(&s->hat);
+            y += s->clap_gain * s->clap_vel * acid_clap_next(&s->clap);
+            y += s->snare_gain * s->snare_vel * acid_snare_next(&s->snare);
+            if (slot1[i] != 0.0f) {
+                y += slot1[i]; // молчащий слот 1 не трогает y: автопилот бит в бит прежний
+            }
         }
         out[i] = s->master * OUT_PEAK * acid_tanh(s->drive * y);
     }
