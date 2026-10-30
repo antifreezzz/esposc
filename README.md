@@ -118,4 +118,5 @@ host/build/acid_render out.wav 180         # демо-трек в WAV
 ## Документы
 
 - `docs/controls.html` - визуальная инструкция по ручкам.
+- `docs/roadmap.md` - дорожная карта: что дальше и что решено не делать.
 - `docs/superpowers/specs/` - дизайн по этапам, `docs/superpowers/plans/` - планы реализации.
