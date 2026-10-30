@@ -7,20 +7,20 @@
 
 #define SR 48000
 
-static uint32_t img_[1024 * 1024 / 4 + 1024]; // 1 МБ образа и канарейка после
+static uint32_t img_[2 * 1024 * 1024 / 4 + 1024]; // 2 МБ образа и канарейка после
 static uint8_t *const img = (uint8_t *)img_;
 static acid_bank_t bank;
 static acid_cym_t c;
 
 static const fixture_note_t NOTES[] = {
     {49, 3, {40, 90, 127}, {2, 2, 2}, SR},
-    {51, 3, {40, 90, 127}, {2, 2, 2}, SR},
+    {51, 3, {40, 90, 127}, {1, 1, 1}, 3 * SR}, // райд длинный: голоса не кончаются сами за время теста
     {53, 3, {40, 90, 127}, {2, 2, 2}, SR},
 };
 
 static void setup(void)
 {
-    size_t n = fixture_bank(img, 1024 * 1024, NOTES, 3);
+    size_t n = fixture_bank(img, 2 * 1024 * 1024, NOTES, 3);
     memset(img + n, 0xAA, sizeof img_ - n); // за образом мусор: чтение туда испортит звук
     CHECK(n > 0 && acid_bank_open(&bank, img, n));
     acid_cym_init(&c, (float)SR);
@@ -137,10 +137,10 @@ TEST(test_cym_retrigger_fades_previous)
     acid_cym_trigger(&c, &bank, 51, 1.0f);
     CHECK(acid_cym_voices(&c) == 2);
     CHECK(acid_cym_sounding(&c) == 1);
-    run(SR * 30 / 1000, NULL);
-    CHECK(acid_cym_voices(&c) == 2); // за 30 мс ещё уходит
-    run(SR * 30 / 1000, NULL);
-    CHECK(acid_cym_voices(&c) == 1);
+    run(SR * 6 / 10, NULL);
+    CHECK(acid_cym_voices(&c) == 2); // звон прежнего копится под новым: через 0.6 с ещё уходит
+    run(SR * 15 / 100, NULL);
+    CHECK(acid_cym_voices(&c) == 1); // за 0.7 с ушёл
 }
 
 TEST(test_cym_bell_keeps_ride)
@@ -251,10 +251,10 @@ TEST(test_cym_ride_roll_no_buildup)
         acid_cym_trigger(&c, &bank, 51, 1.0f);
         float pk = run(step, NULL);
         CHECK(isfinite(pk));
-        CHECK(acid_cym_voices(&c) == 1); // к следующему удару прежние ушли
-        // Фикстура не затухает: удар плюс уходящий прежний дают пик выше одиночного уже со второго удара.
-        // Накопление - это рост дальше: поздние удары против первых трёх.
-        if (t < 3 * step) {
+        CHECK(acid_cym_voices(&c) <= 5); // перебитые уходят за 0.7 с: на восьмых не больше 4 под новым
+        // Фикстура не затухает, а перебитые звенят под новыми: пик растёт первые ~0.7 с.
+        // Накопление - это рост дальше: последние 5 с против секунд 1-3.
+        if (t >= SR && t < 3 * SR) {
             first = pk > first ? pk : first;
         } else if (t > 5 * SR) {
             second = pk > second ? pk : second;

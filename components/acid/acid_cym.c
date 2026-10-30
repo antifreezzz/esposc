@@ -5,7 +5,7 @@
 
 #include "acid_fx.h"
 
-#define RETRIG_S 0.05f // перебитый удар той же ноты уходит
+#define RETRIG_S 0.7f // перебитый удар той же ноты уходит медленно: звон копится, как у живой тарелки
 #define STEAL_S 0.005f // забранный голос уходит
 #define TAIL_MIN_S 0.05f
 #define TAIL_MAX_S 2.0f
