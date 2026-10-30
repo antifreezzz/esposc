@@ -174,14 +174,14 @@ TEST(test_live_page_select)
 {
     live();
     CHECK(s.page == 2); // до касания энкодера 1 - синт 1
-    for (int p = 0; p < 5; p++) {
+    for (int p = 0; p < 6; p++) {
         cc(ENC[1], (uint8_t)p);
         CHECK(s.page == p);
     }
-    cc(ENC[1], 5); // такой страницы нет: остаёмся
-    CHECK(s.page == 4);
+    cc(ENC[1], 6); // такой страницы нет: остаёмся
+    CHECK(s.page == 5);
     cc(ENC[1], 127);
-    CHECK(s.page == 4);
+    CHECK(s.page == 5);
     cc(ENC[1], 1);
     CHECK(s.page == 1);
 }
@@ -715,6 +715,186 @@ TEST(test_live_fx_page_back_to_neutral)
     CHECK(play_same());
 }
 
+// --- Слой тональности (страница 5) ---
+
+static int tick_n; // тиков с последнего Start
+
+// n тиков клока по 250 сэмплов (120 BPM).
+static void clk(int n)
+{
+    for (int i = 0; i < n; i++) {
+        send(ACID_MIDI_CLOCK, 0, 0, 0);
+        rms(250);
+        tick_n++;
+    }
+}
+
+static void start(void)
+{
+    send(ACID_MIDI_START, 0, 0, 0);
+    tick_n = 0;
+}
+
+static float hz(int k)
+{
+    return exp2f(s.slot[k].pitch_log2);
+}
+
+static float note_hz(int n)
+{
+    return 440.0f * exp2f((float)(n - 69) / 12.0f);
+}
+
+// Слой на 1 такт, шаг 2 = +5 полутонов, звучащая нота по режиму mode.
+static void tonal_setup(int mode)
+{
+    live();
+    cc(10, 5);
+    cc(74, 1);   // длина шага 1 такт
+    cc(93, mode);
+    cc(18, 69);  // шаг 2 (энкодер 10) = +5
+    start();
+}
+
+TEST(test_live_tonal_page)
+{
+    live();
+    cc(10, 5);
+    CHECK(s.page == 5);
+    cc(74, 1);
+    CHECK(s.tonal.len == 1);
+    cc(10, 4);
+    cc(74, 3);
+    CHECK(s.tonal.len == 1); // на странице эффектов CC 74 - хруст
+    CHECK(s.crush.bits_knob == 3);
+}
+
+TEST(test_live_tonal_shifts_next_bar)
+{
+    tonal_setup(0);
+    clk(1);
+    on(BASS, 45, 100);
+    rms(480);
+    CHECK_NEAR(hz(0), 110.0f, 0.5f);
+    off(BASS, 45);
+    clk(96); // граница такта 2
+    on(BASS, 45, 100);
+    rms(480);
+    CHECK_NEAR(hz(0), note_hz(50), 0.5f);
+    off(BASS, 45);
+}
+
+TEST(test_live_tonal_held_modes)
+{
+    for (int mode = 0; mode <= 2; mode++) {
+        tonal_setup(mode);
+        clk(1);
+        on(BASS, 45, 100);
+        clk(95);
+        clk(1); // граница, нота держится
+        if (mode == 0) {
+            CHECK_NEAR(hz(0), 110.0f, 0.5f);
+        } else if (mode == 1) {
+            CHECK(s.slot[0].gliding);
+            CHECK_NEAR(exp2f(s.slot[0].target_log2), note_hz(50), 0.5f);
+            CHECK(hz(0) < note_hz(50) - 0.5f); // ещё едет
+        } else {
+            CHECK_NEAR(hz(0), note_hz(50), 0.5f);
+        }
+    }
+}
+
+TEST(test_live_tonal_early_note)
+{
+    tonal_setup(0);
+    clk(96);
+    rms(10);
+    on(BASS, 45, 100); // за ~5 мс до границы
+    clk(1);
+    CHECK_NEAR(hz(0), note_hz(50), 0.5f);
+}
+
+TEST(test_live_tonal_release_no_stuck)
+{
+    tonal_setup(0);
+    clk(1);
+    on(BASS, 45, 100);
+    clk(96);
+    off(BASS, 45);
+    rms(4800);
+    CHECK(s.slot[0].nheld == 0);
+    on(BASS, 40, 100);
+    on(BASS, 47, 100);
+    clk(96); // шаг 3 = 0
+    clk(96); // шаг 4 = 0, затем по кругу шаг 1
+    clk(96); // шаг 1 = 0
+    clk(96); // шаг 2 = +5
+    off(BASS, 47);
+    rms(4800);
+    CHECK_NEAR(exp2f(s.slot[0].target_log2), note_hz(45), 0.5f);
+    off(BASS, 40);
+    rms(4800);
+    CHECK(s.slot[0].nheld == 0);
+}
+
+TEST(test_live_tonal_target)
+{
+    tonal_setup(2);
+    cc(77, 2); // только синт 2
+    clk(97);
+    on(BASS, 45, 100);
+    on(SEQ2, 45, 100);
+    rms(480);
+    CHECK_NEAR(hz(0), 110.0f, 0.5f);
+    CHECK_NEAR(hz(1), note_hz(50), 0.5f);
+}
+
+TEST(test_live_tonal_continue)
+{
+    tonal_setup(0);
+    clk(97);
+    CHECK(s.tonal.step == 1);
+    send(ACID_MIDI_STOP, 0, 0, 0);
+    send(ACID_MIDI_CONTINUE, 0, 0, 0);
+    CHECK(s.tonal.step == 1);
+    start();
+    CHECK(s.tonal.step == 0);
+}
+
+// Слой выключен (длина 0), шаги выставлены: звук бит в бит как без страницы 5.
+// Только синт 1: у Plaits общий на все экземпляры генератор случайных чисел (stmlib::Random),
+// два экземпляра с синтом 2 бит в бит не совпадут и без слоя.
+TEST(test_live_tonal_off_bitexact)
+{
+    live2();
+    cur = &s2;
+    cc(10, 5);
+    cc(114, 70);
+    cc(18, 60);
+    for (int pass = 0; pass < 2; pass++) {
+        cur = pass ? &s2 : &s;
+        send(ACID_MIDI_START, 0, 0, 0);
+    }
+    int same = 1;
+    for (int b = 0; b < 300; b++) {
+        for (int pass = 0; pass < 2; pass++) {
+            cur = pass ? &s2 : &s;
+            send(ACID_MIDI_CLOCK, 0, 0, 0);
+            if (b % 24 == 0) {
+                on(BASS, 45 + (b / 24) % 5, 100);
+            }
+            if (b % 24 == 12) {
+                off(BASS, 45 + (b / 24) % 5);
+            }
+        }
+        acid_synth_render(&s, buf, 250);
+        acid_synth_render(&s2, buf2, 250);
+        same &= memcmp(buf, buf2, 250 * sizeof buf[0]) == 0;
+    }
+    cur = &s;
+    CHECK(same);
+}
+
 int main(void)
 {
     RUN(test_live_silent_until_note);
@@ -755,5 +935,13 @@ int main(void)
     RUN(test_live_short_note_still_ends);
     RUN(test_live_fast_repeat_retriggers);
     RUN(test_live_short_note_then_other_note_retriggers);
+    RUN(test_live_tonal_page);
+    RUN(test_live_tonal_shifts_next_bar);
+    RUN(test_live_tonal_held_modes);
+    RUN(test_live_tonal_early_note);
+    RUN(test_live_tonal_release_no_stuck);
+    RUN(test_live_tonal_target);
+    RUN(test_live_tonal_continue);
+    RUN(test_live_tonal_off_bitexact);
     TEST_MAIN_END();
 }
