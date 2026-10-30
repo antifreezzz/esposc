@@ -11,6 +11,7 @@
 #include "acid_kick.h"
 #include "acid_midi.h"
 #include "acid_osc.h"
+#include "acid_perc.h"
 #include "acid_plaits.h"
 #include "acid_tonal.h"
 
@@ -106,6 +107,7 @@ typedef struct {
     acid_cym_t cym;
     const acid_bank_t *bank;
     uint8_t cym_tail[2], cym_tune[2], cym_pan[2];
+    acid_perc_t perc; // страницы 3-5: томы, рим, ковбелл
     int page; // 0 микс, 1 ударка, 2 ударка 2, 3 томы, 4 рим, 5 ковбелл, 6 синт 1, 7 синт 2, 8 эффекты, 9 тональность
 
     int save;          // сменили тип или ручку слоя тональности: память ручек пора записать

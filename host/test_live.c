@@ -9,6 +9,7 @@
 #define BASS 4  // MIDI канал 5
 #define DRUMS 1 // MIDI канал 2
 #define SEQ2 5  // MIDI канал 6
+#define MS(x) ((int)((x) * SR / 1000.0f))
 
 static acid_synth_t s, s2;
 static acid_synth_t *cur = &s; // куда идут send/on/off/cc
@@ -211,22 +212,6 @@ TEST(test_live_drums2_page_empty)
     check_untouched(&before);
 }
 
-// Страницы 3-5 (перкуссия) пока пустые.
-TEST(test_live_perc_pages_empty)
-{
-    live();
-    static acid_synth_t before;
-    for (int p = 3; p <= 5; p++) {
-        page(p);
-        before = s;
-        for (int e = 2; e <= 16; e++) {
-            cc(ENC[e], 0);
-            cc(ENC[e], 127);
-        }
-        check_untouched(&before);
-    }
-}
-
 // Тарелки: синтетический набор, крэш 49, райд 51, купол 53 по 3 слоя, 1 с.
 static uint32_t bank_img_[1024 * 1024 / 4];
 static acid_bank_t bank;
@@ -356,6 +341,125 @@ TEST(test_live_bank_survives_init)
     acid_synth_set_bank(&s, &bank);
     on(DRUMS, 49, 127);
     CHECK(rms(4800) > 0.01f);
+}
+
+// Перкуссия: томы, рим, ковбелл на канале ударки.
+static const uint8_t PERC_NOTES[8] = {37, 41, 43, 45, 47, 48, 50, 56};
+
+TEST(test_live_perc_notes)
+{
+    for (int i = 0; i < 8; i++) {
+        live();
+        on(BASS, PERC_NOTES[i], 127); // не канал ударки: молчит
+        CHECK(acid_perc_voices(&s.perc) == 0);
+        on(DRUMS, PERC_NOTES[i], 127);
+        CHECK(acid_perc_voices(&s.perc) == 1);
+        CHECK(rms(MS(50)) > 1e-3f);
+    }
+    live();
+    on(DRUMS, 42, 127);
+    CHECK(acid_perc_voices(&s.perc) == 0);
+}
+
+TEST(test_live_perc_pages)
+{
+    live();
+    page(3);
+    cc(ENC[2], 3);
+    CHECK(s.perc.inst[ACID_PERC_TOMS].model == 3);
+    cc(ENC[15], 10);
+    CHECK(s.perc.inst[ACID_PERC_TOMS].knob[ACID_PERC_INTERVAL] == 10);
+    page(4);
+    cc(ENC[4], 5);
+    CHECK(s.perc.inst[ACID_PERC_RIM].knob[ACID_PERC_DECAY] == 5);
+    CHECK(s.perc.inst[ACID_PERC_TOMS].knob[ACID_PERC_DECAY] != 5);
+    page(5);
+    cc(ENC[2], 4);
+    CHECK(s.perc.inst[ACID_PERC_COW].model == 4);
+    cc(ENC[12], 0);
+    CHECK(s.perc.inst[ACID_PERC_COW].knob[ACID_PERC_LEVEL] == 0);
+    // Энкодер 16 у рима свободен: ничего не меняет.
+    static acid_synth_t before;
+    page(4);
+    before = s;
+    cc(ENC[16], 0);
+    cc(ENC[16], 127);
+    check_untouched(&before);
+    CHECK(memcmp(&before.perc, &s.perc, sizeof s.perc) == 0);
+}
+
+static float perc_peak(uint8_t note)
+{
+    live();
+    on(DRUMS, note, 96);
+    return peak(MS(300));
+}
+
+TEST(test_live_perc_default_levels)
+{
+    float snare = perc_peak(38);
+    static const uint8_t N[3] = {45, 37, 56};
+    for (int i = 0; i < 3; i++) {
+        float p = perc_peak(N[i]);
+        printf("  note %d peak %.3f, snare %.3f\n", N[i], p, snare);
+        CHECK(p > 0.4f * snare && p < 1.5f * snare);
+    }
+}
+
+TEST(test_live_perc_under_pump_and_send)
+{
+    live();
+    cc(10, 0);
+    cc(93, 0);   // бочка в нуле: мерим только ковбелл
+    cc(18, 127); // глубина пампинга
+    cc(19, 64);
+    page(5);
+    cc(ENC[4], 127); // длинный ковбелл
+    on(DRUMS, 56, 127);
+    rms(MS(50));
+    float r0 = rms(MS(20));
+    on(DRUMS, 36, 127);
+    rms(MS(5));
+    CHECK(rms(MS(10)) < 0.3f * r0);
+
+    live();
+    page(8);
+    cc(ENC[6], 127); // посыл ударки в дилэй
+    on(DRUMS, 37, 127);
+    rms(480);
+    CHECK(acid_delay_active(&s.delay));
+}
+
+TEST(test_live_perc_keeps_cymbals)
+{
+    with_bank();
+    on(DRUMS, 49, 127);
+    int cym = acid_cym_voices(&s.cym);
+    CHECK(cym == 1);
+    on(DRUMS, 41, 127);
+    on(DRUMS, 45, 127);
+    on(DRUMS, 50, 127);
+    on(DRUMS, 37, 127);
+    rms(MS(10));
+    on(DRUMS, 51, 127);
+    CHECK(acid_cym_voices(&s.cym) == 2);
+    CHECK(acid_perc_sounding(&s.perc) == 3);
+}
+
+TEST(test_live_perc_init_clears)
+{
+    live();
+    page(3);
+    cc(ENC[2], 2);
+    cc(ENC[3], 0);
+    on(DRUMS, 41, 127);
+    on(DRUMS, 37, 127);
+    rms(MS(10));
+    acid_synth_init(&s, SR);
+    CHECK(acid_perc_voices(&s.perc) == 0);
+    static acid_perc_t fresh;
+    acid_perc_init(&fresh, SR);
+    CHECK(memcmp(fresh.inst, s.perc.inst, sizeof fresh.inst) == 0);
 }
 
 TEST(test_live_cymbal_send)
@@ -701,7 +805,6 @@ TEST(test_live_short_note_then_other_note_retriggers)
     CHECK_NEAR(acid_synth_pitch_hz(&s), acid_midi_to_hz(50), 0.5f);
 }
 
-#define MS(x) ((int)((x) * SR / 1000.0f))
 
 // --- Этап 6: пампинг и DJ-фильтр (страница 0, энкодеры 10-13 = CC 18, 19, 16, 17) ---
 
@@ -1216,7 +1319,6 @@ int main(void)
     RUN(test_live_drums);
     RUN(test_live_page_select);
     RUN(test_live_drums2_page_empty);
-    RUN(test_live_perc_pages_empty);
     RUN(test_live_cymbal_notes);
     RUN(test_live_drums2_knobs);
     RUN(test_live_cymbal_knob_mapping);
@@ -1224,6 +1326,12 @@ int main(void)
     RUN(test_live_cymbals_without_bank);
     RUN(test_live_bank_survives_init);
     RUN(test_live_cymbal_send);
+    RUN(test_live_perc_notes);
+    RUN(test_live_perc_pages);
+    RUN(test_live_perc_default_levels);
+    RUN(test_live_perc_under_pump_and_send);
+    RUN(test_live_perc_keeps_cymbals);
+    RUN(test_live_perc_init_clears);
     RUN(test_live_cymbal_defaults);
     RUN(test_live_bass_page);
     RUN(test_live_transpose);
