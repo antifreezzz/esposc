@@ -96,7 +96,7 @@ typedef struct {
     acid_delay_t delay;
     acid_stutter_t stutter;
     int16_t *fx_mem;   // буфер дилэя, выделяется один раз (s обнулён до первого init)
-    int16_t *st_mem;   // буфер статтера, так же
+    float *st_mem;     // буфер статтера, так же
     float send1, send2, send_drums; // посылы в дилэй 0..1
     float pan_l[ACID_PANS], pan_r[ACID_PANS]; // усиления каналов по источникам
     int dl_time, dl_fb, dl_tone;    // сырые ручки дилэя
