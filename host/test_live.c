@@ -1302,8 +1302,15 @@ TEST(test_live_fx_motion_knobs)
     CHECK(s.delay.motion == 1);
 }
 
-// Защита от лавины: блок считается дольше 90% бюджета - перкуссия и тарелки на одном голосе,
-// пока нагрузка не продержится ниже 75% полсекунды (250 блоков).
+// Защита от лавины: сглаженная нагрузка (среднее ~8 блоков) выше 90% бюджета - перкуссия и тарелки на одном
+// голосе, пока она не продержится ниже 75% полсекунды (250 блоков). Одиночный тяжёлый блок буфер переживёт.
+static void load_n(float load, int n)
+{
+    for (int i = 0; i < n; i++) {
+        acid_synth_set_load(&s, load);
+    }
+}
+
 TEST(test_live_load_guard)
 {
     with_bank();
@@ -1313,28 +1320,26 @@ TEST(test_live_load_guard)
     on(DRUMS, 49, 127);
     on(DRUMS, 51, 127);
     CHECK(acid_perc_sounding(&s.perc) == 3 && acid_cym_sounding(&s.cym) == 2);
-    acid_synth_set_load(&s, 0.85f);
+    load_n(0.7f, 100);
+    acid_synth_set_load(&s, 1.2f); // одиночный всплеск
+    load_n(0.7f, 100);
     CHECK(!s.tight);
-    acid_synth_set_load(&s, 0.95f);
+    load_n(0.85f, 200);
+    CHECK(!s.tight);
+    load_n(0.97f, 30);
     CHECK(s.tight);
     CHECK(acid_perc_sounding(&s.perc) == 1 && acid_cym_sounding(&s.cym) == 1);
     on(DRUMS, 45, 127);
     on(DRUMS, 53, 127);
     CHECK(acid_perc_sounding(&s.perc) == 1 && acid_cym_sounding(&s.cym) == 1);
-    for (int i = 0; i < 1000; i++) {
-        acid_synth_set_load(&s, 0.8f); // между порогами: держимся
-    }
+    load_n(0.8f, 1000); // между порогами: держимся
     CHECK(s.tight);
-    for (int i = 0; i < 249; i++) {
-        acid_synth_set_load(&s, 0.5f);
-    }
+    load_n(0.5f, 200);
     CHECK(s.tight);
-    acid_synth_set_load(&s, 0.95f); // всплеск сбрасывает счёт спокойных блоков
-    for (int i = 0; i < 249; i++) {
-        acid_synth_set_load(&s, 0.5f);
-    }
+    load_n(1.5f, 10); // новый перегруз сбрасывает счёт спокойных блоков
+    load_n(0.5f, 200);
     CHECK(s.tight);
-    acid_synth_set_load(&s, 0.5f);
+    load_n(0.5f, 100);
     CHECK(!s.tight);
     on(DRUMS, 41, 127);
     on(DRUMS, 50, 127);

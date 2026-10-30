@@ -152,6 +152,7 @@ void acid_synth_init(acid_synth_t *s, float sr)
     acid_cym_init(&s->cym, sr);
     acid_perc_init(&s->perc, sr);
     s->tight = s->calm = 0;
+    s->load_avg = 0.0f;
     s->bank = NULL;
     for (int k = 0; k < 2; k++) {
         s->cym_tail[k] = 127;
@@ -171,6 +172,9 @@ void acid_synth_set_bank(acid_synth_t *s, const acid_bank_t *b)
 
 void acid_synth_set_load(acid_synth_t *s, float load)
 {
+    // Одиночный тяжёлый блок буфер выхода переживёт, лавину даёт устойчивый перегруз: смотрим на среднее.
+    s->load_avg += (load - s->load_avg) * (1.0f / ACID_LOAD_AVG);
+    load = s->load_avg;
     if (load >= ACID_LOAD_HIGH) {
         s->calm = 0;
         if (!s->tight) {
