@@ -1,19 +1,6 @@
 #pragma once
 #include <stdint.h>
 
-// Быстрый tanh (Паде 3/2), точен до ~2% и ровно +/-1 за |x| >= 3.
-static inline float acid_tanh(float x)
-{
-    if (x > 3.0f) {
-        return 1.0f;
-    }
-    if (x < -3.0f) {
-        return -1.0f;
-    }
-    float x2 = x * x;
-    return x * (27.0f + x2) / (27.0f + 9.0f * x2);
-}
-
 // Деление float на S3 - программный вызов (у FPU нет инструкции, GCC её не строит ни с какими флагами).
 // 1/x: начальное приближение битовым трюком (~5%), три шага Ньютона (ошибка 5% -> 2.5e-3 -> 6e-6 -> точность
 // float). Только умножения и сложения FPU. x не 0, не бесконечность.
@@ -40,4 +27,17 @@ static inline float acid_sin2pi(float p)
     float s = t * (1.0f + t2 * (-1.6666667e-1f + t2 * (8.3333333e-3f + t2 * (-1.9841270e-4f +
                                                              t2 * (2.7557319e-6f + t2 * -2.5052108e-8f)))));
     return -s;
+}
+
+// Быстрый tanh (Паде 3/2), точен до ~2% и ровно +/-1 за |x| >= 3.
+static inline float acid_tanh(float x)
+{
+    if (x > 3.0f) {
+        return 1.0f;
+    }
+    if (x < -3.0f) {
+        return -1.0f;
+    }
+    float x2 = x * x;
+    return x * (27.0f + x2) * acid_rcp(27.0f + 9.0f * x2); // без программного деления
 }

@@ -14,6 +14,18 @@ TEST(test_fast_tanh_close)
     CHECK(worst < 0.03f);
 }
 
+// Деление в Паде заменено на acid_rcp: та же кривая с точностью ниже 16 бит выхода.
+TEST(test_fast_tanh_same_curve)
+{
+    float worst = 0.0f;
+    for (float x = -4.0f; x <= 4.0f; x += 1e-4f) {
+        float x2 = x * x;
+        float pade = fabsf(x) > 3.0f ? copysignf(1.0f, x) : x * (27.0f + x2) / (27.0f + 9.0f * x2);
+        worst = fmaxf(worst, fabsf(acid_tanh(x) - pade));
+    }
+    CHECK(worst < 1e-6f);
+}
+
 TEST(test_fast_tanh_bounded)
 {
     for (float x = -100.0f; x <= 100.0f; x += 0.01f) {
@@ -72,6 +84,7 @@ int main(void)
     RUN(test_fast_sin_exact_enough);
     RUN(test_svf_cached_coefs_bit_exact);
     RUN(test_fast_tanh_close);
+    RUN(test_fast_tanh_same_curve);
     RUN(test_fast_tanh_bounded);
     TEST_MAIN_END();
 }
