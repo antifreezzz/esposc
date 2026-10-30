@@ -18,9 +18,14 @@ float acid_noise(uint32_t *state)
 
 void acid_svf_bp_hp(acid_svf_t *f, float in, float g, float k, float *bp, float *hp)
 {
-    float a1 = 1.0f / (1.0f + g * (g + k));
-    float a2 = g * a1;
-    float a3 = g * a2;
+    if (g != f->g || k != f->k || f->a1 == 0.0f) { // a1 == 0 - ещё не считали (a1 всегда > 0)
+        f->g = g;
+        f->k = k;
+        f->a1 = 1.0f / (1.0f + g * (g + k));
+        f->a2 = g * f->a1;
+        f->a3 = g * f->a2;
+    }
+    float a1 = f->a1, a2 = f->a2, a3 = f->a3;
     float v3 = in - f->ic2;
     float v1 = a1 * f->ic1 + a2 * v3;
     float v2 = f->ic2 + a2 * f->ic1 + a3 * v3;
