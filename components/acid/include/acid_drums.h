@@ -56,7 +56,7 @@ typedef struct {
     float body_env, body_coef;
     float noise_env, noise_coef;
     float snappy;   // 0 - только корпус, 1 - в основном пружины
-    float sr;
+    float sr, inv_sr;
 } acid_snare_t;
 
 void acid_snare_init(acid_snare_t *s, float sr);

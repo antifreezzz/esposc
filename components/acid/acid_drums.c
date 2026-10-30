@@ -2,6 +2,8 @@
 
 #include <math.h>
 
+#include "acid_math.h"
+
 #define PI_F 3.14159265f
 #define HAT_HZ ACID_HAT_HZ
 #define HAT_CLOSED_S ACID_HAT_CLOSED_S
@@ -121,6 +123,7 @@ void acid_snare_init(acid_snare_t *s, float sr)
     s->pitch_coef = coef(SNARE_PITCH_S, sr);
     s->body_env = s->noise_env = 0.0f;
     s->sr = sr;
+    s->inv_sr = 1.0f / sr;
     acid_snare_set(s, SNARE_TUNE_HZ, SNARE_SNAPPY, SNARE_DECAY_S);
 }
 
@@ -145,8 +148,8 @@ float acid_snare_next(acid_snare_t *s)
         s->body_env = s->noise_env = 0.0f;
         return 0.0f;
     }
-    float body = sinf(2.0f * PI_F * s->phase) * s->body_env;
-    s->phase += s->tune_hz * (1.0f + 0.5f * s->pitch_env) / s->sr;
+    float body = acid_sin2pi(s->phase) * s->body_env; // без libm и деления
+    s->phase += s->tune_hz * (1.0f + 0.5f * s->pitch_env) * s->inv_sr;
     if (s->phase >= 1.0f) {
         s->phase -= 1.0f;
     }

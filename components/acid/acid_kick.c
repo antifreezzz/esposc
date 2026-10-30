@@ -2,6 +2,8 @@
 
 #include <math.h>
 
+#include "acid_math.h"
+
 #define PI_F 3.14159265f
 
 void acid_kick_init(acid_kick_t *k, float sr)
@@ -10,6 +12,7 @@ void acid_kick_init(acid_kick_t *k, float sr)
     k->pitch_env = 0.0f;
     k->amp_env = 0.0f;
     k->sr = sr;
+    k->inv_sr = 1.0f / sr;
     acid_kick_set(k, ACID_KICK_LOW_HZ, ACID_KICK_SWEEP_HZ, ACID_KICK_PITCH_S, ACID_KICK_AMP_S);
 }
 
@@ -34,9 +37,9 @@ float acid_kick_next(acid_kick_t *k)
         k->amp_env = 0.0f;
         return 0.0f;
     }
-    float y = k->amp_env * sinf(2.0f * PI_F * k->phase);
+    float y = k->amp_env * acid_sin2pi(k->phase); // без libm и деления: на плате они дороже всей бочки
     float hz = k->low_hz + k->sweep_hz * k->pitch_env;
-    k->phase += hz / k->sr;
+    k->phase += hz * k->inv_sr;
     if (k->phase >= 1.0f) {
         k->phase -= 1.0f;
     }

@@ -34,6 +34,29 @@ static int crossings(int ms)
     return n;
 }
 
+// Корпус малого без libm и деления: как прежняя формула (шум отключён snappy = 0) с точностью ниже 16 бит.
+TEST(test_snare_body_matches_reference)
+{
+    acid_snare_t sn;
+    acid_snare_init(&sn, 48000.0f);
+    sn.snappy = 0.0f;
+    acid_snare_trigger(&sn);
+    float phase = 0.0f, pitch = 1.0f, body = 1.0f, worst = 0.0f;
+    for (int i = 0; i < 24000; i++) {
+        float ref = sinf(2.0f * 3.14159265f * phase) * body;
+        phase += sn.tune_hz * (1.0f + 0.5f * pitch) / 48000.0f;
+        phase -= phase >= 1.0f ? 1.0f : 0.0f;
+        pitch *= sn.pitch_coef;
+        body *= sn.body_coef;
+        float y = acid_snare_next(&sn);
+        if (sn.body_env == 0.0f) {
+            break;
+        }
+        worst = fmaxf(worst, fabsf(y - ref));
+    }
+    CHECK(worst < 2e-5f);
+}
+
 TEST(test_snare_silent_until_trigger)
 {
     acid_snare_init(&sn, SR);
@@ -125,6 +148,7 @@ TEST(test_drum_setters)
 
 int main(void)
 {
+    RUN(test_snare_body_matches_reference);
     RUN(test_snare_silent_until_trigger);
     RUN(test_snare_decays);
     RUN(test_snare_decay_param);

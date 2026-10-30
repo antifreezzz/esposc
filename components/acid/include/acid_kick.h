@@ -14,7 +14,7 @@ typedef struct {
     float amp_coef;
     float low_hz;   // тон
     float sweep_hz; // глубина «щелчка»: старт на low + sweep
-    float sr;
+    float sr, inv_sr;
 } acid_kick_t;
 
 void acid_kick_init(acid_kick_t *k, float sr);

@@ -17,6 +17,24 @@ static int rising_crossings(acid_kick_t *k, int n)
     return c;
 }
 
+// Без libm и деления в рендере, но звучит как прежняя формула (sinf, деление на sr) с точностью ниже 16 бит.
+TEST(test_kick_matches_reference)
+{
+    acid_kick_t k;
+    acid_kick_init(&k, SR);
+    acid_kick_trigger(&k);
+    float phase = 0.0f, pitch = 1.0f, amp = 1.0f, worst = 0.0f;
+    for (int i = 0; i < 48000; i++) {
+        float ref = amp * sinf(2.0f * 3.14159265f * phase);
+        phase += (k.low_hz + k.sweep_hz * pitch) / SR;
+        phase -= phase >= 1.0f ? 1.0f : 0.0f;
+        pitch *= k.pitch_coef;
+        amp *= k.amp_coef;
+        worst = fmaxf(worst, fabsf(acid_kick_next(&k) - ref));
+    }
+    CHECK(worst < 2e-5f);
+}
+
 TEST(test_kick_silent_until_trigger)
 {
     acid_kick_t k;
@@ -109,6 +127,7 @@ TEST(test_synth_kick_level)
 
 int main(void)
 {
+    RUN(test_kick_matches_reference);
     RUN(test_kick_silent_until_trigger);
     RUN(test_kick_decays);
     RUN(test_kick_pitch_drops);
