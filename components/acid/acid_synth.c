@@ -33,11 +33,12 @@
 #define SYNTH_GAIN 0.9f // общая громкость синтов: на 10% тише прежнего (просьба пользователя)
 // Панорамы после включения: синты в центре, ударка немного разведена.
 static const uint8_t PAN_DEFAULT[ACID_PANS] = {64, 64, 80, 48, 64};
-#define PAGES 6
-#define PAGE_FX 4
-#define PAGE_TONAL 5
+#define PAGES 7
+#define PAGE_DRUMS2 2 // ударка 2: тарелки
+#define PAGE_FX 5
+#define PAGE_TONAL 6
 #define EARLY_NOTE 480 // нота моложе 10 мс на границе шага - на новый шаг сразу (джиттер MIDI)
-#define PAGE_SYNTH1 2
+#define PAGE_SYNTH1 3
 #define MIX_CHUNK 64 // кусок буфера слота 1 в общем рендере
 #define FADE_N 192     // 4 мс ухода и столько же прихода при смене типа синтеза
 #define PLAITS_GAIN 1.0f // уровень Plaits относительно 303
@@ -495,6 +496,8 @@ static void control_change(acid_synth_t *s, int num, int v)
         page_mix(s, slot, v);
     } else if (s->page == 1) {
         page_drums(s, slot, v);
+    } else if (s->page == PAGE_DRUMS2) {
+        // тарелки - в следующем коммите
     } else if (s->page == PAGE_FX) {
         page_fx(s, slot, v);
     } else if (s->page == PAGE_TONAL) {

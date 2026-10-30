@@ -173,23 +173,40 @@ static void page(int p)
 TEST(test_live_page_select)
 {
     live();
-    CHECK(s.page == 2); // до касания энкодера 1 - синт 1
-    for (int p = 0; p < 6; p++) {
+    CHECK(s.page == 3); // до касания энкодера 1 - синт 1
+    for (int p = 0; p < 7; p++) {
         cc(ENC[1], (uint8_t)p);
         CHECK(s.page == p);
     }
-    cc(ENC[1], 6); // такой страницы нет: остаёмся
-    CHECK(s.page == 5);
+    cc(ENC[1], 7); // такой страницы нет: остаёмся
+    CHECK(s.page == 6);
     cc(ENC[1], 127);
-    CHECK(s.page == 5);
+    CHECK(s.page == 6);
     cc(ENC[1], 1);
     CHECK(s.page == 1);
+}
+
+// Страница 2 (ударка 2) пока пустая: её энкодеры не трогают микс, ударку и синты.
+TEST(test_live_drums2_page_empty)
+{
+    live();
+    static acid_synth_t before;
+    page(2);
+    before = s;
+    for (int e = 2; e <= 16; e++) {
+        cc(ENC[e], 0);
+        cc(ENC[e], 127);
+    }
+    CHECK(memcmp(&before.slot, &s.slot, sizeof s.slot) == 0);
+    CHECK(before.master == s.master && before.drive == s.drive && before.kick_tune == s.kick_tune);
+    CHECK(before.hat_tone == s.hat_tone && before.send_drums == s.send_drums && before.djf.knob == s.djf.knob);
+    CHECK(memcmp(&before.tonal, &s.tonal, sizeof s.tonal) == 0);
 }
 
 TEST(test_live_bass_page)
 {
     live();
-    page(2);
+    page(3);
     cc(ENC[3], 0);
     CHECK_NEAR(s.slot[0].cut_base, 60.0f, 0.1f);
     cc(ENC[3], 127);
@@ -211,7 +228,7 @@ TEST(test_live_bass_page)
 TEST(test_live_transpose)
 {
     live();
-    page(2);
+    page(3);
     cc(ENC[10], 65); // 64 - без транспозиции, 65 - +1
     CHECK(s.slot[0].transpose == 1);
     cc(ENC[10], 51); // вне -12..+12: игнор
@@ -231,7 +248,7 @@ TEST(test_live_transpose)
 TEST(test_live_glide_knob)
 {
     live();
-    page(2);
+    page(3);
     cc(ENC[9], 0); // самый быстрый глайд, 10 мс
     on(BASS, 45, 100);
     rms(480);
@@ -385,13 +402,13 @@ TEST(test_live_seq2_plays_slot1)
 TEST(test_live_slot_knobs_independent)
 {
     live();
-    page(3);
+    page(4);
     cc(ENC[2], 0); // синт 2 тоже 303 (по умолчанию он FM)
     rms(960);
     cc(ENC[3], 0);
     CHECK_NEAR(s.slot[1].cut_base, 60.0f, 0.1f);
     CHECK(s.slot[0].cut_base > 400.0f);
-    page(2);
+    page(3);
     cc(ENC[3], 127);
     CHECK_NEAR(s.slot[0].cut_base, 3000.0f, 1.0f);
     CHECK_NEAR(s.slot[1].cut_base, 60.0f, 0.1f);
@@ -641,7 +658,7 @@ TEST(test_live_fx_delay_echo)
     live2();
     for (int k = 0; k < 2; k++) {
         cur = k ? &s2 : &s;
-        cc(10, 4);
+        cc(10, 5);
         if (!k) {
             cc(76, 127); // посыл синта 1 в дилэй
         }
@@ -676,7 +693,7 @@ TEST(test_live_crush_changes_sound)
     live2();
     for (int k = 0; k < 2; k++) {
         cur = k ? &s2 : &s;
-        cc(10, 4);
+        cc(10, 5);
         if (!k) {
             cc(74, 127); // 3 бита
         }
@@ -696,7 +713,7 @@ TEST(test_live_crush_changes_sound)
 TEST(test_live_stutter_repeats)
 {
     live();
-    cc(10, 4);
+    cc(10, 5);
     on(BASS, 45, 127);
     on(DRUMS, 42, 127);
     acid_synth_render(&s, buf, (size_t)MS(100));
@@ -713,7 +730,7 @@ TEST(test_live_fx_page_back_to_neutral)
 {
     live2();
     cur = &s2;
-    cc(10, 4);
+    cc(10, 5);
     cc(74, 64);
     cc(76, 127);
     cc(18, 2);
@@ -763,7 +780,7 @@ static float note_hz(int n)
 static void tonal_setup(int mode)
 {
     live();
-    cc(10, 5);
+    cc(10, 6);
     cc(74, 1);   // длина шага 1 такт
     cc(93, mode);
     cc(18, 69);  // шаг 2 (энкодер 10) = +5
@@ -773,11 +790,11 @@ static void tonal_setup(int mode)
 TEST(test_live_tonal_page)
 {
     live();
-    cc(10, 5);
-    CHECK(s.page == 5);
+    cc(10, 6);
+    CHECK(s.page == 6);
     cc(74, 1);
     CHECK(s.tonal.len == 1);
-    cc(10, 4);
+    cc(10, 5);
     cc(74, 3);
     CHECK(s.tonal.len == 1); // на странице эффектов CC 74 - хруст
     CHECK(s.crush.bits_knob == 3);
@@ -882,7 +899,7 @@ TEST(test_live_tonal_off_bitexact)
 {
     live2();
     cur = &s2;
-    cc(10, 5);
+    cc(10, 6);
     cc(114, 70);
     cc(18, 60);
     for (int pass = 0; pass < 2; pass++) {
@@ -1000,7 +1017,7 @@ TEST(test_live_drum_pan_defaults)
 TEST(test_live_fx_motion_knobs)
 {
     live();
-    cc(10, 4);  // страница эффектов
+    cc(10, 5);  // страница эффектов
     cc(19, 1);  // энкодер 11: пинг-понг
     cc(16, 100); // энкодер 12: ширина
     CHECK(s.delay.motion == 1);
@@ -1025,6 +1042,7 @@ int main(void)
     RUN(test_live_accent_velocity);
     RUN(test_live_drums);
     RUN(test_live_page_select);
+    RUN(test_live_drums2_page_empty);
     RUN(test_live_bass_page);
     RUN(test_live_transpose);
     RUN(test_live_glide_knob);
