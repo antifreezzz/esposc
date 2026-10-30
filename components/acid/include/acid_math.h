@@ -41,3 +41,27 @@ static inline float acid_tanh(float x)
     float x2 = x * x;
     return x * (27.0f + x2) * acid_rcp(27.0f + 9.0f * x2); // без программного деления
 }
+
+// Без libm в рендере: на плате вызовы tanf, exp2f, floorf из флэша стоили больше всего голоса (замер этапа 10).
+// 2^x: целая часть в показатель, дробная - полином (ошибка ~0.01%).
+static inline float acid_exp2(float x)
+{
+    x = x < -60.0f ? -60.0f : x > 60.0f ? 60.0f : x;
+    int i = (int)x;
+    i -= x < (float)i;
+    float f = x - (float)i;
+    float m = 1.0f + f * (0.6931472f + f * (0.2402265f + f * (0.0555041f + f * 0.0096181f)));
+    union {
+        float f;
+        int32_t i;
+    } u = {m};
+    u.i += i << 23;
+    return u.f;
+}
+
+// tan(x) для 0 <= x < 1.42 (частота до 0.45 sr): Паде 3/2, ошибка до ~3% у верхнего края.
+static inline float acid_tan(float x)
+{
+    float x2 = x * x;
+    return x * (15.0f - x2) / (15.0f - 6.0f * x2);
+}

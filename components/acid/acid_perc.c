@@ -220,30 +220,6 @@ void acid_perc_trigger(acid_perc_t *p, int note, float vel)
     slot->rng = p->seed | 1u;
 }
 
-// Без libm в рендере: на плате вызовы tanf, exp2f, floorf из флэша стоили больше всего голоса (замер этапа 10).
-// 2^x: целая часть в показатель, дробная - полином (ошибка ~0.01%).
-static inline float fexp2(float x)
-{
-    x = x < -60.0f ? -60.0f : x > 60.0f ? 60.0f : x;
-    int i = (int)x;
-    i -= x < (float)i;
-    float f = x - (float)i;
-    float m = 1.0f + f * (0.6931472f + f * (0.2402265f + f * (0.0555041f + f * 0.0096181f)));
-    union {
-        float f;
-        int32_t i;
-    } u = {m};
-    u.i += i << 23;
-    return u.f;
-}
-
-// tan(x) для 0 <= x < 1.42 (частота до 0.45 sr): Паде 3/2, ошибка до ~3% у верхнего края.
-static inline float ftan(float x)
-{
-    float x2 = x * x;
-    return x * (15.0f - x2) / (15.0f - 6.0f * x2);
-}
-
 // p в [0, 1) для p в (-2, 3).
 static inline float wrap(float p)
 {
@@ -263,7 +239,7 @@ static inline void res_set(res_t *r, float w, float k, float out)
         r->a2 = r->a3 = r->out = 0.0f;
         return;
     }
-    float g = ftan(PI_F * w);
+    float g = acid_tan(PI_F * w);
     r->a1 = 1.0f / (1.0f + g * (g + k));
     r->a2 = g * r->a1;
     r->a3 = g * r->a2;
@@ -390,7 +366,7 @@ static void render_voice(acid_perc_t *p, acid_perc_voice_t *v, float *l, float *
     float w0 = in->hz * inv_sr; // строй в долях частоты выборки
     float pos = (float)in->knob[ACID_PERC_PAN];
     if (v->tom >= 0) {
-        w0 *= fexp2((float)v->tom * in->interval * (1.0f / 12.0f));
+        w0 *= acid_exp2((float)v->tom * in->interval * (1.0f / 12.0f));
         pos += in->width * 63.0f * ((float)v->tom * 0.4f - 1.0f);
         pos = pos < 0.0f ? 0.0f : pos > 127.0f ? 127.0f : pos;
     }
@@ -426,23 +402,23 @@ static void render_voice(acid_perc_t *p, acid_perc_voice_t *v, float *l, float *
         // Отклик резонатора на импульс растёт с частотой: корень из нормировки по основной моде
         // держит том и рим на близкой громкости.
         float wn = w0 < 20.0f * inv_sr ? 20.0f * inv_sr : w0 > NYQ ? NYQ : w0;
-        float norm = 0.25f * sqrtf(MODAL_G_REF / ftan(PI_F * wn));
+        float norm = 0.25f * sqrtf(MODAL_G_REF / acid_tan(PI_F * wn));
         for (int m = 0; m < ACID_PERC_MODES; m++) {
             mratio[m] = MODES[a][m] + t * (MODES[a + 1][m] - MODES[a][m]);
             mq[m] = PI_F / (q0 * (1.0f - 0.6f * (1.0f - tone) * (float)m / 3.0f));
             mout[m] = MODE_GAIN[m] * norm;
         }
     } else if (model == ACID_PERC_SQUARES) {
-        res_set(&c.rs, 200.0f * fexp2(tone * 5.643856f) * inv_sr, 0.35f, 0.5f); // 200 Гц .. 10 кГц
+        res_set(&c.rs, 200.0f * acid_exp2(tone * 5.643856f) * inv_sr, 0.35f, 0.5f); // 200 Гц .. 10 кГц
     } else if (model == ACID_PERC_NOISE) {
-        float q = 0.7f * fexp2(tone * 5.83289f); // 0.7 .. 40
+        float q = 0.7f * acid_exp2(tone * 5.83289f); // 0.7 .. 40
         nz_k = 1.0f / q;
         nz_out = sqrtf(nz_k);
     }
 
     for (int i0 = 0; i0 < n; i0 += SUB) {
         int i1 = i0 + SUB < n ? i0 + SUB : n;
-        float w = w0 * fexp2(pd12 * v->penv);
+        float w = w0 * acid_exp2(pd12 * v->penv);
         float inc_a = w < NYQ ? w : NYQ;
         float inc_b = w * ratio < NYQ ? w * ratio : NYQ;
         if (model == ACID_PERC_NOISE) {

@@ -71,8 +71,8 @@ python3 -m unittest discover -s tools/samples
 - Snap-chromium не пишет в `/tmp`: скриншот `--headless --screenshot=$HOME/x.png`, потом перенести.
 - `idf.py` после правок `sdkconfig.defaults` их не подхватывает, если `sdkconfig` уже есть: править и его (он в .gitignore).
 - В горячем цикле рендера на плате не звать libm (`tanf`, `exp2f`, `floorf`, `powf`, `sinf`): из флэша они стоили
-  перкуссии в 5 раз больше всего остального голоса. Быстрые замены - в `acid_perc.c` (`fexp2`, `ftan`, `wrap`)
-  и `acid_math.h` (`acid_sin2pi`).
+  перкуссии в 5 раз больше всего остального голоса. Быстрые замены - в `acid_math.h` (`acid_exp2`, `acid_tan`,
+  `acid_sin2pi`, `acid_tanh`, `acid_rcp`).
 - И не делить float на каждом сэмпле: у FPU S3 нет деления, GCC при любых флагах зовёт программный `__divsf3`
   (~46 тактов). Коэффициенты считать при смене ручки, `1/sr` заранее, иначе `acid_rcp` из `acid_math.h`.
   Рендер упирается в вычисления, не в кэш команд: QIO и вынос modal в IRAM дали ноль (замер 2026-10-30).
