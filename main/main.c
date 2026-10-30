@@ -1,6 +1,7 @@
 #include <math.h>
 
 #include "acid.h"
+#include "acid_demo.h"
 #include "audio_out.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -18,10 +19,14 @@
 #define STATS_PERIOD_US (10 * 1000 * 1000)
 #define QUIET_BLOCKS 500   // 1 с тишины на выходе: можно писать во flash
 #define QUIET_PEAK 1e-4f
+#define FADE_BLOCKS 25 // 50 мс ухода громкости при смене демо <-> BSP
+#define DEMO_EVENTS 96
 
 static const char *TAG = "main";
 
 static acid_synth_t s_synth;
+static acid_demo_t s_demo;
+static int s_demo_on; // играет демо: события от него, MIDI от BSP не слушаем
 
 // Синт 2 считается на ядре 0 на кусок вперёд: пока ядро 1 считает кусок c, ядро 0 считает
 // кусок c + 1 синта 2. События MIDI до синта 2 доходят на кусок позже (0.67 мс).
@@ -44,14 +49,23 @@ static void slot1_task(void *arg)
     }
 }
 
-// Блок кусками по CHUNK, события MIDI перед каждым куском. Пока ядро 0 считает синт 2,
+// Блок кусками по CHUNK, события MIDI (BSP или демо) перед каждым куском. Пока ядро 0 считает синт 2,
 // состояние синта трогает только рендер ядра 1 (без синта 2); к концу блока ядро 0 свободно.
 static void render_block(float *l, float *r)
 {
+    static acid_midi_event_t demo_ev[DEMO_EVENTS];
     for (int off = 0; off < BLOCK; off += CHUNK) {
         acid_midi_event_t ev;
         while (midi_in_receive(&ev)) {
-            acid_synth_midi(&s_synth, &ev);
+            if (!s_demo_on) {
+                acid_synth_midi(&s_synth, &ev);
+            }
+        }
+        if (s_demo_on) {
+            int n = acid_demo_events(&s_demo, demo_ev, DEMO_EVENTS);
+            for (int i = 0; i < n; i++) {
+                acid_synth_midi(&s_synth, &demo_ev[i]);
+            }
         }
         int ready = s_slot1_next;
         s_slot1_next ^= 1;
@@ -71,6 +85,31 @@ static float block_peak(const float *l, const float *r)
     return p;
 }
 
+// Громкость блока плавно от g0 к g1.
+static void block_fade(float *l, float *r, float g0, float g1)
+{
+    for (int i = 0; i < BLOCK; i++) {
+        float g = g0 + (g1 - g0) * (float)i * (1.0f / BLOCK);
+        l[i] *= g;
+        r[i] *= g;
+    }
+}
+
+// Синт с нуля: с BSP - сохранённые ручки пользователя, без него - демо с начала (ручки не трогает).
+static void enter_mode(int live, const uint8_t *blob, int blob_ok)
+{
+    acid_synth_init(&s_synth, (float)SR);
+    if (live) {
+        if (blob_ok) {
+            acid_synth_import(&s_synth, blob, ACID_SYNTH_BLOB);
+        }
+        s_demo_on = 0;
+    } else {
+        acid_demo_init(&s_demo, &acid_demo_song);
+        s_demo_on = 1;
+    }
+}
+
 static void synth_task(void *arg)
 {
     (void)arg;
@@ -81,15 +120,19 @@ static void synth_task(void *arg)
     int64_t worst_us = 0;
     int64_t next_stats = esp_timer_get_time() + STATS_PERIOD_US;
     int live = 0;
+    int fade = 0; // блоков ухода громкости до смены режима
     int save_pending = 0;
     int quiet = 0;
 
+    // blob - ручки пользователя: из flash и после каждого сохранения. Демо их не трогает.
     acid_synth_init(&s_synth, (float)SR);
-    ESP_LOGI(TAG, "free: internal %u, psram %u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
-             (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-    if (store_load(blob, sizeof blob) == ACID_SYNTH_BLOB && acid_synth_import(&s_synth, blob, sizeof blob)) {
+    int blob_ok = store_load(blob, sizeof blob) == ACID_SYNTH_BLOB && acid_synth_import(&s_synth, blob, sizeof blob);
+    if (blob_ok) {
         ESP_LOGI(TAG, "knobs restored");
     }
+    enter_mode(0, blob, blob_ok);
+    ESP_LOGI(TAG, "free: internal %u, psram %u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     xTaskCreatePinnedToCore(slot1_task, "slot1", 4096, NULL, 6, &s_slot1_task, 0);
     for (;;) {
         if (!audio_out_connected()) {
@@ -101,25 +144,34 @@ static void synth_task(void *arg)
                 // Пока свистка не было, накопились старые события: выбрасываем.
             }
             if (live) {
-                acid_synth_set_live(&s_synth, 1); // вместе с событиями ушли и note off: чистим стек нот
+                acid_synth_notes_off(&s_synth); // вместе с событиями ушли и note off: чистим стек нот
             }
         }
-        if (midi_in_connected() != live) {
-            live = midi_in_connected();
-            acid_synth_set_live(&s_synth, live);
-            ESP_LOGI(TAG, "%s", live ? "midi controller: live mode" : "no midi controller: playing acid track");
+        if (midi_in_connected() != live && fade == 0) {
+            fade = FADE_BLOCKS; // уходим без щелчка, потом меняем режим
         }
         int64_t t0 = esp_timer_get_time();
         render_block(out_l, out_r);
+        if (fade > 0) {
+            block_fade(out_l, out_r, (float)fade / FADE_BLOCKS, (float)(fade - 1) / FADE_BLOCKS);
+            if (--fade == 0) {
+                live = !live;
+                enter_mode(live, blob, blob_ok);
+                save_pending = 0;
+                ESP_LOGI(TAG, "%s", live ? "midi controller: live mode" : "no midi controller: playing demo");
+            }
+        }
         acid_pcm_lr_to_s16(out_l, out_r, pcm, BLOCK);
         int64_t dt = esp_timer_get_time() - t0;
         worst_us = dt > worst_us ? dt : worst_us;
 
         // Сменили тип синтеза: память ручек пишем, когда выход помолчит (flash стопорит кэш).
-        save_pending |= acid_synth_take_save(&s_synth);
+        // Ручки демо не сохраняем.
+        save_pending |= acid_synth_take_save(&s_synth) && live;
         quiet = block_peak(out_l, out_r) < QUIET_PEAK ? quiet + 1 : 0;
         if (save_pending && quiet >= QUIET_BLOCKS) {
             store_save(blob, acid_synth_export(&s_synth, blob, sizeof blob));
+            blob_ok = 1;
             save_pending = 0;
         }
 

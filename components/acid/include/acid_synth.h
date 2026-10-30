@@ -2,7 +2,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "acid_arr.h"
 #include "acid_drums.h"
 #include "acid_env.h"
 #include "acid_clock.h"
@@ -12,17 +11,16 @@
 #include "acid_midi.h"
 #include "acid_osc.h"
 #include "acid_plaits.h"
-#include "acid_seq.h"
 #include "acid_tonal.h"
 
 #define ACID_TYPES (1 + ACID_PLAITS_MODELS) // 0 - наш 303, 1..24 - модели Plaits
 #define ACID_KNOBS 16
 
 // Синт-слот: тип синтеза, голоса 303 и Plaits, ручки по типам, стек нот.
-// Слот 0 играет автопилот и SEQ1, слот 1 - SEQ2.
+// Слот 0 - синт 1 (SEQ1), слот 1 - синт 2 (SEQ2).
 typedef struct {
     int type;          // звучащий тип
-    int sel_type;      // выбор с BSP; автопилот играет 303, выбор ждёт возвращения BSP
+    int sel_type;      // выбранный тип (звучит после ухода текущего)
     int next_type;     // куда переходим после ухода звука
     int fade;          // смена типа: > 0 уход звука, < 0 приход, сэмплов осталось
     uint8_t knob[ACID_TYPES][ACID_KNOBS]; // сырые CC энкодеров по типам, 0xFF - не трогали
@@ -41,13 +39,13 @@ typedef struct {
     int wave;          // 0 пила, 1 меандр
     float g;           // коэффициент фильтра с управляющей частоты
     int ctrl_left;     // сэмплов до следующего пересчёта
-    // Ручки: в live-режиме их крутят энкодеры, иначе стартовые значения.
+    // Ручки: их крутят энкодеры (BSP или демо), до этого стартовые значения.
     float cut_base;    // базовый срез, Гц (в режиме трека его задаёт автоматизация)
     float env_hz;      // глубина огибающей фильтра обычной ноты, Гц
     float decay_s;     // спад огибающей фильтра обычной ноты
     float accent_amt;  // усиление громкости акцента
     float gain;        // громкость в миксе
-    int transpose;     // полутоны, live
+    int transpose;     // полутоны
     // Live: ноты от MIDI.
     int8_t held[8];    // удерживаемые ноты, последняя сверху
     uint32_t held_at[8]; // когда нажата (now)
@@ -71,30 +69,16 @@ typedef struct {
 // Источники с ручкой панорамы. Бочка всегда в центре.
 enum { ACID_PAN_SYNTH1, ACID_PAN_SYNTH2, ACID_PAN_HAT, ACID_PAN_CLAP, ACID_PAN_SNARE, ACID_PANS };
 
-// Acid-трек: бас-голос, ударные и аранжировка на 64 такта, либо live-режим от MIDI.
-// Поля публичные ради тестов, снаружи трогать только slot[0].res, slot[0].wave и kick_on
-// (в режиме фиксированного паттерна).
+// Два синта и ударка, играют от MIDI (BSP или демо-трек). Поля публичные ради тестов, снаружи не трогать.
 typedef struct {
     float sr;
     acid_slot_t slot[ACID_SLOTS];
-    acid_seq_t seq;
-    uint8_t last_flags; // флаги последнего сыгранного шага (для слайда через такт)
     acid_kick_t kick;
     acid_hat_t hat;
     acid_clap_t clap;
     acid_snare_t snare;
-    int kick_on;       // прямая бочка (только в режиме фиксированного паттерна)
 
-    // Аранжировка.
-    int arr_on;
-    int started;
-    int bar;           // 0..63
-    int cycle;         // номер круга
-    const acid_section_t *sec;
-    acid_step_t bar_steps[16];
-    acid_step_t mut[ACID_PAT_COUNT][16]; // паттерны текущего круга (с мутацией)
-
-    // Микс: в live-режиме его крутят ручки, иначе стартовые значения.
+    // Микс: его крутят ручки, до этого стартовые значения.
     float kick_gain, hat_gain, clap_gain, snare_gain;
     float drive, master;
     float kick_vel, hat_vel, clap_vel, snare_vel; // velocity последнего удара, 0..1
@@ -114,22 +98,19 @@ typedef struct {
     int16_t *fx_mem;   // буфер дилэя, выделяется один раз (s обнулён до первого init)
     int16_t *st_mem;   // буфер статтера, так же
     float send1, send2, send_drums; // посылы в дилэй 0..1
-    float pan_l[ACID_PANS], pan_r[ACID_PANS]; // усиления каналов по источникам (live)
+    float pan_l[ACID_PANS], pan_r[ACID_PANS]; // усиления каналов по источникам
     int dl_time, dl_fb, dl_tone;    // сырые ручки дилэя
     acid_tonal_t tonal; // страница 5: круг транспозиций синтов по тактам
     int page;          // страница ручек: 0 микс, 1 ударка, 2 синт 1, 3 синт 2, 4 эффекты, 5 тональность
 
-    int live;          // live-режим: ноты от MIDI, свой секвенсор молчит
     int save;          // сменили тип или ручку слоя тональности: память ручек пора записать
 } acid_synth_t;
 
 // Память ручек для flash: метка, типы и сырые ручки обоих синтов.
 #define ACID_SYNTH_BLOB (4 + ACID_SLOTS * (1 + ACID_TYPES * ACID_KNOBS) + ACID_TONAL_KNOBS)
 
-// Режим трека по умолчанию.
+// Умолчания всех ручек, тишина до первой ноты.
 void acid_synth_init(acid_synth_t *s, float sr);
-// Фиксированный паттерн без аранжировки (для тестов голоса).
-void acid_synth_set_pattern(acid_synth_t *s, const acid_step_t *steps, int len);
 void acid_synth_render(acid_synth_t *s, float *out, size_t n);
 // Рендер по частям (слот 1 на другом ядре): сырой выход слота k (сейчас только k = 1),
 // затем всё остальное с готовым слотом 1 из буфера. Вместе звучат как acid_synth_render.
@@ -145,8 +126,7 @@ int acid_synth_take_save(acid_synth_t *s);
 size_t acid_synth_export(const acid_synth_t *s, void *buf, size_t cap);
 int acid_synth_import(acid_synth_t *s, const void *buf, size_t len);
 // s перед первым init должен быть обнулён (static): init создаёт голоса Plaits один раз.
-// 1: live-режим, ждём MIDI; 0: автопилот с начала трека. Голоса не обрываются.
-void acid_synth_set_live(acid_synth_t *s, int on);
-// Событие MIDI в live-режиме (вне его игнорируется): синт 1 канал 5, синт 2 канал 6, барабаны канал 2,
-// CC с любого.
+// Отпустить все ноты обоих синтов (BSP переподключился, демо сменилось на BSP). Хвосты доигрывают.
+void acid_synth_notes_off(acid_synth_t *s);
+// Событие MIDI (от BSP или демо): синт 1 канал 5, синт 2 канал 6, барабаны канал 2, CC с любого.
 void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev);

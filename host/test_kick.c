@@ -65,23 +65,23 @@ TEST(test_kick_pitch_drops)
 
 TEST(test_synth_kick_on_beats)
 {
-    static acid_step_t rests[16];
-    for (int i = 0; i < 16; i++) {
-        rests[i].note = 0;
-        rests[i].flags = ACID_REST;
-    }
+    // Бочка на долях от MIDI: на доле удар, между долями только хвост.
     static acid_synth_t s;
     acid_synth_init(&s, SR);
-    acid_synth_set_pattern(&s, rests, 16);
+    acid_midi_event_t e = {.type = ACID_MIDI_NOTE_ON, .ch = 1, .d1 = 36, .d2 = 127};
     float x;
     double on_beat[16] = {0};
-    for (int n = 0; n < (int)(16 * s.seq.samples_per_step); n++) {
-        acid_synth_render(&s, &x, 1);
-        if (s.seq.pos < 480.0f) {           // первые 10 мс шага
-            on_beat[s.seq.index] += (double)x * x;
+    for (int step = 0; step < 16; step++) {
+        if (step % 4 == 0) {
+            acid_synth_midi(&s, &e);
+        }
+        for (int n = 0; n < 5760; n++) {
+            acid_synth_render(&s, &x, 1);
+            if (n < 480) { // первые 10 мс шага
+                on_beat[step] += (double)x * x;
+            }
         }
     }
-    // На доле удар, между долями только хвост предыдущего.
     for (int i = 0; i < 16; i++) {
         if (i % 4 == 0) {
             CHECK(on_beat[i] > 1.0);
@@ -94,14 +94,10 @@ TEST(test_synth_kick_on_beats)
 TEST(test_synth_kick_level)
 {
     // Пик бочки на выходе: было ~0.37, по просьбе +10% -> ~0.41.
-    static acid_step_t rests[16];
-    for (int i = 0; i < 16; i++) {
-        rests[i].note = 0;
-        rests[i].flags = ACID_REST;
-    }
     static acid_synth_t s;
     acid_synth_init(&s, SR);
-    acid_synth_set_pattern(&s, rests, 16);
+    acid_midi_event_t e = {.type = ACID_MIDI_NOTE_ON, .ch = 1, .d1 = 36, .d2 = 127};
+    acid_synth_midi(&s, &e);
     float x, peak = 0.0f;
     for (int n = 0; n < 4800; n++) {
         acid_synth_render(&s, &x, 1);

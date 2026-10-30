@@ -22,3 +22,6 @@ typedef struct {
 
 // Возвращает число событий в out (не больше max). Нужное нам: ноты, CC, клок, Start, Continue, Stop; остальное пропускается.
 int acid_midi_parse(const uint8_t *buf, size_t len, acid_midi_event_t *out, int max);
+
+// CC энкодеров 1..16 BeatStep Pro в Control mode (по умолчанию), индекс = энкодер - 1.
+extern const uint8_t acid_bsp_enc_cc[16];

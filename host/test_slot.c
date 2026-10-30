@@ -19,7 +19,7 @@ static const uint8_t ENC[17] = {0, 10, 74, 71, 76, 77, 93, 73, 75, 114, 18, 19, 
 static void live(void)
 {
     acid_synth_init(&s, SR);
-    acid_synth_set_live(&s, 1);
+    acid_synth_notes_off(&s);
 }
 
 static void send(uint8_t type, uint8_t ch, uint8_t d1, uint8_t d2)
@@ -314,7 +314,7 @@ TEST(test_slot_export_import)
     CHECK(acid_synth_export(&s, blob, sizeof blob) == ACID_SYNTH_BLOB);
 
     acid_synth_init(&b, SR);
-    acid_synth_set_live(&b, 1);
+    acid_synth_notes_off(&b);
     CHECK(acid_synth_import(&b, blob, sizeof blob) == 1);
     CHECK(b.slot[0].type == 5);
     CHECK_NEAR(b.slot[0].pp.timbre, 1.0f, 1e-6f);
@@ -339,7 +339,7 @@ TEST(test_tonal_blob_roundtrip)
     static uint8_t blob[ACID_SYNTH_BLOB];
     CHECK(acid_synth_export(&s, blob, sizeof blob) == ACID_SYNTH_BLOB);
     acid_synth_init(&b, SR);
-    acid_synth_set_live(&b, 1);
+    acid_synth_notes_off(&b);
     CHECK(acid_synth_import(&b, blob, sizeof blob) == 1);
     CHECK(b.tonal.len == 2);
     CHECK(b.tonal.scale == 3);
@@ -360,19 +360,18 @@ TEST(test_blob_old_magic_rejected)
     CHECK(acid_synth_import(&b, blob, sizeof blob) == 0);
 }
 
-TEST(test_slot_autopilot_keeps_choice)
+TEST(test_slot_import_applies_type)
 {
-    // Отключение BSP: автопилот играет 303, выбор и ручки синта возвращаются с BSP.
+    // Сохранённый выбор применяется сразу при загрузке, и у синта 1 тоже.
+    static uint8_t blob[ACID_SYNTH_BLOB];
+    static acid_synth_t b;
     live();
     page(2);
     type(FM2);
-    cc(3, 100);
-    acid_synth_set_live(&s, 0);
-    CHECK(s.slot[0].type == 0);
-    rms(4800);
-    acid_synth_set_live(&s, 1);
-    CHECK(s.slot[0].type == FM2);
-    CHECK_NEAR(s.slot[0].pp.harmonics, 100 / 127.0f, 1e-4f);
+    acid_synth_export(&s, blob, sizeof blob);
+    acid_synth_init(&b, SR);
+    CHECK(acid_synth_import(&b, blob, sizeof blob));
+    CHECK(b.slot[0].type == FM2);
 }
 
 int main(void)
@@ -392,6 +391,6 @@ int main(void)
     RUN(test_slot_export_import);
     RUN(test_tonal_blob_roundtrip);
     RUN(test_blob_old_magic_rejected);
-    RUN(test_slot_autopilot_keeps_choice);
+    RUN(test_slot_import_applies_type);
     TEST_MAIN_END();
 }

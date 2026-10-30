@@ -34,14 +34,15 @@ cmake -S host -B host/build && cmake --build host/build && ctest --test-dir host
 
 ## Инварианты и как их проверять
 
-- **Автопилот бит в бит как в `main`** при любых правках live-режима:
+- **Демо-трек бит в бит как в `main`** при любых правках, которые не должны менять звук:
   ```sh
   git worktree add /tmp/esposc-main main
   cmake -S /tmp/esposc-main/host -B /tmp/esposc-main/host/build && cmake --build /tmp/esposc-main/host/build
-  /tmp/esposc-main/host/build/acid_render /tmp/a.wav 130 && host/build/acid_render /tmp/b.wav 130
+  /tmp/esposc-main/host/build/acid_render /tmp/a.wav 180 && host/build/acid_render /tmp/b.wav 180
   cmp /tmp/a.wav /tmp/b.wav && git worktree remove --force /tmp/esposc-main
   ```
-  Автопилот играет только слот 0 (303); выход слота 1 добавляется только если он `!= 0.0f` (иначе -0 меняет биты).
+  Демо (`acid_demo_song.c`) - смоук-тест: шлёт MIDI как BSP. Меняешь ручки или поведение - проверь, что
+  `host/test_demo_smoke` по-прежнему видит каждую фичу; новая фича - добавь её в песню и в тест охвата.
 - Бюджет: блок 2000 мкс, синт 2 666 мкс на кусок. Худший случай - оба синта на modal (тип 21).
 - Blob памяти ручек версионирован магией `BLOB_MAGIC` в `acid_synth.c`: меняешь раскладку
   `knob[][]` или число типов - подними версию, иначе старый blob из NVS применится криво.
