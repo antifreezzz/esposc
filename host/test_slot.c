@@ -229,6 +229,21 @@ TEST(test_slot_knob_memory)
     CHECK_NEAR(s.slot[1].pp.harmonics, 0.5f, 1e-6f); // синт 2 со своей памятью
 }
 
+// Ручка сразу после смены типа (тип ещё уходит) - выбранному типу, как на экране, а не уходящему.
+TEST(test_slot_knob_during_switch)
+{
+    live();
+    page(6);
+    cc(3, 0); // 303: cutoff
+    cc(2, FM2);
+    cc(3, 100); // уже Plaits: harmonics
+    CHECK(s.slot[0].type == 0);
+    CHECK_NEAR(s.slot[0].cut_base, 60.0f, 0.1f); // 303 не тронут
+    rms(960);
+    CHECK(s.slot[0].type == FM2);
+    CHECK_NEAR(s.slot[0].pp.harmonics, 100 / 127.0f, 1e-4f);
+}
+
 TEST(test_slot_plaits_page)
 {
     live();
@@ -385,6 +400,7 @@ int main(void)
     RUN(test_plaits_slot_slide);
     RUN(test_slot_type_switch_no_click);
     RUN(test_slot_knob_memory);
+    RUN(test_slot_knob_during_switch);
     RUN(test_slot_plaits_page);
     RUN(test_slot_idle_plaits_silent);
     RUN(test_slot_save_flag);

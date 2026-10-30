@@ -580,8 +580,11 @@ static void page_synth(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
             type_request(sl, v); // значение на экране = номер типа, остальное игнор
         }
     } else if (slot > TYPE_ENC) {
-        sl->knob[sl->type][slot] = (uint8_t)v;
-        knob_apply(s, sl, slot, v);
+        // Ручка - типу на экране. Если он ещё не зазвучал (уходит прежний), применится при переключении.
+        sl->knob[sl->sel_type][slot] = (uint8_t)v;
+        if (sl->sel_type == sl->type) {
+            knob_apply(s, sl, slot, v);
+        }
     }
 }
 
