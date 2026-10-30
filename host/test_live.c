@@ -295,6 +295,20 @@ TEST(test_live_cymbal_knob_mapping)
     CHECK(s.cym.gain[ACID_CYM_RIDE] == 0.0f && s.cym.gain[ACID_CYM_BELL] > 0.0f);
 }
 
+// Velocity тарелок без пола ударки: мягкий удар BSP при чувствительности по умолчанию берёт самый тихий слой.
+TEST(test_live_cymbal_soft_layer)
+{
+    with_bank();
+    on(DRUMS, 49, 1);
+    int layer = -1;
+    for (int i = 0; i < ACID_CYM_SLOTS; i++) {
+        if (s.cym.v[i].rr) {
+            layer = s.cym.v[i].layer;
+        }
+    }
+    CHECK(layer == 0);
+}
+
 TEST(test_live_cymbals_without_bank)
 {
     live();
@@ -1183,6 +1197,7 @@ int main(void)
     RUN(test_live_cymbal_notes);
     RUN(test_live_drums2_knobs);
     RUN(test_live_cymbal_knob_mapping);
+    RUN(test_live_cymbal_soft_layer);
     RUN(test_live_cymbals_without_bank);
     RUN(test_live_bank_survives_init);
     RUN(test_live_cymbal_send);

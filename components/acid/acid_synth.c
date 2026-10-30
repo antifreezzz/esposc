@@ -290,7 +290,8 @@ static void drum_on(acid_synth_t *s, int note, int vel)
         acid_hat_trigger(&s->hat, note == 46);
         s->hat_vel = v;
     } else if (note == 49 || note == 51 || note == 53) {
-        acid_cym_trigger(&s->cym, s->bank, note, v);
+        // Без пола: слои записанной динамики делит ручка чувствительности (страница 2).
+        acid_cym_trigger(&s->cym, s->bank, note, (float)vel / 127.0f);
     }
 }
 
