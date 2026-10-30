@@ -804,7 +804,7 @@ static int fx_on(const acid_synth_t *s)
            s->send1 != 0.0f || s->send2 != 0.0f || s->send_drums != 0.0f;
 }
 
-void acid_synth_render_with(acid_synth_t *s, float *out, size_t n, const float *slot1)
+void acid_synth_render_with_lr(acid_synth_t *s, float *l, float *r, size_t n, const float *slot1)
 {
     acid_slot_t *v = &s->slot[0];
     for (size_t i = 0; i < n; i++) {
@@ -853,7 +853,30 @@ void acid_synth_render_with(acid_synth_t *s, float *out, size_t n, const float *
                 y += slot1[i]; // молчащий слот 1 не трогает y: автопилот бит в бит прежний
             }
         }
-        out[i] = s->master * OUT_PEAK * acid_tanh(s->drive * y);
+        l[i] = r[i] = s->master * OUT_PEAK * acid_tanh(s->drive * y);
+    }
+}
+
+void acid_synth_render_lr(acid_synth_t *s, float *l, float *r, size_t n)
+{
+    float slot1[MIX_CHUNK];
+    for (size_t off = 0; off < n; off += MIX_CHUNK) {
+        size_t m = n - off < MIX_CHUNK ? n - off : MIX_CHUNK;
+        acid_synth_render_slot(s, 1, slot1, m);
+        acid_synth_render_with_lr(s, l + off, r + off, m, slot1);
+    }
+}
+
+// Моно: среднее каналов. При L == R (автопилот) точно равно каналу.
+void acid_synth_render_with(acid_synth_t *s, float *out, size_t n, const float *slot1)
+{
+    float l[MIX_CHUNK], r[MIX_CHUNK];
+    for (size_t off = 0; off < n; off += MIX_CHUNK) {
+        size_t m = n - off < MIX_CHUNK ? n - off : MIX_CHUNK;
+        acid_synth_render_with_lr(s, l, r, m, slot1 + off);
+        for (size_t i = 0; i < m; i++) {
+            out[off + i] = 0.5f * (l[i] + r[i]);
+        }
     }
 }
 

@@ -130,6 +130,9 @@ void acid_synth_render(acid_synth_t *s, float *out, size_t n);
 // затем всё остальное с готовым слотом 1 из буфера. Вместе звучат как acid_synth_render.
 void acid_synth_render_slot(acid_synth_t *s, int k, float *out, size_t n);
 void acid_synth_render_with(acid_synth_t *s, float *out, size_t n, const float *slot1);
+// Стерео: два плоских буфера. Моно-версии выше - среднее каналов.
+void acid_synth_render_lr(acid_synth_t *s, float *l, float *r, size_t n);
+void acid_synth_render_with_lr(acid_synth_t *s, float *l, float *r, size_t n, const float *slot1);
 float acid_synth_pitch_hz(const acid_synth_t *s); // высота слота 0
 // 1 и сброс флага, если с прошлого вызова сменили тип синтеза (пора записать память во flash).
 int acid_synth_take_save(acid_synth_t *s);

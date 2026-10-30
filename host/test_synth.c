@@ -155,8 +155,39 @@ TEST(test_pcm_convert)
     }
 }
 
+TEST(test_pcm_lr)
+{
+    const float l[3] = {0.5f, 0.0f, 2.0f};
+    const float r[3] = {-2.0f, 0.25f, -0.5f};
+    int16_t out[6];
+    acid_pcm_lr_to_s16(l, r, out, 3);
+    const int16_t expect[6] = {16384, -32767, 0, 8192, 32767, -16384};
+    for (int i = 0; i < 6; i++) {
+        CHECK(out[i] == expect[i]);
+    }
+}
+
+// Автопилот в стерео: оба канала равны и совпадают с моно-рендером бит в бит.
+static acid_synth_t s_lr;
+static float lr_l[48000], lr_r[48000], lr_m[48000];
+
+TEST(test_autopilot_lr_equal)
+{
+    acid_synth_init(&s, 48000.0f);
+    acid_synth_init(&s_lr, 48000.0f);
+    acid_synth_render(&s, lr_m, 48000);
+    acid_synth_render_lr(&s_lr, lr_l, lr_r, 48000);
+    int diff = 0;
+    for (int i = 0; i < 48000; i++) {
+        diff += lr_l[i] != lr_r[i] || lr_l[i] != lr_m[i];
+    }
+    CHECK(diff == 0);
+}
+
 int main(void)
 {
+    RUN(test_pcm_lr);
+    RUN(test_autopilot_lr_equal);
     RUN(test_synth_finite_and_peak);
     RUN(test_synth_stress_peak);
     RUN(test_synth_pitch_follows_step);
