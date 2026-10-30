@@ -90,7 +90,7 @@ typedef struct {
     float snare_tune, snare_snappy, snare_decay_s;
     acid_pump_t pump;  // пампинг от ноты бочки (страница 0, энкодеры 10-11)
     acid_djf_t djf;    // DJ-фильтр мастера (страница 0, энкодеры 12-13)
-    // Страница 4: хруст, дилэй, статтер по темпу MIDI clock.
+    // Страница 8: хруст, дилэй, статтер по темпу MIDI clock.
     acid_clock_t clock;
     uint32_t clock_now; // сэмплов с init: время для тиков клока
     acid_crush_t crush;
@@ -101,12 +101,12 @@ typedef struct {
     float send1, send2, send_drums; // посылы в дилэй 0..1
     float pan_l[ACID_PANS], pan_r[ACID_PANS]; // усиления каналов по источникам
     int dl_time, dl_fb, dl_tone;    // сырые ручки дилэя
-    acid_tonal_t tonal; // страница 6: круг транспозиций синтов по тактам
+    acid_tonal_t tonal; // страница 9: круг транспозиций синтов по тактам
     // Тарелки (страница 2): набор сэмплов снаружи, NULL - молчат. Сырые ручки: крэш, райд.
     acid_cym_t cym;
     const acid_bank_t *bank;
     uint8_t cym_tail[2], cym_tune[2], cym_pan[2];
-    int page; // 0 микс, 1 ударка, 2 ударка 2, 3 синт 1, 4 синт 2, 5 эффекты, 6 тональность
+    int page; // 0 микс, 1 ударка, 2 ударка 2, 3 томы, 4 рим, 5 ковбелл, 6 синт 1, 7 синт 2, 8 эффекты, 9 тональность
 
     int save;          // сменили тип или ручку слоя тональности: память ручек пора записать
 } acid_synth_t;

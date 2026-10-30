@@ -202,7 +202,7 @@ static int model_of_cycle(int c)
             continue;
         }
         for (int i = 0; i + 1 < n; i++) {
-            if (ev[i].type == ACID_MIDI_CC && ev[i].d1 == 10 && ev[i].d2 == 4 && ev[i + 1].d1 == 74) { // страница синта 2
+            if (ev[i].type == ACID_MIDI_CC && ev[i].d1 == 10 && ev[i].d2 == 7 && ev[i + 1].d1 == 74) { // страница синта 2
                 model = ev[i + 1].d2;
             }
         }

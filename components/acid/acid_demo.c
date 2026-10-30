@@ -6,7 +6,7 @@
 #define CH_SYN1 4  // канал 5 (SEQ1)
 #define CH_SYN2 5  // канал 6 (SEQ2)
 #define CC_PAGE 10
-#define PAGE_SYN2 4
+#define PAGE_SYN2 7
 #define ENC_TYPE 2
 #define NO_VALUE 0xFF
 
