@@ -8,7 +8,7 @@
 #include "acid_noise.h"
 
 #define PI_F 3.14159265f
-#define SUB 8               // сэмплов между пересчётами высоты и резонаторов
+#define SUB 32              // сэмплов между пересчётами высоты и резонаторов
 #define NYQ 0.45f           // выше этой доли частоты выборки генераторы зажаты, моды молчат
 #define SILENT 1e-4f        // голос тише - свободен
 #define RETRIG_S 0.02f      // повторный удар той же ноты: прежний уходит
@@ -17,6 +17,7 @@
 #define EXC_S 0.002f        // возбудитель модальной модели
 #define LEVEL_MAX 1.0f
 #define MODAL_G_REF 0.01309f // tan(pi * 200 / 48000)
+#define MODAL_2POLE 1.0f     // уровень двухполюсного резонатора к прежнему полосовому TPT (замер на хосте)
 
 // Звук после включения: ручки по числу на экране, порядок как в enum ручек.
 static const uint8_t DEFAULTS[ACID_PERC_N][ACID_PERC_KNOBS] = {
@@ -55,11 +56,6 @@ static inline float fsin(float p)
     float y = 4.0f * x * (1.0f - fabsf(x));
     y = 0.225f * (y * fabsf(y) - y) + y;
     return -y;
-}
-
-static inline float wrap(float p)
-{
-    return p - floorf(p);
 }
 
 void acid_perc_set(acid_perc_t *p, int inst, int knob, int v)
@@ -112,6 +108,8 @@ void acid_perc_init(acid_perc_t *p, float sr)
     memset(p, 0, sizeof *p);
     p->sr = sr;
     p->seed = 0x2545f491u;
+    p->click_coef = coef(CLICK_S, sr);
+    p->exc_coef = coef(EXC_S, sr);
     for (int i = 0; i < ACID_PERC_N; i++) {
         for (int k = 0; k < ACID_PERC_KNOBS; k++) {
             int v = DEFAULTS[i][k];
@@ -207,26 +205,54 @@ void acid_perc_trigger(acid_perc_t *p, int note, float vel)
     slot->rng = p->seed | 1u;
 }
 
-// Коэффициенты TPT SVF: полосовой с пиком 1/k на частоте среза.
+// Без libm в рендере: на плате вызовы tanf, exp2f, floorf из флэша стоили больше всего голоса (замер этапа 10).
+// 2^x: целая часть в показатель, дробная - полином (ошибка ~0.01%).
+static inline float fexp2(float x)
+{
+    x = x < -60.0f ? -60.0f : x > 60.0f ? 60.0f : x;
+    int i = (int)x;
+    i -= x < (float)i;
+    float f = x - (float)i;
+    float m = 1.0f + f * (0.6931472f + f * (0.2402265f + f * (0.0555041f + f * 0.0096181f)));
+    union {
+        float f;
+        int32_t i;
+    } u = {m};
+    u.i += i << 23;
+    return u.f;
+}
+
+// tan(x) для 0 <= x < 1.42 (частота до 0.45 sr): Паде 3/2, ошибка до ~3% у верхнего края.
+static inline float ftan(float x)
+{
+    float x2 = x * x;
+    return x * (15.0f - x2) / (15.0f - 6.0f * x2);
+}
+
+// p в [0, 1) для p в (-2, 3).
+static inline float wrap(float p)
+{
+    p -= (float)(int)p;
+    return p < 0.0f ? p + 1.0f : p;
+}
+
+// Коэффициенты TPT SVF: полосовой с пиком 1/k на частоте среза; out - множитель выхода.
 typedef struct {
-    float a1, a2, a3, k, gain;
+    float a1, a2, a3, out;
 } res_t;
 
-static inline void res_set(res_t *r, float f, float k, float gain, float sr)
+static inline void res_set(res_t *r, float w, float k, float out)
 {
-    if (f >= NYQ * sr) {
+    if (w >= NYQ) {
         r->a1 = 1.0f; // мода выше зажатия молчит
-        r->a2 = r->a3 = 0.0f;
-        r->k = k;
-        r->gain = 0.0f;
+        r->a2 = r->a3 = r->out = 0.0f;
         return;
     }
-    float g = tanf(PI_F * f / sr);
+    float g = ftan(PI_F * w);
     r->a1 = 1.0f / (1.0f + g * (g + k));
     r->a2 = g * r->a1;
     r->a3 = g * r->a2;
-    r->k = k;
-    r->gain = gain;
+    r->out = out;
 }
 
 static inline float res_bp(float *ic, const res_t *r, float in)
@@ -239,133 +265,199 @@ static inline float res_bp(float *ic, const res_t *r, float in)
     return v1;
 }
 
+// Постоянное на кусок рендера для одного голоса.
+typedef struct {
+    float gl, gr, body_gain, drive, inv_drive, quant, inv_quant, click, chr, amp_coef, pitch_coef, cenv_coef;
+    float tri_mix, clip, inv_clip, fm_index, exc_lp;
+    int hold;
+    res_t rs;                                // квадраты и шум: один полосовой TPT
+    float b1[ACID_PERC_MODES], b2[ACID_PERC_MODES], mo[ACID_PERC_MODES]; // модальная: двухполюсные резонаторы
+} pctx_t;
+
+// Подблок одной модели: model - константа после встраивания, ветвления по модели из цикла уходят.
+static inline __attribute__((always_inline)) int sub_block(acid_perc_voice_t *v, const pctx_t *c, float *l, float *r,
+                                                           int i0, int i1, float inc_a, float inc_b, const int model)
+{
+    float pa = v->pa, pb = v->pb, env = v->env, penv = v->penv, cenv = v->cenv, lp = v->lp, fade = v->fade;
+    const float fade_step = v->fade_step;
+    uint32_t rng = v->rng;
+    float *z = &v->res[0][0];
+    for (int i = i0; i < i1; i++) {
+        rng ^= rng << 13;
+        rng ^= rng >> 17;
+        rng ^= rng << 5;
+        float nz = (float)(rng >> 8) * (2.0f / 16777215.0f) - 1.0f;
+        float y;
+        if (model == ACID_PERC_ANALOG) {
+            float s = fsin(pa);
+            float tri = 4.0f * fabsf(pa - 0.5f) - 1.0f;
+            y = s + c->tri_mix * (tri - s);
+            if (c->clip > 1.0f) {
+                y = acid_tanh(c->clip * y) * c->inv_clip;
+            }
+            y += 0.7f * c->chr * env * fsin(pb); // обертон уходит быстрее корпуса
+        } else if (model == ACID_PERC_SQUARES) {
+            float sq = (pa < 0.5f ? 1.0f : -1.0f) + (pb < 0.5f ? 1.0f : -1.0f);
+            y = res_bp(z, &c->rs, sq) * c->rs.out;
+        } else if (model == ACID_PERC_FM) {
+            y = fsin(wrap(pa + c->fm_index * (0.25f + 0.75f * env) * fsin(pb)));
+        } else if (model == ACID_PERC_MODAL) {
+            float exc = (cenv == 1.0f ? 1.0f : 0.0f) + 0.5f * nz * cenv;
+            lp += c->exc_lp * (exc - lp);
+            y = 0.0f;
+            for (int m = 0; m < ACID_PERC_MODES; m++) {
+                float o = c->b1[m] * z[2 * m] - c->b2[m] * z[2 * m + 1] + lp;
+                z[2 * m + 1] = z[2 * m];
+                z[2 * m] = o;
+                y += c->mo[m] * o;
+            }
+        } else { // шум
+            lp += 0.1f * (nz - lp);
+            float src = nz * c->chr + 3.0f * lp * (1.0f - c->chr);
+            y = res_bp(z, &c->rs, src) * c->rs.out;
+        }
+        y = c->body_gain * y * env + c->click * cenv * nz;
+        if (c->drive > 1.0f) {
+            y = acid_tanh(c->drive * y) * c->inv_drive;
+        }
+        if (c->hold > 1 || c->quant > 0.0f) {
+            if (v->hold_left <= 0) {
+                float q = y;
+                if (c->quant > 0.0f) {
+                    float t = y * c->inv_quant;
+                    q = c->quant * (float)(int)(t + (t < 0.0f ? -0.5f : 0.5f));
+                }
+                v->held = q;
+                v->hold_left = c->hold;
+            }
+            v->hold_left--;
+            y = v->held;
+        }
+        y *= fade;
+        l[i] += c->gl * y;
+        r[i] += c->gr * y;
+        pa += inc_a;
+        pa -= pa >= 1.0f ? 1.0f : 0.0f;
+        pb += inc_b;
+        pb -= pb >= 1.0f ? 1.0f : 0.0f;
+        env *= c->amp_coef;
+        penv *= c->pitch_coef;
+        cenv *= c->cenv_coef;
+        if (fade_step != 0.0f) {
+            fade -= fade_step;
+            if (fade <= 0.0f) {
+                v->active = 0;
+                return 0;
+            }
+        }
+    }
+    v->pa = pa;
+    v->pb = pb;
+    v->env = env;
+    v->penv = penv;
+    v->cenv = cenv;
+    v->lp = lp;
+    v->fade = fade;
+    v->rng = rng;
+    return 1;
+}
+
 static void render_voice(acid_perc_t *p, acid_perc_voice_t *v, float *l, float *r, int n)
 {
     const acid_perc_inst_t *in = &p->inst[v->inst];
-    const float sr = p->sr;
+    const float inv_sr = 1.0f / p->sr;
     const int model = in->model;
+    pctx_t c;
     // Сильный удар ярче и с большей глубиной высоты; при чувствительности 0 все как сильный.
     float soft = in->sens * (1.0f - v->vel);
     float tone = in->tone * (1.0f - 0.25f * soft);
-    float pdepth = in->pdepth * (1.0f - 0.4f * soft);
-    float hz = in->hz;
+    float pd12 = in->pdepth * (1.0f - 0.4f * soft) * (1.0f / 12.0f);
+    float w0 = in->hz * inv_sr; // строй в долях частоты выборки
     float pos = (float)in->knob[ACID_PERC_PAN];
     if (v->tom >= 0) {
-        hz *= exp2f((float)v->tom * in->interval / 12.0f);
-        pos += in->width * 63.0f * ((float)v->tom / 2.5f - 1.0f);
+        w0 *= fexp2((float)v->tom * in->interval * (1.0f / 12.0f));
+        pos += in->width * 63.0f * ((float)v->tom * 0.4f - 1.0f);
         pos = pos < 0.0f ? 0.0f : pos > 127.0f ? 127.0f : pos;
     }
-    float gl, gr;
-    acid_pan(pos, &gl, &gr);
+    acid_pan(pos, &c.gl, &c.gr);
     float out_gain = v->amp * in->gain;
-    float body_gain = MODEL_GAIN[model];
-    float inv_drive = in->drive > 1.0f ? 1.0f / acid_tanh(in->drive) : 1.0f;
-    float click_coef = coef(CLICK_S, sr), exc_coef = coef(EXC_S, sr);
+    c.gl *= out_gain;
+    c.gr *= out_gain;
+    c.body_gain = MODEL_GAIN[model];
+    c.drive = in->drive;
+    c.inv_drive = c.drive > 1.0f ? 1.0f / acid_tanh(c.drive) : 1.0f;
+    c.hold = in->hold;
+    c.quant = in->quant;
+    c.inv_quant = c.quant > 0.0f ? 1.0f / c.quant : 0.0f;
+    c.click = in->click;
+    c.chr = in->chr;
+    c.amp_coef = in->amp_coef;
+    c.pitch_coef = in->pitch_coef;
+    c.cenv_coef = model == ACID_PERC_MODAL ? p->exc_coef : p->click_coef;
     // Модель 0: форма и второй обертон. Модель 2: индекс и отношение. Модель 3: моды.
-    float tri_mix = tone < 0.5f ? 2.0f * tone : 1.0f;
-    float clip = tone > 0.5f ? 1.0f + 16.0f * (tone - 0.5f) : 1.0f;
-    float inv_clip = clip > 1.0f ? 1.0f / acid_tanh(clip) : 1.0f;
-    float ratio = model == ACID_PERC_SQUARES ? 1.0f + 1.5f * in->chr : model == ACID_PERC_FM ? 0.5f + 7.5f * in->chr : 1.59f;
-    float fm_index = 8.0f * tone / (2.0f * PI_F);
-    float mratio[ACID_PERC_MODES];
+    c.tri_mix = tone < 0.5f ? 2.0f * tone : 1.0f;
+    c.clip = tone > 0.5f ? 1.0f + 16.0f * (tone - 0.5f) : 1.0f;
+    c.inv_clip = c.clip > 1.0f ? 1.0f / acid_tanh(c.clip) : 1.0f;
+    c.fm_index = 8.0f * tone / (2.0f * PI_F);
+    c.exc_lp = 0.05f + 0.9f * tone;
+    const float ratio = model == ACID_PERC_SQUARES ? 1.0f + 1.5f * c.chr : model == ACID_PERC_FM ? 0.5f + 7.5f * c.chr : 1.59f;
+    float mratio[ACID_PERC_MODES], mq[ACID_PERC_MODES], mout[ACID_PERC_MODES];
+    float nz_k = 0.0f, nz_out = 0.0f;
     if (model == ACID_PERC_MODAL) {
-        float c = in->chr * 3.0f;
-        int a = c >= 3.0f ? 2 : (int)c;
-        float t = c - (float)a;
+        float x = c.chr * 3.0f;
+        int a = x >= 3.0f ? 2 : (int)x;
+        float t = x - (float)a;
+        float q0 = 60.0f * (0.5f + tone);
+        // Отклик резонатора на импульс растёт с частотой: корень из нормировки по основной моде
+        // держит том и рим на близкой громкости.
+        float wn = w0 < 20.0f * inv_sr ? 20.0f * inv_sr : w0 > NYQ ? NYQ : w0;
+        float norm = 0.25f * sqrtf(MODAL_G_REF / ftan(PI_F * wn));
         for (int m = 0; m < ACID_PERC_MODES; m++) {
             mratio[m] = MODES[a][m] + t * (MODES[a + 1][m] - MODES[a][m]);
+            mq[m] = PI_F / (q0 * (1.0f - 0.6f * (1.0f - tone) * (float)m / 3.0f));
+            mout[m] = MODE_GAIN[m] * norm;
         }
+    } else if (model == ACID_PERC_SQUARES) {
+        res_set(&c.rs, 200.0f * fexp2(tone * 5.643856f) * inv_sr, 0.35f, 0.5f); // 200 Гц .. 10 кГц
+    } else if (model == ACID_PERC_NOISE) {
+        float q = 0.7f * fexp2(tone * 5.83289f); // 0.7 .. 40
+        nz_k = 1.0f / q;
+        nz_out = sqrtf(nz_k);
     }
-    float exc_lp = 0.05f + 0.9f * tone;
-    float noise_lp = 0.1f;
-    res_t rs[ACID_PERC_MODES];
 
     for (int i0 = 0; i0 < n; i0 += SUB) {
-        int m_end = i0 + SUB < n ? i0 + SUB : n;
-        float f = hz * exp2f(pdepth * v->penv * (1.0f / 12.0f));
-        float fa = f < NYQ * sr ? f : NYQ * sr;
-        float fb = f * ratio < NYQ * sr ? f * ratio : NYQ * sr;
-        float inc_a = fa / sr, inc_b = fb / sr;
-        if (model == ACID_PERC_SQUARES) {
-            res_set(&rs[0], expo((int)(tone * 127.0f), 200.0f, 10000.0f), 0.35f, 0.35f, sr);
-        } else if (model == ACID_PERC_NOISE) {
-            float q = 0.7f * powf(57.0f, tone);
-            res_set(&rs[0], f, 1.0f / q, sqrtf(1.0f / q), sr);
+        int i1 = i0 + SUB < n ? i0 + SUB : n;
+        float w = w0 * fexp2(pd12 * v->penv);
+        float inc_a = w < NYQ ? w : NYQ;
+        float inc_b = w * ratio < NYQ ? w * ratio : NYQ;
+        if (model == ACID_PERC_NOISE) {
+            res_set(&c.rs, w, nz_k, nz_out);
         } else if (model == ACID_PERC_MODAL) {
-            float q0 = 60.0f * (0.5f + tone);
-            // Отклик резонатора на импульс растёт с частотой: корень из нормировки по основной моде
-            // держит том и рим на близкой громкости.
-            float norm = 0.25f * sqrtf(MODAL_G_REF / tanf(PI_F * (fa < 20.0f ? 20.0f : fa) / sr));
             for (int m = 0; m < ACID_PERC_MODES; m++) {
-                float q = q0 * (1.0f - 0.6f * (1.0f - tone) * (float)m / 3.0f);
-                res_set(&rs[m], f * mratio[m], 1.0f / q, MODE_GAIN[m] * norm, sr);
+                // y = b1 y1 - b2 y2 + x, полюса r e^(+-i th): th = 2 pi wm, r ~ 1 - pi wm / Q.
+                // Импульс даёт амплитуду ~1/sin(th): sin^2 на выходе ведёт к уровню полосового TPT.
+                float wm = w * mratio[m];
+                if (wm >= NYQ) {
+                    c.b1[m] = c.b2[m] = c.mo[m] = 0.0f; // мода выше зажатия молчит
+                    continue;
+                }
+                float rr = 1.0f - mq[m] * wm;
+                float sn = fsin(wm), cs = fsin(wm + 0.25f);
+                c.b1[m] = 2.0f * rr * cs;
+                c.b2[m] = rr * rr;
+                c.mo[m] = mout[m] * MODAL_2POLE * sn * sn;
             }
         }
-        for (int i = i0; i < m_end; i++) {
-            float nz = acid_noise(&v->rng);
-            float y;
-            switch (model) {
-            case ACID_PERC_ANALOG: {
-                float s = fsin(v->pa);
-                float tri = 4.0f * fabsf(v->pa - 0.5f) - 1.0f;
-                y = s + tri_mix * (tri - s);
-                if (clip > 1.0f) {
-                    y = acid_tanh(clip * y) * inv_clip;
-                }
-                y += 0.7f * in->chr * v->env * fsin(v->pb); // обертон уходит быстрее корпуса
-                break;
-            }
-            case ACID_PERC_SQUARES: {
-                float sq = (v->pa < 0.5f ? 1.0f : -1.0f) + (v->pb < 0.5f ? 1.0f : -1.0f);
-                y = res_bp(v->res[0], &rs[0], sq) * rs[0].gain / rs[0].k * 0.5f;
-                break;
-            }
-            case ACID_PERC_FM:
-                y = fsin(wrap(v->pa + fm_index * (0.25f + 0.75f * v->env) * fsin(v->pb)));
-                break;
-            case ACID_PERC_MODAL: {
-                float exc = (v->cenv == 1.0f ? 1.0f : 0.0f) + 0.5f * nz * v->cenv;
-                v->lp += exc_lp * (exc - v->lp);
-                y = 0.0f;
-                for (int m = 0; m < ACID_PERC_MODES; m++) {
-                    y += rs[m].gain * res_bp(v->res[m], &rs[m], v->lp);
-                }
-                break;
-            }
-            default: { // шум
-                v->lp += noise_lp * (nz - v->lp);
-                float src = nz * in->chr + 3.0f * v->lp * (1.0f - in->chr);
-                y = res_bp(v->res[0], &rs[0], src) * rs[0].gain;
-                break;
-            }
-            }
-            y = body_gain * y * v->env + in->click * v->cenv * nz;
-            if (in->drive > 1.0f) {
-                y = acid_tanh(in->drive * y) * inv_drive;
-            }
-            if (in->hold > 1 || in->quant > 0.0f) {
-                if (v->hold_left <= 0) {
-                    v->held = in->quant > 0.0f ? in->quant * floorf(y / in->quant + 0.5f) : y;
-                    v->hold_left = in->hold;
-                }
-                v->hold_left--;
-                y = v->held;
-            }
-            y *= out_gain * v->fade;
-            l[i] += gl * y;
-            r[i] += gr * y;
-            v->pa = wrap(v->pa + inc_a);
-            v->pb = wrap(v->pb + inc_b);
-            v->env *= in->amp_coef;
-            v->penv *= in->pitch_coef;
-            v->cenv *= model == ACID_PERC_MODAL ? exc_coef : click_coef;
-            if (v->fade_step != 0.0f) {
-                v->fade -= v->fade_step;
-                if (v->fade <= 0.0f) {
-                    v->active = 0;
-                    return;
-                }
-            }
+        int alive;
+        switch (model) {
+        case ACID_PERC_ANALOG: alive = sub_block(v, &c, l, r, i0, i1, inc_a, inc_b, ACID_PERC_ANALOG); break;
+        case ACID_PERC_SQUARES: alive = sub_block(v, &c, l, r, i0, i1, inc_a, inc_b, ACID_PERC_SQUARES); break;
+        case ACID_PERC_FM: alive = sub_block(v, &c, l, r, i0, i1, inc_a, inc_b, ACID_PERC_FM); break;
+        case ACID_PERC_MODAL: alive = sub_block(v, &c, l, r, i0, i1, inc_a, inc_b, ACID_PERC_MODAL); break;
+        default: alive = sub_block(v, &c, l, r, i0, i1, inc_a, inc_b, ACID_PERC_NOISE); break;
+        }
+        if (!alive) {
+            return;
         }
         if (level(v) < SILENT) {
             v->active = 0;

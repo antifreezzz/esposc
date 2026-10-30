@@ -53,6 +53,7 @@ typedef struct {
     acid_perc_inst_t inst[ACID_PERC_N];
     acid_perc_voice_t v[ACID_PERC_SLOTS];
     float sr;
+    float click_coef, exc_coef; // спад щелчка и возбудителя на сэмпл
     uint32_t seed;
     uint32_t hard_cuts; // слышный голос стёрт без ухода (для тестов, должно быть 0)
 } acid_perc_t;
