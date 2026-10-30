@@ -272,20 +272,20 @@ def parse_key(v):
     return k + 12 * (int(m.group(3)) + 1)
 
 
-def sfz_text(path, defines):
-    """Текст SFZ с раскрытыми #include и #define, без комментариев."""
-    root = os.path.dirname(path)
+def sfz_text(path, defines, root=None):
+    """Текст SFZ с раскрытыми #include и #define, без комментариев. Пути #include - от главного файла."""
+    root = root or os.path.dirname(path)
     out = []
     with open(path, encoding='utf-8', errors='replace') as f:
         for line in f:
             line = line.split('//', 1)[0]
-            m = re.match(r'\s*#define\s+(\$\w+)\s+(\S+)', line)
-            if m:
-                defines[m.group(1)] = m.group(2)
+            defs = re.findall(r'#define\s+(\$\w+)\s+(\S+)', line)
+            if defs:
+                defines.update(defs)  # бывает несколько на строке
                 continue
             m = re.match(r'\s*#include\s+"([^"]+)"', line)
             if m:
-                out.append(sfz_text(os.path.join(root, m.group(1)), defines))
+                out.append(sfz_text(os.path.join(root, m.group(1)), defines, root))
                 continue
             for k in sorted(defines, key=len, reverse=True):
                 line = line.replace(k, defines[k])
@@ -329,6 +329,13 @@ def sfz_regions(path):
     return out
 
 
+def sfz_playable(op):
+    """Обычный удар: без глушения по отпусканию, переключателей и запуска по CC."""
+    if op.get('trigger', 'attack') not in ('attack', 'first', 'legato'):
+        return False
+    return not any(k.startswith(('sw_', 'on_locc', 'on_hicc')) for k in op)
+
+
 def load_sfz(cfg_path, lib):
     with open(cfg_path) as f:
         cfg = json.load(f)
@@ -340,7 +347,7 @@ def load_sfz(cfg_path, lib):
         for op in sfz_regions(os.path.join(lib, spec['sfz'])):
             lo = parse_key(op.get('lokey', op.get('key', '-1')))
             hi = parse_key(op.get('hikey', op.get('key', '-1')))
-            if not lo <= key <= hi or 'sample' not in op:
+            if not lo <= key <= hi or 'sample' not in op or not sfz_playable(op):
                 continue
             sample = (op['default_path'] + op['sample']).replace('\\', '/')
             w = 1.0
@@ -351,7 +358,8 @@ def load_sfz(cfg_path, lib):
                 w = hit[0]
             if w == 0:
                 continue
-            w *= 10 ** (float(op.get('volume', 0)) / 20) * float(op.get('amplitude', 100)) / 100
+            db = sum(float(op.get(k, 0)) for k in ('volume', 'group_volume', 'master_volume', 'global_volume'))
+            w *= 10 ** (db / 20) * float(op.get('amplitude', 100)) / 100
             rr = (op.get('seq_position', '1'), op.get('lorand', '0'))
             vel = (int(op.get('lovel', 1)), int(op.get('hivel', 127)))
             groups.setdefault(vel, {}).setdefault(rr, []).append((w, os.path.join(os.path.dirname(

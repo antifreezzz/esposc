@@ -210,6 +210,70 @@ class BuildTests(unittest.TestCase):
         # Только OH (комната с весом 0): громкий слой -1 dBFS, тихий на 12 dB ниже (0.2 против 0.8).
         self.assertAlmostEqual(peak_db(bank[49][1][1][0]) - peak_db(bank[49][0][1][0]), 12.0, delta=0.6)
 
+    def test_sfz_skips_choke_and_switch_regions(self):
+        # Глушение (trigger=release), переключатели (sw_down) и поздние #define как в Naked Drums.
+        os.makedirs(os.path.join(self.dir, 'lib', 'S'))
+        for name in ('hit1', 'hit2', 'choke', 'sw'):
+            write_wav(os.path.join(self.dir, 'lib', 'S', f'OH_{name}.wav'), hit(0.5))
+        sfz = """#define $MIC OH
+<control> default_path=S/
+<global> seq_length=2
+<group> key=55
+#define $POS 1
+<region> seq_position=$POS sample=$MIC_hit1.wav
+#define $POS 2
+<region> seq_position=$POS sample=$MIC_hit2.wav
+<group> key=55 trigger=release
+<region> sample=$MIC_choke.wav
+<group> sw_down=61 key=55
+<region> sample=$MIC_sw.wav
+"""
+        with open(os.path.join(self.dir, 'lib', 'kit.sfz'), 'w') as f:
+            f.write(sfz)
+        regs = [r for r in bs.sfz_regions(os.path.join(self.dir, 'lib', 'kit.sfz')) if bs.sfz_playable(r)]
+        self.assertEqual(sorted(r['sample'] for r in regs), ['OH_hit1.wav', 'OH_hit2.wav'])
+        self.assertEqual(sorted(r['seq_position'] for r in regs), ['1', '2'])
+
+    def test_sfz_include_relative_to_main_file(self):
+        # Как в SFZ: путь #include из вложенного файла считается от главного .sfz.
+        os.makedirs(os.path.join(self.dir, 'lib', 'Stereo'))
+        os.makedirs(os.path.join(self.dir, 'lib', 'Data', 'group'))
+        os.makedirs(os.path.join(self.dir, 'lib', 'Data', 'stereo'))
+        with open(os.path.join(self.dir, 'lib', 'Stereo', 'kit.sfz'), 'w') as f:
+            f.write('#include "../Data/stereo/a.txt"\n')
+        with open(os.path.join(self.dir, 'lib', 'Data', 'stereo', 'a.txt'), 'w') as f:
+            f.write('<group> key=55\n#include "../Data/group/b.txt"\n')
+        with open(os.path.join(self.dir, 'lib', 'Data', 'group', 'b.txt'), 'w') as f:
+            f.write('<region> sample=x.wav\n')
+        regs = bs.sfz_regions(os.path.join(self.dir, 'lib', 'Stereo', 'kit.sfz'))
+        self.assertEqual([r['sample'] for r in regs], ['x.wav'])
+
+    def test_sfz_defines_on_one_line_and_volumes(self):
+        os.makedirs(os.path.join(self.dir, 'lib'))
+        for name in ('a', 'b'):
+            write_wav(os.path.join(self.dir, 'lib', f'{name}.wav'), hit(0.5))
+        sfz = """#define $V1L 1            #define $V1H 60
+#define $V2L 61   #define $V2H 127
+<master> master_volume=-3
+<group> key=55 group_volume=-6
+<region> lovel=$V1L hivel=$V1H sample=a.wav
+<group> key=55
+<region> lovel=$V2L hivel=$V2H sample=b.wav volume=0
+"""
+        with open(os.path.join(self.dir, 'lib', 'kit.sfz'), 'w') as f:
+            f.write(sfz)
+        cfg = os.path.join(self.dir, 'cfg.json')
+        with open(cfg, 'w') as f:
+            json.dump({'notes': {'49': {'sfz': 'kit.sfz', 'key': 55}}}, f)
+        out = os.path.join(self.dir, 'out.bin')
+        with redirect_stdout(io.StringIO()):
+            bs.main(['sfz', cfg, os.path.join(self.dir, 'lib'), out])
+        with open(out, 'rb') as f:
+            bank = parse_image(f.read())
+        self.assertEqual([v for v, _ in bank[49]], [60, 127])
+        # group_volume -6 у тихого слоя, master_volume -3 у обоих: разница 6 dB.
+        self.assertAlmostEqual(peak_db(bank[49][1][1][0]) - peak_db(bank[49][0][1][0]), 6.0, delta=0.5)
+
     def test_preview_files(self):
         self.wav('a.wav', hit(0.5))
         m = self.manifest([{'note': 49, 'layers': [{'vel_hi': 127, 'files': ['a.wav']}]}])
