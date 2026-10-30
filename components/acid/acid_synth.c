@@ -30,6 +30,8 @@
 #define MERGE_S 0.05f      // повтор той же ноты в этом окне от нажатия склеивается с ней
 #define DRUM_VEL_FLOOR 0.3f // громкость самого слабого удара пэда
 #define SNARE_GAIN 0.8f
+#define CYM_GAIN_MAX 1.5f
+#define CYM_KNOB 64 // громкость тарелок после включения (подбирается по демо)
 #define SYNTH_GAIN 0.9f // общая громкость синтов: на 10% тише прежнего (просьба пользователя)
 // Панорамы после включения: синты в центре, ударка немного разведена.
 static const uint8_t PAN_DEFAULT[ACID_PANS] = {64, 64, 80, 48, 64};
@@ -144,7 +146,22 @@ void acid_synth_init(acid_synth_t *s, float sr)
     s->dl_time = s->delay.time_knob;
     s->dl_fb = 53;
     s->dl_tone = 83;
+    acid_cym_init(&s->cym, sr);
+    s->bank = NULL;
+    for (int k = 0; k < 2; k++) {
+        s->cym_tail[k] = 127;
+        s->cym_tune[k] = 64;
+        s->cym_pan[k] = 64;
+    }
+    for (int w = 0; w < ACID_CYM_N; w++) {
+        s->cym.gain[w] = CYM_GAIN_MAX * (float)CYM_KNOB / 127.0f;
+    }
     s->page = PAGE_SYNTH1;
+}
+
+void acid_synth_set_bank(acid_synth_t *s, const acid_bank_t *b)
+{
+    s->bank = b;
 }
 
 float acid_synth_pitch_hz(const acid_synth_t *s)
@@ -271,6 +288,8 @@ static void drum_on(acid_synth_t *s, int note, int vel)
     } else if (note == 42 || note == 44 || note == 46) {
         acid_hat_trigger(&s->hat, note == 46);
         s->hat_vel = v;
+    } else if (note == 49 || note == 51 || note == 53) {
+        acid_cym_trigger(&s->cym, s->bank, note, v);
     }
 }
 
@@ -329,6 +348,26 @@ static void page_drums(acid_synth_t *s, int slot, int v)
     acid_hat_set(&s->hat, s->hat_tone, s->hat_closed_s, s->hat_open_s);
     acid_clap_set(&s->clap, s->clap_tone, s->clap_tail_s);
     acid_snare_set(&s->snare, s->snare_tune, s->snare_snappy, s->snare_decay_s);
+}
+
+// Страница 2: тарелки. Крэш энкодеры 2-5, райд 6-9 (купол следом за райдом), 10 купол, 11 чувствительность.
+static void page_drums2(acid_synth_t *s, int slot, int v)
+{
+    if (slot >= 1 && slot <= 8) {
+        int k = (slot - 1) / 4, w = k == 0 ? ACID_CYM_CRASH : ACID_CYM_RIDE;
+        float gain = s->cym.gain[w];
+        switch ((slot - 1) % 4) {
+        case 0: gain = lin(v, 0.0f, CYM_GAIN_MAX); break;
+        case 1: s->cym_tail[k] = (uint8_t)v; break;
+        case 2: s->cym_tune[k] = (uint8_t)v; break;
+        default: s->cym_pan[k] = (uint8_t)v; break;
+        }
+        acid_cym_set(&s->cym, w, gain, s->cym_tail[k], s->cym_tune[k], s->cym_pan[k]);
+    } else if (slot == 9) {
+        acid_cym_set(&s->cym, ACID_CYM_BELL, lin(v, 0.0f, CYM_GAIN_MAX), 127, 64, 64);
+    } else if (slot == 10) {
+        acid_cym_set_sens(&s->cym, lin(v, 0.0f, 1.0f));
+    }
 }
 
 static float bip(int v)
@@ -497,7 +536,7 @@ static void control_change(acid_synth_t *s, int num, int v)
     } else if (s->page == 1) {
         page_drums(s, slot, v);
     } else if (s->page == PAGE_DRUMS2) {
-        // тарелки - в следующем коммите
+        page_drums2(s, slot, v);
     } else if (s->page == PAGE_FX) {
         page_fx(s, slot, v);
     } else if (s->page == PAGE_TONAL) {
@@ -690,13 +729,15 @@ void acid_synth_render_with_lr(acid_synth_t *s, float *l, float *r, size_t n, co
         float clap = s->clap_gain * s->clap_vel * acid_clap_next(&s->clap);
         float snare = s->snare_gain * s->snare_vel * acid_snare_next(&s->snare);
         float s1 = slot1[i];
+        float cl = 0.0f, cr = 0.0f;
+        acid_cym_next(&s->cym, &cl, &cr); // уже стерео с балансом
         // Посылы до пампинга и панорамы: повторы не качаются вместе с сухим звуком.
-        float send = s->send1 * y + s->send2 * s1 + s->send_drums * (hat + clap + snare);
+        float send = s->send1 * y + s->send2 * s1 + s->send_drums * (hat + clap + snare + 0.5f * (cl + cr));
         float pump = acid_pump_next(&s->pump);
         float yl = kick + pump * (pl[ACID_PAN_SYNTH1] * y + pl[ACID_PAN_SYNTH2] * s1 + pl[ACID_PAN_HAT] * hat +
-                                  pl[ACID_PAN_CLAP] * clap + pl[ACID_PAN_SNARE] * snare);
+                                  pl[ACID_PAN_CLAP] * clap + pl[ACID_PAN_SNARE] * snare + cl);
         float yr = kick + pump * (pr[ACID_PAN_SYNTH1] * y + pr[ACID_PAN_SYNTH2] * s1 + pr[ACID_PAN_HAT] * hat +
-                                  pr[ACID_PAN_CLAP] * clap + pr[ACID_PAN_SNARE] * snare);
+                                  pr[ACID_PAN_CLAP] * clap + pr[ACID_PAN_SNARE] * snare + cr);
         if (send != 0.0f || acid_delay_active(&s->delay)) {
             float wl, wr;
             acid_delay_next2(&s->delay, send, &wl, &wr);

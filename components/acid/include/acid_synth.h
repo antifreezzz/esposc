@@ -5,6 +5,7 @@
 #include "acid_drums.h"
 #include "acid_env.h"
 #include "acid_clock.h"
+#include "acid_cym.h"
 #include "acid_filter.h"
 #include "acid_fx.h"
 #include "acid_kick.h"
@@ -100,8 +101,12 @@ typedef struct {
     float send1, send2, send_drums; // посылы в дилэй 0..1
     float pan_l[ACID_PANS], pan_r[ACID_PANS]; // усиления каналов по источникам
     int dl_time, dl_fb, dl_tone;    // сырые ручки дилэя
-    acid_tonal_t tonal; // страница 5: круг транспозиций синтов по тактам
-    int page;          // страница ручек: 0 микс, 1 ударка, 2 синт 1, 3 синт 2, 4 эффекты, 5 тональность
+    acid_tonal_t tonal; // страница 6: круг транспозиций синтов по тактам
+    // Тарелки (страница 2): набор сэмплов снаружи, NULL - молчат. Сырые ручки: крэш, райд.
+    acid_cym_t cym;
+    const acid_bank_t *bank;
+    uint8_t cym_tail[2], cym_tune[2], cym_pan[2];
+    int page; // 0 микс, 1 ударка, 2 ударка 2, 3 синт 1, 4 синт 2, 5 эффекты, 6 тональность
 
     int save;          // сменили тип или ручку слоя тональности: память ручек пора записать
 } acid_synth_t;
@@ -111,6 +116,8 @@ typedef struct {
 
 // Умолчания всех ручек, тишина до первой ноты.
 void acid_synth_init(acid_synth_t *s, float sr);
+// Набор сэмплов тарелок; init сбрасывает в NULL, после init ставить заново.
+void acid_synth_set_bank(acid_synth_t *s, const acid_bank_t *b);
 void acid_synth_render(acid_synth_t *s, float *out, size_t n);
 // Рендер по частям (слот 1 на другом ядре): сырой выход слота k (сейчас только k = 1),
 // затем всё остальное с готовым слотом 1 из буфера. Вместе звучат как acid_synth_render.

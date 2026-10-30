@@ -1,4 +1,5 @@
-// acid_render <out.wav> <seconds>: демо-трек с начала в WAV, как играет плата без BSP.
+// acid_render <out.wav> <seconds> [bank.bin]: демо-трек с начала в WAV, как играет плата без BSP.
+// bank.bin - образ тарелок (tools/samples/build_samples.py); без него тарелки молчат.
 #include "acid.h"
 #include "acid_demo.h"
 #include "wav.h"
@@ -8,9 +9,25 @@
 
 int main(int argc, char **argv)
 {
-    if (argc != 3) {
-        fprintf(stderr, "usage: %s <out.wav> <seconds>\n", argv[0]);
+    if (argc != 3 && argc != 4) {
+        fprintf(stderr, "usage: %s <out.wav> <seconds> [bank.bin]\n", argv[0]);
         return 2;
+    }
+    static acid_bank_t bank;
+    void *img = NULL;
+    if (argc == 4) {
+        FILE *f = fopen(argv[3], "rb");
+        long len = -1;
+        if (f && fseek(f, 0, SEEK_END) == 0) {
+            len = ftell(f);
+            rewind(f);
+        }
+        img = len > 0 ? malloc((size_t)len) : NULL;
+        if (!img || fread(img, 1, (size_t)len, f) != (size_t)len || !acid_bank_open(&bank, img, (size_t)len)) {
+            fprintf(stderr, "bad bank %s\n", argv[3]);
+            return 1;
+        }
+        fclose(f);
     }
     size_t frames = (size_t)(atof(argv[2]) * 48000.0);
     float *l = malloc(frames * sizeof *l);
@@ -23,6 +40,9 @@ int main(int argc, char **argv)
     static acid_demo_t d;
     static acid_midi_event_t ev[96];
     acid_synth_init(&s, 48000.0f);
+    if (img) {
+        acid_synth_set_bank(&s, &bank);
+    }
     acid_demo_init(&d, &acid_demo_song);
     // События перед каждым куском, как в прошивке.
     for (size_t off = 0; off < frames; off += ACID_DEMO_CHUNK) {
@@ -38,5 +58,6 @@ int main(int argc, char **argv)
     free(l);
     free(r);
     free(pcm);
+    free(img);
     return rc ? 1 : 0;
 }
