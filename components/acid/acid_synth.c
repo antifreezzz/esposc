@@ -30,6 +30,7 @@
 #define MERGE_S 0.05f      // повтор той же ноты в этом окне от нажатия склеивается с ней
 #define DRUM_VEL_FLOOR 0.3f // громкость самого слабого удара пэда
 #define SNARE_GAIN 0.8f
+#define SYNTH_GAIN 0.9f // общая громкость синтов: на 10% тише прежнего (просьба пользователя)
 // Панорамы после включения: синты в центре, ударка немного разведена.
 static const uint8_t PAN_DEFAULT[ACID_PANS] = {64, 64, 80, 48, 64};
 #define PAGES 6
@@ -79,7 +80,7 @@ static void slot_init(acid_slot_t *v, float sr, int type)
     v->env_hz = FENV_NORMAL_HZ;
     v->decay_s = FENV_NORMAL_S;
     v->accent_amt = ACCENT_GAIN;
-    v->gain = 1.0f;
+    v->gain = SYNTH_GAIN;
     v->transpose = 0;
     v->nheld = 0;
     v->now = 0;
@@ -287,8 +288,8 @@ static void page_mix(acid_synth_t *s, int slot, int v)
     switch (slot) {
     case 1: s->master = lin(v, 0.0f, 1.0f); break;
     case 2: s->drive = expo(v, 0.3f, 3.0f); break;
-    case 3: s->slot[0].gain = lin(v, 0.0f, 1.5f); break;
-    case 4: s->slot[1].gain = lin(v, 0.0f, 1.5f); break;
+    case 3: s->slot[0].gain = lin(v, 0.0f, 1.5f * SYNTH_GAIN); break;
+    case 4: s->slot[1].gain = lin(v, 0.0f, 1.5f * SYNTH_GAIN); break;
     case 5: s->kick_gain = lin(v, 0.0f, 2.0f); break;
     case 6: s->hat_gain = lin(v, 0.0f, 0.6f); break;
     case 7: s->clap_gain = lin(v, 0.0f, 1.2f); break;

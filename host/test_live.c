@@ -243,6 +243,8 @@ TEST(test_live_glide_knob)
 TEST(test_live_mix_page)
 {
     live();
+    CHECK_NEAR(s.slot[0].gain, 0.9f, 1e-6f); // синты на 10% тише прежнего (просьба пользователя)
+    CHECK_NEAR(s.slot[1].gain, 0.9f, 1e-6f);
     page(0);
     float cut = s.slot[0].cut_base;
     cc(ENC[2], 0); // мастер в ноль
@@ -255,7 +257,7 @@ TEST(test_live_mix_page)
     cc(ENC[4], 0);
     CHECK_NEAR(s.slot[0].gain, 0.0f, 1e-6f);
     cc(ENC[5], 127);
-    CHECK_NEAR(s.slot[1].gain, 1.5f, 1e-6f);
+    CHECK_NEAR(s.slot[1].gain, 1.35f, 1e-6f);
     cc(ENC[9], 0);
     CHECK_NEAR(s.snare_gain, 0.0f, 1e-6f);
 }
