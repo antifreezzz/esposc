@@ -80,7 +80,7 @@ TEST(test_drive_keeps_sub)
 TEST(test_drive_more_knob_more_harmonics)
 {
     double thd[3];
-    int knob[3] = {10, 64, 127};
+    int knob[3] = {10, 50, 127};
     for (int k = 0; k < 3; k++) {
         setup(knob[k], 30, 0);
         run_sine(220.0, 0.5f, N);

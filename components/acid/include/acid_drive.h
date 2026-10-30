@@ -14,15 +14,16 @@ typedef struct {
     float harm;             // гармоника ноты для полосового
     float howl_g;           // обратная связь
     float makeup;
-    float g_x;              // коэффициент раздела саба
-    float g_bp;             // коэффициент полосового на управляющей частоте
-    acid_svf_t xover, bp, post_hp;
+    acid_svf_t xover, sub_lp, post_hp; // раздел саба Линквица-Райли: ФНЧ+ФНЧ на саб, ФВЧ до и после перегруза
+    acid_svf_t bp;          // полосовой тона, коэффициент bp.g
+    float sub_d[ACID_DRIVE_OS_HIST]; // задержка саба под оверсемплинг
     float fb;               // ограниченный выход полосового прошлого сэмпла двойной частоты (петля воя)
     float env, env_rel;     // огибающая входа: вой глохнет после ноты
-    float t_bias;           // tanh смещения первой ступени: тишина на входе - ноль на выходе
-    float up[ACID_DRIVE_OS_HIST]; // история входа повышения частоты
-    float dn[ACID_DRIVE_OS_HIST]; // нечётные сэмплы на двойной частоте
-    float dn_even[3];       // чётные сэмплы на двойной частоте (задержка)
+    float c_bias;           // первая ступень от смещения: тишина на входе - ноль на выходе
+    float up[2 * ACID_DRIVE_OS_HIST]; // история входа повышения частоты, кольцо удвоенной длины
+    float dn[2 * ACID_DRIVE_OS_HIST]; // нечётные сэмплы на двойной частоте, так же
+    float dn_even[4];       // чётные сэмплы на двойной частоте (задержка 3)
+    int pos;                // позиция кольца
 } acid_drive_t;
 
 void acid_drive_init(acid_drive_t *d, float sr);

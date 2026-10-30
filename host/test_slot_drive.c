@@ -97,10 +97,10 @@ TEST(test_drive_gets_pitch)
         drive_max();
         on(k ? SEQ2 : BASS, 45);
         acid_synth_render(&s, a, N);
-        float g1 = s.slot[k].drv.g_bp;
+        float g1 = s.slot[k].drv.bp.g;
         on(k ? SEQ2 : BASS, 57);
         acid_synth_render(&s, a, N);
-        CHECK(s.slot[k].drv.g_bp > 1.5f * g1);
+        CHECK(s.slot[k].drv.bp.g > 1.5f * g1);
     }
 }
 
