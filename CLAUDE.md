@@ -60,3 +60,5 @@ python3 -m unittest discover -s tools/samples
   Мутации откатывать точечно (sed, Edit) или сначала коммитить.
 - Snap-chromium не пишет в `/tmp`: скриншот `--headless --screenshot=$HOME/x.png`, потом перенести.
 - `idf.py` после правок `sdkconfig.defaults` их не подхватывает, если `sdkconfig` уже есть: править и его (он в .gitignore).
+- `tools/samples` (сборщик образа и его тесты) - системный `/usr/bin/python3` с numpy. После `export.sh` ESP-IDF
+  `python3` - его venv без numpy: тесты падают на импорте. Запускать в отдельной оболочке или `/usr/bin/python3`.
