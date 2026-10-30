@@ -16,7 +16,7 @@ static float buf[48000], buf2[48000];
 static void live(void)
 {
     acid_synth_init(&s, SR);
-    acid_synth_set_live(&s, 1);
+    acid_synth_notes_off(&s);
     cur = &s;
 }
 
@@ -24,7 +24,7 @@ static void live(void)
 static void live2(void)
 {
     acid_synth_init(&s2, SR);
-    acid_synth_set_live(&s2, 1);
+    acid_synth_notes_off(&s2);
     live();
 }
 
@@ -315,35 +315,47 @@ TEST(test_live_stop_silences)
 
 TEST(test_live_transitions_no_click)
 {
-    // Автопилот -> live посреди ноты.
-    acid_synth_init(&s, SR);
-    rms(30000);
-    float prev = buf[29999];
-    acid_synth_set_live(&s, 1);
-    CHECK(max_jump(prev, 960) < 0.3f);
-
-    // Live с зажатой нотой -> автопилот.
+    // Сброс стека нот (BSP переподключился) посреди ноты: нота уходит без щелчка.
+    live();
     on(BASS, 45, 127);
     rms(4800);
-    prev = buf[4799];
-    acid_synth_set_live(&s, 0);
+    float prev = buf[4799];
+    acid_synth_notes_off(&s);
     CHECK(max_jump(prev, 960) < 0.3f);
 }
 
-TEST(test_live_off_restarts_track)
+TEST(test_live_accent_on_slid_note)
 {
+    // Слайд (перекрытие) в акцентированную ноту: акцент громкости срабатывает.
+    live();
+    on(BASS, 45, 90);
+    rms(2400);
+    on(BASS, 57, 120);
+    rms(100);
+    CHECK(s.slot[0].gliding);
+    CHECK(s.slot[0].accent_gain > 1.0f);
+}
+
+TEST(test_live_slid_note_without_accent_drops_accent)
+{
+    live();
+    on(BASS, 45, 120);
+    rms(2400);
+    on(BASS, 57, 90);
+    rms(100);
+    CHECK(s.slot[0].gliding);
+    CHECK_NEAR(s.slot[0].accent_gain, 1.0f, 1e-6);
+}
+
+TEST(test_live_midi_without_set_live)
+{
+    // Синт всегда играет от MIDI: демо и BSP шлют одно и то же.
     acid_synth_init(&s, SR);
-    rms(48000);
-    acid_synth_set_live(&s, 1);
-    cc(ENC[4], 0); // резонанс на странице синта 1
-    on(BASS, 45, 100);
-    rms(4800);
-    acid_synth_set_live(&s, 0);
-    CHECK(s.arr_on == 1 && s.bar == 0 && s.cycle == 0 && s.started == 0);
-    rms(4800);
-    CHECK(s.bar == 0 && s.started == 1);
-    CHECK(s.slot[0].res > 0.5f); // резонанс снова от автоматизации, а не от ручки
-    CHECK(s.kick.amp_env > 0.1f); // бочка автопилота на месте
+    cur = &s;
+    on(BASS, 69, 100);
+    rms(2400);
+    CHECK_NEAR(acid_synth_pitch_hz(&s), 440.0, 4.4);
+    CHECK(s.slot[0].nheld == 1);
 }
 
 static float slot_hz(int k)
@@ -403,8 +415,8 @@ TEST(test_render_split_identical)
     static float x[96], y[96], ext[96];
     acid_synth_init(&a, SR);
     acid_synth_init(&b, SR);
-    acid_synth_set_live(&a, 1);
-    acid_synth_set_live(&b, 1);
+    acid_synth_notes_off(&a);
+    acid_synth_notes_off(&b);
     int same = 1;
     for (int blk = 0; blk < 500; blk++) {
         if (blk % 50 == 0) {
@@ -1031,7 +1043,9 @@ int main(void)
     RUN(test_live_fx_page_back_to_neutral);
     RUN(test_live_stop_silences);
     RUN(test_live_transitions_no_click);
-    RUN(test_live_off_restarts_track);
+    RUN(test_live_accent_on_slid_note);
+    RUN(test_live_slid_note_without_accent_drops_accent);
+    RUN(test_live_midi_without_set_live);
     RUN(test_live_seq2_plays_slot1);
     RUN(test_live_slot_knobs_independent);
     RUN(test_live_stop_silences_both);

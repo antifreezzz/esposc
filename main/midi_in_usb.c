@@ -8,7 +8,7 @@
 #include "usb/usb_host.h"
 
 #define QUEUE_LEN 64
-#define MAX_RETRIES 3 // подряд неудачных трансферов, потом сдаёмся и уходим в автопилот
+#define MAX_RETRIES 3 // подряд неудачных трансферов, потом сдаёмся и уходим в демо
 #define USB_CLASS_AUDIO 0x01
 #define USB_SUBCLASS_MIDISTREAMING 0x03
 
@@ -53,7 +53,7 @@ static void finish_close(void)
     }
 }
 
-// Без приёма контроллер мёртв: снимаем live, синт уходит в автопилот и чистит ноты.
+// Без приёма контроллер мёртв: снимаем live, синт уходит в демо (с нуля, ноты чистые).
 static void give_up(const char *why)
 {
     s_connected = 0;

@@ -7,7 +7,6 @@
 #include "acid_math.h"
 #include "acid_mem.h"
 
-#define BPM 130.0f
 #define RES 0.85f
 #define FENV_NORMAL_HZ 3000.0f
 #define FENV_ACCENT_HZ 5000.0f
@@ -15,7 +14,7 @@
 #define FENV_ACCENT_RATIO 0.48f // спад акцента относительно обычной ноты (0.12 с при 0.25)
 #define ACCENT_GAIN 1.4f
 #define GLIDE_S 0.06f
-#define FIXED_CUTOFF_HZ 500.0f // база среза в режиме фиксированного паттерна
+#define CUTOFF_HZ 500.0f // база среза 303, пока ручку не трогали
 #define HAT_GAIN 0.25f
 #define CLAP_GAIN 0.6f
 #define DRIVE 0.8f
@@ -76,7 +75,7 @@ static void slot_init(acid_slot_t *v, float sr, int type)
     v->wave = 0;
     v->ctrl_left = 0;
     v->g = 0.0f;
-    v->cut_base = FIXED_CUTOFF_HZ;
+    v->cut_base = CUTOFF_HZ;
     v->env_hz = FENV_NORMAL_HZ;
     v->decay_s = FENV_NORMAL_S;
     v->accent_amt = ACCENT_GAIN;
@@ -95,12 +94,10 @@ void acid_synth_init(acid_synth_t *s, float sr)
         type_defaults(s, &s->slot[k]);
     }
     s->save = 0;
-    s->last_flags = 0;
     acid_kick_init(&s->kick, sr);
     acid_hat_init(&s->hat, sr);
     acid_clap_init(&s->clap, sr);
     acid_snare_init(&s->snare, sr);
-    s->kick_on = 1;
 
     s->kick_gain = KICK_GAIN;
     s->hat_gain = HAT_GAIN;
@@ -146,63 +143,6 @@ void acid_synth_init(acid_synth_t *s, float sr)
     s->dl_fb = 53;
     s->dl_tone = 83;
     s->page = PAGE_SYNTH1;
-    s->live = 0;
-
-    s->arr_on = 1;
-    s->started = 0;
-    s->bar = 0;
-    s->cycle = 0;
-    for (int p = 0; p < ACID_PAT_COUNT; p++) {
-        memcpy(s->mut[p], acid_patterns[p], sizeof s->mut[p]);
-    }
-    s->sec = acid_arr_section(0);
-    memcpy(s->bar_steps, s->mut[acid_arr_pattern(0)], sizeof s->bar_steps);
-    acid_seq_init(&s->seq, s->bar_steps, 16, BPM, sr);
-}
-
-void acid_synth_set_pattern(acid_synth_t *s, const acid_step_t *steps, int len)
-{
-    s->arr_on = 0;
-    acid_seq_init(&s->seq, steps, len, BPM, s->sr);
-}
-
-// Начало такта в режиме трека: следующий такт, круг, мутация, параметры секции.
-static void on_bar(acid_synth_t *s)
-{
-    if (s->started) {
-        s->bar++;
-        if (s->bar == ACID_TRACK_BARS) {
-            s->bar = 0;
-            s->cycle++;
-            // Первый круг играет оригинал, дальше каждый круг со своей мутацией.
-            for (int p = 0; p < ACID_PAT_COUNT; p++) {
-                acid_mutate(s->mut[p], acid_patterns[p], 16, (uint32_t)s->cycle);
-            }
-        }
-    }
-    s->started = 1;
-    s->sec = acid_arr_section(s->bar);
-    memcpy(s->bar_steps, s->mut[acid_arr_pattern(s->bar)], sizeof s->bar_steps);
-    s->slot[0].wave = s->sec->wave;
-}
-
-// Ударные шага по битам секции.
-static void drums_step(acid_synth_t *s, int step)
-{
-    uint8_t d = s->sec->drums;
-    if ((d & ACID_DR_KICK) && step % 4 == 0) {
-        acid_kick_trigger(&s->kick);
-    }
-    if (d & ACID_DR_HAT) {
-        if ((d & ACID_DR_OHAT) && step % 4 == 2) {
-            acid_hat_trigger(&s->hat, 1);
-        } else if (step % 2 == 0) {
-            acid_hat_trigger(&s->hat, 0);
-        }
-    }
-    if ((d & ACID_DR_CLAP) && (step == 4 || step == 12)) {
-        acid_clap_trigger(&s->clap);
-    }
 }
 
 float acid_synth_pitch_hz(const acid_synth_t *s)
@@ -227,81 +167,18 @@ static void voice_note(acid_synth_t *s, acid_slot_t *v, int note, int accent, in
     acid_decay_set(&v->fenv, accent ? v->decay_s * FENV_ACCENT_RATIO : v->decay_s, s->sr);
     acid_decay_trigger(&v->fenv, 1.0f);
     float env = accent ? v->env_hz * (FENV_ACCENT_HZ / FENV_NORMAL_HZ) : v->env_hz;
-    v->fenv_amount = env * (s->arr_on ? s->sec->env_scale : 1.0f);
+    v->fenv_amount = env;
 }
 
-static void on_step(acid_synth_t *s, int index)
+void acid_synth_notes_off(acid_synth_t *s)
 {
-    acid_slot_t *v = &s->slot[0];
-    const acid_step_t *cur = &s->seq.steps[index];
-    if (cur->flags & ACID_REST) {
-        v->gliding = 0;
-        return;
-    }
-    // Слайд только если предыдущий шаг реально звучит: на самом первом шаге amp = 0.
-    int slide_in = (s->last_flags & ACID_SLIDE) && !(s->last_flags & ACID_REST) &&
-                   v->amp.value > 0.0f;
-    int note = cur->note + (s->arr_on ? s->sec->transpose : 0);
-    voice_note(s, v, note, cur->flags & ACID_ACCENT, slide_in);
-}
-
-void acid_synth_set_live(acid_synth_t *s, int on)
-{
-    if (on) {
-        // Секвенсор и автоматизация замолкают, звучащие хвосты доигрывают.
-        s->live = 1;
-        s->arr_on = 0;
-        s->kick_on = 0;
-        for (int k = 0; k < ACID_SLOTS; k++) {
-            acid_slot_t *v = &s->slot[k];
-            v->nheld = 0;
-            v->pend_note = -1;
-            v->gliding = 0;
-            // Выбор с BSP: тип и его ручки (автопилот мог поменять срез и форму волны 303).
-            v->type = v->next_type = v->sel_type;
-            v->fade = 0;
-            type_defaults(s, v);
-        }
-        return;
-    }
-    // Трек с начала, но состояние голосов сохраняем, чтобы не щёлкнуть.
-    acid_slot_t keep[ACID_SLOTS];
-    memcpy(keep, s->slot, sizeof keep);
-    acid_kick_t kick = s->kick;
-    acid_hat_t hat = s->hat;
-    acid_clap_t clap = s->clap;
-    acid_snare_t snare = s->snare;
-    acid_synth_init(s, s->sr);
+    // Звучащие ноты отпускаются, хвосты доигрывают без щелчка.
     for (int k = 0; k < ACID_SLOTS; k++) {
         acid_slot_t *v = &s->slot[k];
-        if (k == 1) {
-            // Автопилот слот 1 не играет: доигрывает хвост своим типом, стек пуст.
-            *v = keep[k];
-            v->nheld = 0;
-            v->pend_note = -1;
-            v->gliding = 0;
-            v->type = v->next_type;
-            v->fade = 0;
-            continue;
-        }
-        v->osc = keep[k].osc;
-        v->flt = keep[k].flt;
-        v->amp = keep[k].amp;
-        v->fenv = keep[k].fenv;
-        v->pitch_log2 = v->target_log2 = keep[k].pitch_log2;
-        // Автопилот играет 303, выбор и ручки ждут BSP.
-        v->sel_type = keep[k].sel_type;
-        memcpy(v->knob, keep[k].knob, sizeof v->knob);
+        v->nheld = 0;
+        v->pend_note = -1;
+        v->gliding = 0;
     }
-    s->kick = kick;
-    s->hat = hat;
-    s->clap = clap;
-    s->snare = snare;
-    // Хвосты доигрывают, но дальше ударка звучит как в треке.
-    acid_kick_set(&s->kick, s->kick_tune, s->kick_sweep, s->kick_pitch_s, s->kick_amp_s);
-    acid_hat_set(&s->hat, s->hat_tone, s->hat_closed_s, s->hat_open_s);
-    acid_clap_set(&s->clap, s->clap_tone, s->clap_tail_s);
-    acid_snare_set(&s->snare, s->snare_tune, s->snare_snappy, s->snare_decay_s);
 }
 
 static void held_remove(acid_slot_t *v, int note)
@@ -516,7 +393,7 @@ static void type_defaults(acid_synth_t *s, acid_slot_t *v)
     v->glide_coef = expf(-1.0f / (GLIDE_S * s->sr));
     v->transpose = 0;
     if (v->type == 0) {
-        v->cut_base = FIXED_CUTOFF_HZ;
+        v->cut_base = CUTOFF_HZ;
         v->env_hz = FENV_NORMAL_HZ;
         v->decay_s = FENV_NORMAL_S;
         v->accent_amt = ACCENT_GAIN;
@@ -653,9 +530,6 @@ static void tonal_boundary(acid_synth_t *s)
 
 void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
 {
-    if (!s->live) {
-        return;
-    }
     switch (ev->type) {
     case ACID_MIDI_NOTE_ON:
         if (ev->ch == BASS_CH || ev->ch == SEQ2_CH) {
@@ -704,16 +578,7 @@ static float control_update(acid_synth_t *s, acid_slot_t *v)
 {
     acid_osc_set_freq(&v->osc, exp2f(v->pitch_log2), s->sr);
 
-    float base = v->cut_base;
-    if (s->arr_on && v == &s->slot[0]) {
-        // Автоматизация секции: срез по экспоненте, резонанс линейно.
-        const acid_section_t *sec = s->sec;
-        float p = acid_arr_progress(s->bar, s->seq.index < 0 ? 0 : s->seq.index);
-        p += s->seq.pos / s->seq.samples_per_step / (float)(ACID_SECTION_BARS * 16);
-        base = sec->cut_from * exp2f(p * log2f(sec->cut_to / sec->cut_from));
-        v->res = sec->res_from + (sec->res_to - sec->res_from) * p;
-    }
-    float cutoff = base + v->fenv_amount * v->fenv.value;
+    float cutoff = v->cut_base + v->fenv_amount * v->fenv.value;
     return acid_ladder_coef(cutoff, s->sr);
 }
 
@@ -807,77 +672,42 @@ void acid_synth_render_slot(acid_synth_t *s, int k, float *out, size_t n)
     }
 }
 
-// Хоть один эффект мастера звучит: микс по длинному пути. Иначе прежний путь, бит в бит.
-static int fx_on(const acid_synth_t *s)
-{
-    return acid_pump_active(&s->pump) || acid_djf_active(&s->djf) || acid_crush_active(&s->crush) ||
-           acid_stutter_active(&s->stutter) || acid_delay_active(&s->delay) ||
-           s->send1 != 0.0f || s->send2 != 0.0f || s->send_drums != 0.0f;
-}
-
 void acid_synth_render_with_lr(acid_synth_t *s, float *l, float *r, size_t n, const float *slot1)
 {
     acid_slot_t *v = &s->slot[0];
     for (size_t i = 0; i < n; i++) {
         slot_tick(s, v);
-        int step = s->live ? -1 : acid_seq_tick(&s->seq);
-        if (step >= 0) {
-            if (s->arr_on) {
-                if (step == 0) {
-                    on_bar(s);
-                }
-                drums_step(s, step);
-            } else if (s->kick_on && step % 4 == 0) {
-                acid_kick_trigger(&s->kick);
-            }
-            on_step(s, step);
-            s->last_flags = s->seq.steps[step].flags;
-            v->ctrl_left = 0; // новая нота: пересчитать сразу
-        }
-        float y = slot_next(s, v, s->live ? v->nheld > 0 : acid_seq_gate(&s->seq));
+        float y = slot_next(s, v, v->nheld > 0);
         s->clock_now++;
-        if (s->live || fx_on(s)) {
-            // Стерео: панорамы по источникам, бочка в центре.
-            const float *pl = s->pan_l, *pr = s->pan_r;
-            float kick = s->kick_gain * s->kick_vel * acid_kick_next(&s->kick);
-            float hat = s->hat_gain * s->hat_vel * acid_hat_next(&s->hat);
-            float clap = s->clap_gain * s->clap_vel * acid_clap_next(&s->clap);
-            float snare = s->snare_gain * s->snare_vel * acid_snare_next(&s->snare);
-            float s1 = slot1[i];
-            // Посылы до пампинга и панорамы: повторы не качаются вместе с сухим звуком.
-            float send = s->send1 * y + s->send2 * s1 + s->send_drums * (hat + clap + snare);
-            float pump = acid_pump_next(&s->pump);
-            float yl = kick + pump * (pl[ACID_PAN_SYNTH1] * y + pl[ACID_PAN_SYNTH2] * s1 + pl[ACID_PAN_HAT] * hat +
-                                      pl[ACID_PAN_CLAP] * clap + pl[ACID_PAN_SNARE] * snare);
-            float yr = kick + pump * (pr[ACID_PAN_SYNTH1] * y + pr[ACID_PAN_SYNTH2] * s1 + pr[ACID_PAN_HAT] * hat +
-                                      pr[ACID_PAN_CLAP] * clap + pr[ACID_PAN_SNARE] * snare);
-            if (send != 0.0f || acid_delay_active(&s->delay)) {
-                float wl, wr;
-                acid_delay_next2(&s->delay, send, &wl, &wr);
-                yl += wl;
-                yr += wr;
-            }
-            if (acid_stutter_active(&s->stutter)) {
-                acid_stutter_next2(&s->stutter, &yl, &yr);
-            }
-            if (acid_crush_active(&s->crush)) {
-                acid_crush_next2(&s->crush, &yl, &yr);
-            }
-            acid_djf_next2(&s->djf, &yl, &yr);
-            l[i] = s->master * OUT_PEAK * acid_tanh(s->drive * yl);
-            r[i] = s->master * OUT_PEAK * acid_tanh(s->drive * yr);
-            continue;
-        } else {
-            // Нейтральные эффекты: прежний порядок сложения, автопилот бит в бит.
-            y += s->kick_gain * s->kick_vel * acid_kick_next(&s->kick);
-            y += s->hat_gain * s->hat_vel * acid_hat_next(&s->hat);
-            y += s->clap_gain * s->clap_vel * acid_clap_next(&s->clap);
-            y += s->snare_gain * s->snare_vel * acid_snare_next(&s->snare);
-            if (slot1[i] != 0.0f) {
-                y += slot1[i]; // молчащий слот 1 не трогает y: автопилот бит в бит прежний
-            }
+        // Стерео: панорамы по источникам, бочка в центре.
+        const float *pl = s->pan_l, *pr = s->pan_r;
+        float kick = s->kick_gain * s->kick_vel * acid_kick_next(&s->kick);
+        float hat = s->hat_gain * s->hat_vel * acid_hat_next(&s->hat);
+        float clap = s->clap_gain * s->clap_vel * acid_clap_next(&s->clap);
+        float snare = s->snare_gain * s->snare_vel * acid_snare_next(&s->snare);
+        float s1 = slot1[i];
+        // Посылы до пампинга и панорамы: повторы не качаются вместе с сухим звуком.
+        float send = s->send1 * y + s->send2 * s1 + s->send_drums * (hat + clap + snare);
+        float pump = acid_pump_next(&s->pump);
+        float yl = kick + pump * (pl[ACID_PAN_SYNTH1] * y + pl[ACID_PAN_SYNTH2] * s1 + pl[ACID_PAN_HAT] * hat +
+                                  pl[ACID_PAN_CLAP] * clap + pl[ACID_PAN_SNARE] * snare);
+        float yr = kick + pump * (pr[ACID_PAN_SYNTH1] * y + pr[ACID_PAN_SYNTH2] * s1 + pr[ACID_PAN_HAT] * hat +
+                                  pr[ACID_PAN_CLAP] * clap + pr[ACID_PAN_SNARE] * snare);
+        if (send != 0.0f || acid_delay_active(&s->delay)) {
+            float wl, wr;
+            acid_delay_next2(&s->delay, send, &wl, &wr);
+            yl += wl;
+            yr += wr;
         }
-        l[i] = r[i] = s->master * OUT_PEAK * acid_tanh(s->drive * y);
+        if (acid_stutter_active(&s->stutter)) {
+            acid_stutter_next2(&s->stutter, &yl, &yr);
+        }
+        if (acid_crush_active(&s->crush)) {
+            acid_crush_next2(&s->crush, &yl, &yr);
+        }
+        acid_djf_next2(&s->djf, &yl, &yr);
+        l[i] = s->master * OUT_PEAK * acid_tanh(s->drive * yl);
+        r[i] = s->master * OUT_PEAK * acid_tanh(s->drive * yr);
     }
 }
 
@@ -891,7 +721,7 @@ void acid_synth_render_lr(acid_synth_t *s, float *l, float *r, size_t n)
     }
 }
 
-// Моно: среднее каналов. При L == R (автопилот) точно равно каналу.
+// Моно: среднее каналов.
 void acid_synth_render_with(acid_synth_t *s, float *out, size_t n, const float *slot1)
 {
     float l[MIX_CHUNK], r[MIX_CHUNK];
@@ -951,12 +781,9 @@ int acid_synth_import(acid_synth_t *s, const void *buf, size_t len)
         v->sel_type = b[0] < ACID_TYPES ? b[0] : 0;
         memcpy(v->knob, b + 1, sizeof v->knob);
         b += 1 + sizeof v->knob;
-        if (s->live || k == 1) {
-            // Автопилот играет слотом 0 как 303: его выбор применится с BSP.
-            v->type = v->next_type = v->sel_type;
-            v->fade = 0;
-            type_defaults(s, v);
-        }
+        v->type = v->next_type = v->sel_type;
+        v->fade = 0;
+        type_defaults(s, v);
     }
     for (int i = 0; i < ACID_TONAL_KNOBS; i++) {
         if (b[i] != KNOB_NONE) {

@@ -1,4 +1,5 @@
 #include "acid.h"
+#include "acid_demo.h"
 #include "test.h"
 
 #include <math.h>
@@ -15,30 +16,40 @@ typedef struct {
     long n;
 } stats_t;
 
-static stats_t render_stats(float seconds)
+static void accumulate(stats_t *st, const float *x, int n)
 {
-    stats_t st = {1, 0.0f, 0.0, 0};
-    float buf[480];
-    long total = (long)(seconds * SR);
-    while (st.n < total) {
-        acid_synth_render(&s, buf, 480);
-        for (int i = 0; i < 480; i++) {
-            if (!isfinite(buf[i])) {
-                st.finite = 0;
-            }
-            float a = fabsf(buf[i]);
-            st.peak = a > st.peak ? a : st.peak;
-            st.sum_sq += (double)buf[i] * buf[i];
-        }
-        st.n += 480;
+    for (int i = 0; i < n; i++) {
+        st->finite &= isfinite(x[i]);
+        float a = fabsf(x[i]);
+        st->peak = a > st->peak ? a : st->peak;
+        st->sum_sq += (double)x[i] * x[i];
     }
-    return st;
+    st->n += n;
 }
 
-TEST(test_synth_finite_and_peak)
+static void midi(int type, int ch, int d1, int d2)
 {
+    acid_midi_event_t e = {.type = (uint8_t)type, .ch = (uint8_t)ch, .d1 = (uint8_t)d1, .d2 = (uint8_t)d2};
+    acid_synth_midi(&s, &e);
+}
+
+TEST(test_synth_demo_finite_and_peak)
+{
+    static acid_demo_t d;
+    static acid_midi_event_t ev[96];
     acid_synth_init(&s, SR);
-    stats_t st = render_stats(60.0f);
+    acid_demo_init(&d, &acid_demo_song);
+    stats_t st = {1, 0.0f, 0.0, 0};
+    float l[ACID_DEMO_CHUNK], r[ACID_DEMO_CHUNK];
+    for (long k = 0; k < 60L * 48000 / ACID_DEMO_CHUNK; k++) {
+        int n = acid_demo_events(&d, ev, 96);
+        for (int i = 0; i < n; i++) {
+            acid_synth_midi(&s, &ev[i]);
+        }
+        acid_synth_render_lr(&s, l, r, ACID_DEMO_CHUNK);
+        accumulate(&st, l, ACID_DEMO_CHUNK);
+        accumulate(&st, r, ACID_DEMO_CHUNK);
+    }
     CHECK(st.finite);
     CHECK(st.peak <= PEAK_6DB);
     CHECK(sqrt(st.sum_sq / st.n) > 0.02);
@@ -46,102 +57,41 @@ TEST(test_synth_finite_and_peak)
 
 TEST(test_synth_stress_peak)
 {
-    static acid_step_t loud[16];
-    for (int i = 0; i < 16; i++) {
-        loud[i].note = 36;
-        loud[i].flags = ACID_ACCENT;
-    }
+    // Акцентированные низкие ноты на максимальном резонансе 303.
     acid_synth_init(&s, SR);
-    acid_synth_set_pattern(&s, loud, 16);
-    s.slot[0].res = 1.0f;
-    stats_t st = render_stats(30.0f);
+    midi(ACID_MIDI_CC, 1, 74, 0);   // энкодер 2 на странице синта 1: 303
+    midi(ACID_MIDI_CC, 1, 76, 127); // энкодер 4: резонанс
+    stats_t st = {1, 0.0f, 0.0, 0};
+    float buf[480];
+    for (int k = 0; k < 3000; k++) {
+        if (k % 12 == 0) {
+            midi(ACID_MIDI_NOTE_ON, 4, 36, 127);
+        } else if (k % 12 == 6) {
+            midi(ACID_MIDI_NOTE_OFF, 4, 36, 0);
+        }
+        acid_synth_render(&s, buf, 480);
+        accumulate(&st, buf, 480);
+    }
     CHECK(st.finite);
     CHECK(st.peak <= PEAK_6DB);
 }
 
-// Рендер по одному сэмплу до момента offset сэмплов внутри шага step.
-static void render_until(int step, double offset)
+TEST(test_render_mono_is_mean)
 {
-    float x;
-    for (long guard = 0; guard < 10L * 48000; guard++) {
-        acid_synth_render(&s, &x, 1);
-        if (s.seq.index == step && s.seq.pos >= offset) {
-            return;
-        }
+    static acid_synth_t a;
+    static float l[4800], r[4800], m[4800];
+    acid_synth_init(&s, SR);
+    acid_synth_init(&a, SR);
+    acid_midi_event_t e = {.type = ACID_MIDI_NOTE_ON, .ch = 1, .d1 = 42, .d2 = 120}; // хэт правее центра
+    acid_synth_midi(&s, &e);
+    acid_synth_midi(&a, &e);
+    acid_synth_render_lr(&s, l, r, 4800);
+    acid_synth_render(&a, m, 4800);
+    int same = 1;
+    for (int i = 0; i < 4800; i++) {
+        same &= m[i] == 0.5f * (l[i] + r[i]);
     }
-}
-
-TEST(test_synth_pitch_follows_step)
-{
-    static const acid_step_t pat[2] = {{45, 0}, {57, 0}};
-    acid_synth_init(&s, SR);
-    acid_synth_set_pattern(&s, pat, 2);
-    double half = s.seq.samples_per_step / 2;
-    render_until(0, half);
-    CHECK_NEAR(acid_synth_pitch_hz(&s), 110.0, 1.1);
-    render_until(1, half);
-    CHECK_NEAR(acid_synth_pitch_hz(&s), 220.0, 2.2);
-}
-
-TEST(test_synth_slide_glides)
-{
-    static const acid_step_t pat[2] = {{45, ACID_SLIDE}, {57, 0}};
-    acid_synth_init(&s, SR);
-    acid_synth_set_pattern(&s, pat, 2);
-    render_until(0, 2000);
-    float min_amp = 1.0f;
-    float x;
-    while (!(s.seq.index == 1 && s.seq.pos >= 480)) {
-        acid_synth_render(&s, &x, 1);
-        min_amp = s.slot[0].amp.value < min_amp ? s.slot[0].amp.value : min_amp;
-    }
-    float hz = acid_synth_pitch_hz(&s);
-    CHECK(hz > 111.0f);
-    CHECK(hz < 219.0f);
-    CHECK(min_amp > 0.5f);
-}
-
-TEST(test_synth_slide_into_rest)
-{
-    static const acid_step_t pat[2] = {{45, ACID_SLIDE}, {0, ACID_REST}};
-    acid_synth_init(&s, SR);
-    acid_synth_set_pattern(&s, pat, 2);
-    s.kick_on = 0; // проверяем бас, бочка тут мешает
-    render_until(1, s.seq.samples_per_step / 2);
-    double sum_sq = 0.0;
-    int n = 0;
-    float x;
-    while (s.seq.index == 1) {
-        acid_synth_render(&s, &x, 1);
-        sum_sq += (double)x * x;
-        n++;
-    }
-    CHECK(n > 1000);
-    CHECK(sqrt(sum_sq / n) < 0.001);
-}
-
-TEST(test_synth_accent_on_slid_note)
-{
-    // Шаг 0 слайдом в акцентированный шаг 1: акцент громкости должен сработать.
-    static const acid_step_t pat[3] = {{45, ACID_SLIDE}, {57, ACID_ACCENT}, {45, 0}};
-    acid_synth_init(&s, SR);
-    acid_synth_set_pattern(&s, pat, 3);
-    s.kick_on = 0;
-    render_until(1, 100);
-    CHECK(s.slot[0].gliding);
-    CHECK(s.slot[0].accent_gain > 1.0f);
-}
-
-TEST(test_synth_slid_note_without_accent_drops_accent)
-{
-    // Акцентированный шаг слайдом в обычный: акцент не тянется дальше.
-    static const acid_step_t pat[3] = {{45, ACID_ACCENT | ACID_SLIDE}, {57, 0}, {45, 0}};
-    acid_synth_init(&s, SR);
-    acid_synth_set_pattern(&s, pat, 3);
-    s.kick_on = 0;
-    render_until(1, 100);
-    CHECK(s.slot[0].gliding);
-    CHECK_NEAR(s.slot[0].accent_gain, 1.0f, 1e-6);
+    CHECK(same);
 }
 
 TEST(test_pcm_convert)
@@ -167,34 +117,12 @@ TEST(test_pcm_lr)
     }
 }
 
-// Автопилот в стерео: оба канала равны и совпадают с моно-рендером бит в бит.
-static acid_synth_t s_lr;
-static float lr_l[48000], lr_r[48000], lr_m[48000];
-
-TEST(test_autopilot_lr_equal)
-{
-    acid_synth_init(&s, 48000.0f);
-    acid_synth_init(&s_lr, 48000.0f);
-    acid_synth_render(&s, lr_m, 48000);
-    acid_synth_render_lr(&s_lr, lr_l, lr_r, 48000);
-    int diff = 0;
-    for (int i = 0; i < 48000; i++) {
-        diff += lr_l[i] != lr_r[i] || lr_l[i] != lr_m[i];
-    }
-    CHECK(diff == 0);
-}
-
 int main(void)
 {
-    RUN(test_pcm_lr);
-    RUN(test_autopilot_lr_equal);
-    RUN(test_synth_finite_and_peak);
+    RUN(test_synth_demo_finite_and_peak);
     RUN(test_synth_stress_peak);
-    RUN(test_synth_pitch_follows_step);
-    RUN(test_synth_slide_glides);
-    RUN(test_synth_slide_into_rest);
-    RUN(test_synth_accent_on_slid_note);
-    RUN(test_synth_slid_note_without_accent_drops_accent);
+    RUN(test_render_mono_is_mean);
     RUN(test_pcm_convert);
+    RUN(test_pcm_lr);
     TEST_MAIN_END();
 }

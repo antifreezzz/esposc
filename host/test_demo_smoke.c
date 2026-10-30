@@ -22,7 +22,7 @@ typedef struct {
 static void start(void)
 {
     acid_synth_init(&s, SR);
-    acid_synth_set_live(&s, 1);
+    acid_synth_notes_off(&s);
     acid_demo_init(&d, &acid_demo_song);
 }
 
@@ -143,7 +143,7 @@ TEST(test_demo_reset_clean)
         acid_synth_render_lr(&s, l, r, CH);
     }
     acid_synth_init(&s, SR);
-    acid_synth_set_live(&s, 1);
+    acid_synth_notes_off(&s);
     CHECK(s.slot[0].nheld == 0 && s.slot[1].nheld == 0);
     float p = 0.0f;
     for (int k = 0; k < 2 * 48000 / CH; k++) {
