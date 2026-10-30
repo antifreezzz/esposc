@@ -51,12 +51,12 @@ void acid_crush_set(acid_crush_t *c, int bits_knob, int rate_knob); // 0..127 к
 float acid_crush_next(acid_crush_t *c, float x);
 int acid_crush_active(const acid_crush_t *c);
 
-// Дилэй по темпу: буфер 16 бит во внутренней RAM, ФНЧ в петле, время плывёт как у ленты.
+// Дилэй по темпу: буфер 16 бит (на плате в PSRAM), ФНЧ в петле, время плывёт как у ленты.
 #define ACID_DELAY_LEN 36864 // 0.77 с: 3/8 на 120 BPM (36000) влезает
 
 typedef struct {
     float sr;
-    int16_t buf[ACID_DELAY_LEN];
+    int16_t *buf;    // 2 * ACID_DELAY_LEN: линия A, затем линия B
     int w;           // куда пишем
     float spb;       // сэмплов на четверть
     int time_knob;
@@ -67,7 +67,8 @@ typedef struct {
     int zero_run;    // нулевых записей подряд; >= ACID_DELAY_LEN - буфер весь в нулях
 } acid_delay_t;
 
-void acid_delay_init(acid_delay_t *d, float sr); // 120 BPM, 3/16, fb 0.4, тон 4 кГц; буфер чистится
+// 120 BPM, 3/16, fb 0.4, тон 4 кГц; buf на 2 * ACID_DELAY_LEN чистится.
+void acid_delay_init(acid_delay_t *d, float sr, int16_t *buf);
 void acid_delay_set(acid_delay_t *d, int time_knob, int fb_knob, int tone_knob);
 void acid_delay_set_spb(acid_delay_t *d, float spb);
 float acid_delay_next(acid_delay_t *d, float in); // in - сумма посылов, возврат - повторы
@@ -79,7 +80,7 @@ float acid_delay_time_samples(const acid_delay_t *d); // целевая заде
 #define ACID_STUTTER_SEAM 96   // 2 мс кроссфейда на шве петли
 
 typedef struct {
-    int16_t buf[ACID_STUTTER_LEN];
+    int16_t *buf;    // 2 * ACID_STUTTER_LEN: левый, затем правый
     float spb;
     int knob;
     int on;          // запись или петля (ручка не в 0)
@@ -93,7 +94,7 @@ typedef struct {
     float wet, xstep; // доля петли в выходе и её шаг (2 мс)
 } acid_stutter_t;
 
-void acid_stutter_init(acid_stutter_t *st, float sr);
+void acid_stutter_init(acid_stutter_t *st, float sr, int16_t *buf); // buf на 2 * ACID_STUTTER_LEN
 void acid_stutter_set(acid_stutter_t *st, int knob); // 0 выкл, 1..127 - 4 зоны: 1/4, 1/8, 1/16, 1/32
 void acid_stutter_set_spb(acid_stutter_t *st, float spb);
 float acid_stutter_next(acid_stutter_t *st, float in);

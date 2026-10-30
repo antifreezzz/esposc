@@ -424,13 +424,14 @@ TEST(test_crush_bits_multiple_of_step)
 
 // --- Дилэй ---
 
-static acid_delay_t dl; // буфер большой: не на стеке
+static acid_delay_t dl;
+static int16_t dl_buf[2 * ACID_DELAY_LEN]; // буфер большой: не на стеке
 
 #define DL_ZONE(z) (z) // значение ручки времени = доля: 0 1/16 .. 4 3/8
 
 static void delay_ready(int zone, int fb_knob, int tone_knob)
 {
-    acid_delay_init(&dl, SR);
+    acid_delay_init(&dl, SR, dl_buf);
     acid_delay_set(&dl, DL_ZONE(zone), fb_knob, tone_knob);
     for (int i = 0; i < 48000; i++) { // время доехало до цели
         acid_delay_next(&dl, 0.0f);
@@ -549,6 +550,7 @@ TEST(test_delay_no_stale_tail)
 // --- Статтер ---
 
 static acid_stutter_t st;
+static int16_t st_buf[2 * ACID_STUTTER_LEN];
 
 #define ST_ZONE(z) ((z) + 1) // значение ручки: 1 1/4, 2 1/8, 3 1/16, 4 1/32
 
@@ -556,7 +558,7 @@ static float yb[48000];
 
 TEST(test_stutter_off_bitexact)
 {
-    acid_stutter_init(&st, SR);
+    acid_stutter_init(&st, SR, st_buf);
     acid_stutter_set(&st, 0);
     CHECK(!acid_stutter_active(&st));
     uint32_t rnd = 17;
@@ -580,7 +582,7 @@ static int periodic(int n, int from, int to)
 
 TEST(test_stutter_repeats_sixteenth)
 {
-    acid_stutter_init(&st, SR);
+    acid_stutter_init(&st, SR, st_buf);
     acid_stutter_set(&st, ST_ZONE(2)); // 1/16 при 120 BPM = 6000
     CHECK(acid_stutter_active(&st));
     for (int i = 0; i < 48000; i++) {
@@ -592,7 +594,7 @@ TEST(test_stutter_repeats_sixteenth)
 
 TEST(test_stutter_shorter_while_on)
 {
-    acid_stutter_init(&st, SR);
+    acid_stutter_init(&st, SR, st_buf);
     acid_stutter_set(&st, ST_ZONE(2));
     for (int i = 0; i < 10000; i++) {
         acid_stutter_next(&st, (float)i / 100000.0f);
@@ -608,7 +610,7 @@ TEST(test_stutter_shorter_while_on)
 TEST(test_stutter_click_free)
 {
     // 210 Гц: в петлю 1/16 (6000) не целое число периодов, шов без кроссфейда щёлкнет.
-    acid_stutter_init(&st, SR);
+    acid_stutter_init(&st, SR, st_buf);
     float prev = 0.0f, own = 0.0f, j = 0.0f;
     int t = 0;
     for (; t < 4800; t++) {
@@ -634,7 +636,7 @@ TEST(test_stutter_click_free)
 
 TEST(test_stutter_long_fits)
 {
-    acid_stutter_init(&st, SR);
+    acid_stutter_init(&st, SR, st_buf);
     acid_stutter_set_spb(&st, 48000.0f); // 60 BPM: 1/4 = 48000
     acid_stutter_set(&st, ST_ZONE(0));
     CHECK(st.len + ACID_STUTTER_SEAM <= ACID_STUTTER_LEN);
@@ -651,7 +653,7 @@ TEST(test_stutter_long_fits)
 // Медленно докрутили из 1/8 в 1/16, пока шла запись: статтер не должен замолчать.
 TEST(test_stutter_slow_dial_into_shorter_zone)
 {
-    acid_stutter_init(&st, SR);
+    acid_stutter_init(&st, SR, st_buf);
     acid_stutter_set(&st, ST_ZONE(1)); // 1/8 = 12000
     for (int i = 0; i < 7000; i++) {
         acid_stutter_next(&st, (float)i / 100000.0f);
@@ -666,7 +668,7 @@ TEST(test_stutter_slow_dial_into_shorter_zone)
 // Синус через статтер, наибольший скачок соседних сэмплов; set - что сделать на шаге step.
 static float stutter_jump(const int *steps, const int *knobs, int nsteps, int total)
 {
-    acid_stutter_init(&st, SR);
+    acid_stutter_init(&st, SR, st_buf);
     float prev = 0.0f, j = 0.0f;
     int s = 0;
     for (int t = 0; t < total; t++) {
@@ -699,7 +701,7 @@ TEST(test_stutter_reengage_during_fade)
 // Значение ручки времени = доля, вне 0..4 - игнор; после включения 3/16.
 TEST(test_delay_time_is_screen_value)
 {
-    acid_delay_init(&dl, SR);
+    acid_delay_init(&dl, SR, dl_buf);
     CHECK(dl.time_knob == 2);
     acid_delay_set(&dl, 1, 0, 127);
     CHECK_NEAR(acid_delay_time_samples(&dl), 12000.0f, 0.5f);
@@ -714,7 +716,7 @@ TEST(test_delay_time_is_screen_value)
 // Значение ручки статтера = доля (1..4), вне - игнор.
 TEST(test_stutter_is_screen_value)
 {
-    acid_stutter_init(&st, SR);
+    acid_stutter_init(&st, SR, st_buf);
     acid_stutter_set(&st, 2); // 1/8 = 12000
     CHECK(st.len == 12000);
     acid_stutter_set(&st, 5);
@@ -730,7 +732,7 @@ TEST(test_longest_zones_fit_at_120)
 {
     delay_ready(4, 0, 127);
     CHECK_NEAR(acid_delay_time_samples(&dl), 36000.0f, 0.5f);
-    acid_stutter_init(&st, SR);
+    acid_stutter_init(&st, SR, st_buf);
     acid_stutter_set(&st, ST_ZONE(0));
     CHECK(st.len == 24000);
 }

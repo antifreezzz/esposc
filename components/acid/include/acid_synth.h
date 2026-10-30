@@ -108,6 +108,7 @@ typedef struct {
     acid_crush_t crush;
     acid_delay_t delay;
     acid_stutter_t stutter;
+    int16_t *fx_mem;   // буферы дилэя и статтера, выделяются один раз (s обнулён до первого init)
     float send1, send2, send_drums; // посылы в дилэй 0..1
     int dl_time, dl_fb, dl_tone;    // сырые ручки дилэя
     acid_tonal_t tonal; // страница 5: круг транспозиций синтов по тактам

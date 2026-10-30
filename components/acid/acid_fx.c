@@ -248,10 +248,11 @@ static void delay_target(acid_delay_t *d)
     d->d_target = t;
 }
 
-void acid_delay_init(acid_delay_t *d, float sr)
+void acid_delay_init(acid_delay_t *d, float sr, int16_t *buf)
 {
     d->sr = sr;
-    memset(d->buf, 0, sizeof d->buf);
+    d->buf = buf;
+    memset(d->buf, 0, 2 * ACID_DELAY_LEN * sizeof *d->buf);
     d->w = 0;
     d->lp = 0.0f;
     d->zero_run = ACID_DELAY_LEN;
@@ -328,8 +329,9 @@ static int stutter_len(const acid_stutter_t *st)
     return (int)t;
 }
 
-void acid_stutter_init(acid_stutter_t *st, float sr)
+void acid_stutter_init(acid_stutter_t *st, float sr, int16_t *buf)
 {
+    st->buf = buf;
     st->spb = sr * 0.5f;
     st->knob = 0;
     st->on = st->looping = 0;

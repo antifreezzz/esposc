@@ -1,9 +1,11 @@
 #include "acid_synth.h"
 
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "acid_math.h"
+#include "acid_mem.h"
 
 #define BPM 130.0f
 #define RES 0.85f
@@ -29,6 +31,7 @@
 #define MERGE_S 0.05f      // повтор той же ноты в этом окне от нажатия склеивается с ней
 #define DRUM_VEL_FLOOR 0.3f // громкость самого слабого удара пэда
 #define SNARE_GAIN 0.8f
+#define FX_MEM_LEN (2 * ACID_DELAY_LEN + 2 * ACID_STUTTER_LEN)
 #define PAGES 6
 #define PAGE_FX 4
 #define PAGE_TONAL 5
@@ -123,8 +126,14 @@ void acid_synth_init(acid_synth_t *s, float sr)
     acid_tonal_init(&s->tonal);
     s->clock_now = 0;
     acid_crush_init(&s->crush);
-    acid_delay_init(&s->delay, sr);
-    acid_stutter_init(&s->stutter, sr);
+    if (!s->fx_mem) {
+        s->fx_mem = acid_mem_big(FX_MEM_LEN * sizeof *s->fx_mem);
+        if (!s->fx_mem) {
+            abort(); // без буферов эффектов играть нечем: лучше перезагрузка, чем запись по NULL
+        }
+    }
+    acid_delay_init(&s->delay, sr, s->fx_mem);
+    acid_stutter_init(&s->stutter, sr, s->fx_mem + 2 * ACID_DELAY_LEN);
     s->send1 = s->send2 = s->send_drums = 0.0f;
     s->dl_time = s->delay.time_knob;
     s->dl_fb = 53;

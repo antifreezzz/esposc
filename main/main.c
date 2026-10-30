@@ -2,6 +2,7 @@
 
 #include "acid.h"
 #include "audio_out.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -83,6 +84,8 @@ static void synth_task(void *arg)
     int quiet = 0;
 
     acid_synth_init(&s_synth, (float)SR);
+    ESP_LOGI(TAG, "free: internal %u, psram %u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     if (store_load(blob, sizeof blob) == ACID_SYNTH_BLOB && acid_synth_import(&s_synth, blob, sizeof blob)) {
         ESP_LOGI(TAG, "knobs restored");
     }
