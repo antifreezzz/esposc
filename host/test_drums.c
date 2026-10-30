@@ -115,8 +115,32 @@ TEST(test_clap_three_bursts_and_tail)
     CHECK(sqrt(tail / MS(100)) < 0.01);
 }
 
+// Хэт один голос: закрытый глушит открытый, открытый после закрытого звенит как обычный открытый.
+static double hat_energy(int first_open, int second_open, int gap)
+{
+    acid_hat_t h;
+    acid_hat_init(&h, SR);
+    acid_hat_trigger(&h, first_open);
+    int pos = 0;
+    if (gap >= 0) {
+        rms_hat(&h, 0, gap, &pos);
+        acid_hat_trigger(&h, second_open);
+        pos = 0;
+    }
+    return rms_hat(&h, MS(100), MS(200), &pos);
+}
+
+TEST(test_hat_choke_both_ways)
+{
+    double open_alone = hat_energy(1, 0, -1);
+    CHECK(open_alone > 1e-4);
+    CHECK(hat_energy(1, 0, MS(50)) < 0.05 * open_alone); // закрытый глушит открытый
+    CHECK_NEAR(hat_energy(0, 1, MS(5)), open_alone, 0.05 * open_alone); // открытый после закрытого
+}
+
 int main(void)
 {
+    RUN(test_hat_choke_both_ways);
     RUN(test_noise_range_and_mean);
     RUN(test_hat_silent_until_trigger);
     RUN(test_hat_closed_short_open_long);
