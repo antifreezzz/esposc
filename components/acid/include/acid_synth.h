@@ -68,6 +68,9 @@ typedef struct {
 
 #define ACID_SLOTS 2
 
+// Источники с ручкой панорамы. Бочка всегда в центре.
+enum { ACID_PAN_SYNTH1, ACID_PAN_SYNTH2, ACID_PAN_HAT, ACID_PAN_CLAP, ACID_PAN_SNARE, ACID_PANS };
+
 // Acid-трек: бас-голос, ударные и аранжировка на 64 такта, либо live-режим от MIDI.
 // Поля публичные ради тестов, снаружи трогать только slot[0].res, slot[0].wave и kick_on
 // (в режиме фиксированного паттерна).
@@ -108,7 +111,10 @@ typedef struct {
     acid_crush_t crush;
     acid_delay_t delay;
     acid_stutter_t stutter;
+    int16_t *fx_mem;   // буфер дилэя, выделяется один раз (s обнулён до первого init)
+    int16_t *st_mem;   // буфер статтера, так же
     float send1, send2, send_drums; // посылы в дилэй 0..1
+    float pan_l[ACID_PANS], pan_r[ACID_PANS]; // усиления каналов по источникам (live)
     int dl_time, dl_fb, dl_tone;    // сырые ручки дилэя
     acid_tonal_t tonal; // страница 5: круг транспозиций синтов по тактам
     int page;          // страница ручек: 0 микс, 1 ударка, 2 синт 1, 3 синт 2, 4 эффекты, 5 тональность
@@ -129,6 +135,9 @@ void acid_synth_render(acid_synth_t *s, float *out, size_t n);
 // затем всё остальное с готовым слотом 1 из буфера. Вместе звучат как acid_synth_render.
 void acid_synth_render_slot(acid_synth_t *s, int k, float *out, size_t n);
 void acid_synth_render_with(acid_synth_t *s, float *out, size_t n, const float *slot1);
+// Стерео: два плоских буфера. Моно-версии выше - среднее каналов.
+void acid_synth_render_lr(acid_synth_t *s, float *l, float *r, size_t n);
+void acid_synth_render_with_lr(acid_synth_t *s, float *l, float *r, size_t n, const float *slot1);
 float acid_synth_pitch_hz(const acid_synth_t *s); // высота слота 0
 // 1 и сброс флага, если с прошлого вызова сменили тип синтеза (пора записать память во flash).
 int acid_synth_take_save(acid_synth_t *s);

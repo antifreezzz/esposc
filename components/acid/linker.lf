@@ -1,0 +1,9 @@
+# Горячий код рендера в IRAM: кэш команд 32 КБ делят с ним Plaits, и на двух modal код эффектов
+# и ударки вытеснялся из кэша (замер этапа 8).
+[mapping:acid]
+archive: libacid.a
+entries:
+    acid_fx (noflash)
+    acid_drums (noflash)
+    acid_kick (noflash)
+    acid_noise (noflash)

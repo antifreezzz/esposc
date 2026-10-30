@@ -113,7 +113,7 @@ static void djf_coefs(acid_djf_t *f)
 void acid_djf_init(acid_djf_t *f, float sr)
 {
     f->sr = sr;
-    f->ic1 = f->ic2 = 0.0f;
+    f->ic1 = f->ic2 = f->ic1r = f->ic2r = 0.0f;
     f->g = f->g_target = 0.0f;
     f->k = f->k_target = 1.0f / Q_MIN;
     f->mode = f->next_mode = 0;
@@ -129,7 +129,7 @@ void acid_djf_init(acid_djf_t *f, float sr)
 static void djf_enter(acid_djf_t *f)
 {
     f->mode = f->next_mode;
-    f->ic1 = f->ic2 = 0.0f;
+    f->ic1 = f->ic2 = f->ic1r = f->ic2r = 0.0f;
     f->g = f->g_target;
     f->k = f->k_target;
     djf_coefs(f);
@@ -150,7 +150,8 @@ void acid_djf_set(acid_djf_t *f, int knob, int res_knob)
     }
 }
 
-float acid_djf_next(acid_djf_t *f, float in)
+// Кроссфейд режимов и сглаживание среза, раз на сэмпл для обоих каналов. 0 - обход.
+static int djf_control(acid_djf_t *f)
 {
     float step = f->xfade;
     if (f->next_mode != f->mode) {
@@ -164,7 +165,7 @@ float acid_djf_next(acid_djf_t *f, float in)
         f->wet = f->wet + step < 1.0f ? f->wet + step : 1.0f;
     }
     if (f->mode == 0) {
-        return in;
+        return 0;
     }
     if (f->g != f->g_target || f->k != f->k_target) {
         // Срез едет к цели: коэффициенты заново (деление дорогое, на месте не считаем).
@@ -175,16 +176,33 @@ float acid_djf_next(acid_djf_t *f, float in)
         f->k = k == f->k || fabsf(dk) < 1e-4f * f->k_target ? f->k_target : k;
         djf_coefs(f);
     }
+    return 1;
+}
 
-    // TPT SVF, как acid_svf_bp_hp в acid_noise.c.
+// TPT SVF, как acid_svf_bp_hp в acid_noise.c.
+static float djf_tap(const acid_djf_t *f, float in, float *ic1, float *ic2)
+{
     float a1 = f->a1, a2 = f->a2, a3 = f->a3;
-    float v3 = in - f->ic2;
-    float v1 = a1 * f->ic1 + a2 * v3;
-    float v2 = f->ic2 + a2 * f->ic1 + a3 * v3;
-    f->ic1 = 2.0f * v1 - f->ic1;
-    f->ic2 = 2.0f * v2 - f->ic2;
+    float v3 = in - *ic2;
+    float v1 = a1 * *ic1 + a2 * v3;
+    float v2 = *ic2 + a2 * *ic1 + a3 * v3;
+    *ic1 = 2.0f * v1 - *ic1;
+    *ic2 = 2.0f * v2 - *ic2;
     float y = f->mode == 1 ? v2 : in - f->k * v1 - v2;
     return f->wet < 1.0f ? in + f->wet * (y - in) : y;
+}
+
+float acid_djf_next(acid_djf_t *f, float in)
+{
+    return djf_control(f) ? djf_tap(f, in, &f->ic1, &f->ic2) : in;
+}
+
+void acid_djf_next2(acid_djf_t *f, float *l, float *r)
+{
+    if (djf_control(f)) {
+        *l = djf_tap(f, *l, &f->ic1, &f->ic2);
+        *r = djf_tap(f, *r, &f->ic1r, &f->ic2r);
+    }
 }
 
 int acid_djf_active(const acid_djf_t *f)
@@ -194,7 +212,7 @@ int acid_djf_active(const acid_djf_t *f)
 
 void acid_crush_init(acid_crush_t *c)
 {
-    c->hold = 0.0f;
+    c->hold = c->hold_r = 0.0f;
     c->cnt = 0;
     acid_crush_set(c, 0, 0);
 }
@@ -210,6 +228,12 @@ void acid_crush_set(acid_crush_t *c, int bits_knob, int rate_knob)
     c->factor = rate_knob ? (int)(powf(32.0f, (float)rate_knob / 127.0f) + 0.5f) : 1;
 }
 
+static float crush_quant(const acid_crush_t *c, float x)
+{
+    float v = x * c->inv_step;
+    return (float)(int)(v >= 0.0f ? v + 0.5f : v - 0.5f) * c->step; // без floorf: он из libm и медленный
+}
+
 float acid_crush_next(acid_crush_t *c, float x)
 {
     if (c->factor > 1) {
@@ -219,11 +243,24 @@ float acid_crush_next(acid_crush_t *c, float x)
         c->cnt = c->cnt + 1 < c->factor ? c->cnt + 1 : 0;
         x = c->hold;
     }
-    if (c->step > 0.0f) {
-        float v = x * c->inv_step;
-        x = (float)(int)(v >= 0.0f ? v + 0.5f : v - 0.5f) * c->step; // без floorf: он из libm и медленный
+    return c->step > 0.0f ? crush_quant(c, x) : x;
+}
+
+void acid_crush_next2(acid_crush_t *c, float *l, float *r)
+{
+    if (c->factor > 1) {
+        if (c->cnt == 0) {
+            c->hold = *l;
+            c->hold_r = *r;
+        }
+        c->cnt = c->cnt + 1 < c->factor ? c->cnt + 1 : 0;
+        *l = c->hold;
+        *r = c->hold_r;
     }
-    return x;
+    if (c->step > 0.0f) {
+        *l = crush_quant(c, *l);
+        *r = crush_quant(c, *r);
+    }
 }
 
 int acid_crush_active(const acid_crush_t *c)
@@ -235,6 +272,8 @@ int acid_crush_active(const acid_crush_t *c)
 #define DELAY_SLEW 0.5f      // задержка меняется не быстрее 0.5 сэмпла за сэмпл: высота плывёт до x1.5
 #define DELAY_TONE_LO 500.0f
 #define DELAY_TONE_HI 12000.0f
+#define DELAY_MOVE_STEP (1.0f / 240.0f)  // смена движения за 5 мс
+#define DELAY_PAN_STEP (127.0f / 240.0f) // точка панорамы через всю ширину за 5 мс
 
 // Доли четверти по значению ручки времени 0..4: 1/16, 1/8, 3/16, 1/4, 3/8.
 static const float DELAY_DIVS[5] = {0.25f, 0.5f, 0.75f, 1.0f, 1.5f};
@@ -248,13 +287,21 @@ static void delay_target(acid_delay_t *d)
     d->d_target = t;
 }
 
-void acid_delay_init(acid_delay_t *d, float sr)
+void acid_delay_init(acid_delay_t *d, float sr, int16_t *buf)
 {
     d->sr = sr;
-    memset(d->buf, 0, sizeof d->buf);
+    d->buf = buf;
+    memset(d->buf, 0, 2 * ACID_DELAY_LEN * sizeof *d->buf);
     d->w = 0;
     d->lp = 0.0f;
     d->zero_run = ACID_DELAY_LEN;
+    d->lp_b = 0.0f;
+    d->motion = 0;
+    d->width = 127;
+    d->m = 0.0f;
+    d->pos_a = d->pos_b = d->tgt_a = d->tgt_b = 64.0f;
+    d->rnd_left = 0;
+    d->rnd = 0x2545F491u;
     d->spb = sr * 0.5f;
     acid_delay_set(d, 2, 53, 83); // 3/16, fb ~0.4, тон ~4 кГц
     d->d = d->d_target;
@@ -277,36 +324,104 @@ void acid_delay_set_spb(acid_delay_t *d, float spb)
     delay_target(d);
 }
 
-float acid_delay_next(acid_delay_t *d, float in)
+void acid_delay_set_motion(acid_delay_t *d, int motion, int width)
+{
+    if (motion <= 2) {
+        d->motion = motion; // вне списка: движение прежнее
+    }
+    d->width = width;
+}
+
+static float delay_lp(float lp, float r, float tone)
+{
+    lp += (r - lp) * tone;
+    return fabsf(lp) < 1e-7f ? 0.0f : lp; // без хвоста в субнормалах
+}
+
+static int16_t delay_q(float in)
+{
+    float x = in * DELAY_SCALE;
+    x = x > 32767.0f ? 32767.0f : (x < -32767.0f ? -32767.0f : x);
+    return (int16_t)x; // к нулю: тихий хвост сам уходит в 0, без зацикливания на младшем бите
+}
+
+static float slew(float x, float target, float step)
+{
+    float dx = target - x;
+    return dx > step ? x + step : (dx < -step ? x - step : target);
+}
+
+// Цели панорамы выходов линий по движению и ширине.
+static void delay_pan_targets(acid_delay_t *d)
+{
+    float lo = 64.0f - (float)d->width * (64.0f / 127.0f); // на 127 ровно 0
+    float hi = 64.0f + (float)d->width * (63.0f / 127.0f); // на 127 ровно 127
+    if (d->motion == 1) {
+        d->tgt_a = lo;
+        d->tgt_b = hi;
+    } else if (d->motion == 2) {
+        if (--d->rnd_left <= 0) {
+            // Новая точка на каждый повтор (раз во время дилэя).
+            d->rnd ^= d->rnd << 13;
+            d->rnd ^= d->rnd >> 17;
+            d->rnd ^= d->rnd << 5;
+            float u = (float)(d->rnd >> 8) * (1.0f / 16777216.0f);
+            d->tgt_a = lo + u * (hi - lo);
+            d->rnd_left = (int)d->d;
+        }
+        d->tgt_b = 64.0f;
+    } else {
+        d->tgt_a = d->tgt_b = 64.0f;
+    }
+}
+
+void acid_delay_next2(acid_delay_t *d, float in, float *l, float *r)
 {
     float dd = d->d_target - d->d;
     d->d += dd > DELAY_SLEW ? DELAY_SLEW : (dd < -DELAY_SLEW ? -DELAY_SLEW : dd);
 
-    // Дробное чтение назад от точки записи, линейная интерполяция.
+    // Дробное чтение назад от точки записи, линейная интерполяция; линия B той же задержкой.
+    const int16_t *ba = d->buf, *bb = d->buf + ACID_DELAY_LEN;
     float pos = (float)d->w - d->d;
     pos += pos < 0.0f ? (float)ACID_DELAY_LEN : 0.0f;
     int i0 = (int)pos;
     i0 = i0 < ACID_DELAY_LEN ? i0 : i0 - ACID_DELAY_LEN; // pos чуть меньше 0 округляется ровно в LEN
     float f = pos - (float)i0;
     int i1 = i0 + 1 < ACID_DELAY_LEN ? i0 + 1 : 0;
-    float r = ((float)d->buf[i0] + f * (float)(d->buf[i1] - d->buf[i0])) * (1.0f / DELAY_SCALE);
+    float ra = ((float)ba[i0] + f * (float)(ba[i1] - ba[i0])) * (1.0f / DELAY_SCALE);
+    float rb = ((float)bb[i0] + f * (float)(bb[i1] - bb[i0])) * (1.0f / DELAY_SCALE);
+    d->lp = delay_lp(d->lp, ra, d->tone);
+    d->lp_b = delay_lp(d->lp_b, rb, d->tone);
 
-    d->lp += (r - d->lp) * d->tone;
-    if (fabsf(d->lp) < 1e-7f) {
-        d->lp = 0.0f; // без хвоста в субнормалах
-    }
-    float x = (in + d->fb * d->lp) * DELAY_SCALE;
-    x = x > 32767.0f ? 32767.0f : (x < -32767.0f ? -32767.0f : x);
-    int16_t q = (int16_t)x; // к нулю: тихий хвост сам уходит в 0, без зацикливания на младшем бите
-    d->buf[d->w] = q;
+    // Пинг-понг: A -> B -> A, каждый переход с обратной связью. m плавно переключает петлю.
+    d->m = slew(d->m, d->motion == 1 ? 1.0f : 0.0f, DELAY_MOVE_STEP);
+    int16_t qa = delay_q(in + d->fb * ((1.0f - d->m) * d->lp + d->m * d->lp_b));
+    int16_t qb = delay_q(d->m * d->fb * d->lp);
+    d->buf[d->w] = qa;
+    d->buf[ACID_DELAY_LEN + d->w] = qb;
     d->w = d->w + 1 < ACID_DELAY_LEN ? d->w + 1 : 0;
-    d->zero_run = q ? 0 : (d->zero_run < ACID_DELAY_LEN ? d->zero_run + 1 : d->zero_run);
-    return d->lp;
+    d->zero_run = (qa | qb) ? 0 : (d->zero_run < ACID_DELAY_LEN ? d->zero_run + 1 : d->zero_run);
+
+    delay_pan_targets(d);
+    d->pos_a = slew(d->pos_a, d->tgt_a, DELAY_PAN_STEP);
+    d->pos_b = slew(d->pos_b, d->tgt_b, DELAY_PAN_STEP);
+    float al, ar, bl, br;
+    acid_pan(d->pos_a, &al, &ar);
+    acid_pan(d->pos_b, &bl, &br);
+    *l = al * d->lp + bl * d->lp_b;
+    *r = ar * d->lp + br * d->lp_b;
+}
+
+float acid_delay_next(acid_delay_t *d, float in)
+{
+    float l, r;
+    acid_delay_next2(d, in, &l, &r);
+    return 0.5f * (l + r);
 }
 
 int acid_delay_active(const acid_delay_t *d)
 {
-    return d->zero_run < ACID_DELAY_LEN || d->lp != 0.0f;
+    return d->zero_run < ACID_DELAY_LEN || d->lp != 0.0f || d->lp_b != 0.0f;
 }
 
 float acid_delay_time_samples(const acid_delay_t *d)
@@ -328,8 +443,9 @@ static int stutter_len(const acid_stutter_t *st)
     return (int)t;
 }
 
-void acid_stutter_init(acid_stutter_t *st, float sr)
+void acid_stutter_init(acid_stutter_t *st, float sr, int16_t *buf)
 {
+    st->buf = buf;
     st->spb = sr * 0.5f;
     st->knob = 0;
     st->on = st->looping = 0;
@@ -381,30 +497,43 @@ void acid_stutter_set_spb(acid_stutter_t *st, float spb)
     st->spb = spb; // длина петли меняется со следующим включением
 }
 
-float acid_stutter_next(acid_stutter_t *st, float in)
+static int16_t stutter_q(float in)
 {
-    float loop = in;
+    float x = in * STUTTER_SCALE;
+    x = x > 32767.0f ? 32767.0f : (x < -32767.0f ? -32767.0f : x);
+    return (int16_t)x;
+}
+
+void acid_stutter_next2(acid_stutter_t *st, float *l, float *r)
+{
+    int16_t *bl = st->buf, *br = st->buf + ACID_STUTTER_LEN;
+    float in_l = *l, in_r = *r;
+    float loop_l = in_l, loop_r = in_r;
     if (st->rec < st->len + ACID_STUTTER_SEAM) {
         // Пишем кусок и ещё шов: продолжение звука нужно для кроссфейда на стыке петли.
-        float x = in * STUTTER_SCALE;
-        x = x > 32767.0f ? 32767.0f : (x < -32767.0f ? -32767.0f : x);
-        st->buf[st->rec++] = (int16_t)x;
+        bl[st->rec] = stutter_q(in_l);
+        br[st->rec] = stutter_q(in_r);
+        st->rec++;
         st->looping |= st->rec > st->len;
     }
     if (st->looping) {
         int k = st->pos;
-        float y = (float)st->buf[k];
+        float yl = (float)bl[k], yr = (float)br[k];
         if (k < ACID_STUTTER_SEAM) {
             // Начало прохода: от продолжения записи (стык непрерывен) к началу куска.
             float a = (float)k * (1.0f / ACID_STUTTER_SEAM);
-            y = a * y + (1.0f - a) * (float)st->buf[st->len + k];
+            yl = a * yl + (1.0f - a) * (float)bl[st->len + k];
+            yr = a * yr + (1.0f - a) * (float)br[st->len + k];
         }
         if (st->xf > 0) {
             float a = 1.0f - (float)st->xf * (1.0f / ACID_STUTTER_SEAM);
-            y = a * y + (1.0f - a) * (float)st->buf[st->opos++];
+            yl = a * yl + (1.0f - a) * (float)bl[st->opos];
+            yr = a * yr + (1.0f - a) * (float)br[st->opos];
+            st->opos++;
             st->xf--;
         }
-        loop = y * (1.0f / STUTTER_SCALE);
+        loop_l = yl * (1.0f / STUTTER_SCALE);
+        loop_r = yr * (1.0f / STUTTER_SCALE);
         st->pos = k + 1 < st->len ? k + 1 : 0;
     }
     if (st->on && !st->restart) {
@@ -417,13 +546,37 @@ float acid_stutter_next(acid_stutter_t *st, float in)
             st->rec = st->pos = st->xf = 0;
             st->len = st->restart ? st->new_len : 0;
             st->restart = 0;
-            return in;
+            return; // живой звук как есть
         }
     }
-    return st->wet == 1.0f ? loop : in + st->wet * (loop - in);
+    if (st->wet == 1.0f) {
+        *l = loop_l;
+        *r = loop_r;
+    } else {
+        *l = in_l + st->wet * (loop_l - in_l);
+        *r = in_r + st->wet * (loop_r - in_r);
+    }
+}
+
+float acid_stutter_next(acid_stutter_t *st, float in)
+{
+    float l = in, r = in;
+    acid_stutter_next2(st, &l, &r);
+    return l;
 }
 
 int acid_stutter_active(const acid_stutter_t *st)
 {
     return st->on || st->wet > 0.0f;
+}
+
+void acid_pan(float pos, float *gl, float *gr)
+{
+    if (pos <= 64.0f) {
+        *gl = 1.0f;
+        *gr = pos > 0.0f ? pos * (1.0f / 64.0f) : 0.0f;
+    } else {
+        *gr = 1.0f;
+        *gl = pos < 127.0f ? (127.0f - pos) * (1.0f / 63.0f) : 0.0f;
+    }
 }

@@ -2,6 +2,7 @@
 
 #include "acid.h"
 #include "audio_out.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -45,7 +46,7 @@ static void slot1_task(void *arg)
 
 // Блок кусками по CHUNK, события MIDI перед каждым куском. Пока ядро 0 считает синт 2,
 // состояние синта трогает только рендер ядра 1 (без синта 2); к концу блока ядро 0 свободно.
-static void render_block(float *out)
+static void render_block(float *l, float *r)
 {
     for (int off = 0; off < BLOCK; off += CHUNK) {
         acid_midi_event_t ev;
@@ -55,16 +56,17 @@ static void render_block(float *out)
         int ready = s_slot1_next;
         s_slot1_next ^= 1;
         xTaskNotifyGive(s_slot1_task);
-        acid_synth_render_with(&s_synth, out + off, CHUNK, s_slot1[ready]);
+        acid_synth_render_with_lr(&s_synth, l + off, r + off, CHUNK, s_slot1[ready]);
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     }
 }
 
-static float block_peak(const float *x)
+static float block_peak(const float *l, const float *r)
 {
     float p = 0.0f;
     for (int i = 0; i < BLOCK; i++) {
-        p = fabsf(x[i]) > p ? fabsf(x[i]) : p;
+        p = fabsf(l[i]) > p ? fabsf(l[i]) : p;
+        p = fabsf(r[i]) > p ? fabsf(r[i]) : p;
     }
     return p;
 }
@@ -72,7 +74,7 @@ static float block_peak(const float *x)
 static void synth_task(void *arg)
 {
     (void)arg;
-    static float mono[BLOCK];
+    static float out_l[BLOCK], out_r[BLOCK];
     static int16_t pcm[BLOCK * 2];
     static uint8_t blob[ACID_SYNTH_BLOB];
     uint32_t last_underruns = 0;
@@ -83,6 +85,8 @@ static void synth_task(void *arg)
     int quiet = 0;
 
     acid_synth_init(&s_synth, (float)SR);
+    ESP_LOGI(TAG, "free: internal %u, psram %u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     if (store_load(blob, sizeof blob) == ACID_SYNTH_BLOB && acid_synth_import(&s_synth, blob, sizeof blob)) {
         ESP_LOGI(TAG, "knobs restored");
     }
@@ -106,14 +110,14 @@ static void synth_task(void *arg)
             ESP_LOGI(TAG, "%s", live ? "midi controller: live mode" : "no midi controller: playing acid track");
         }
         int64_t t0 = esp_timer_get_time();
-        render_block(mono);
-        acid_pcm_to_s16_stereo(mono, pcm, BLOCK);
+        render_block(out_l, out_r);
+        acid_pcm_lr_to_s16(out_l, out_r, pcm, BLOCK);
         int64_t dt = esp_timer_get_time() - t0;
         worst_us = dt > worst_us ? dt : worst_us;
 
         // Сменили тип синтеза: память ручек пишем, когда выход помолчит (flash стопорит кэш).
         save_pending |= acid_synth_take_save(&s_synth);
-        quiet = block_peak(mono) < QUIET_PEAK ? quiet + 1 : 0;
+        quiet = block_peak(out_l, out_r) < QUIET_PEAK ? quiet + 1 : 0;
         if (save_pending && quiet >= QUIET_BLOCKS) {
             store_save(blob, acid_synth_export(&s_synth, blob, sizeof blob));
             save_pending = 0;

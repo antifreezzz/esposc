@@ -1,9 +1,11 @@
 #include "acid_synth.h"
 
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "acid_math.h"
+#include "acid_mem.h"
 
 #define BPM 130.0f
 #define RES 0.85f
@@ -29,6 +31,8 @@
 #define MERGE_S 0.05f      // повтор той же ноты в этом окне от нажатия склеивается с ней
 #define DRUM_VEL_FLOOR 0.3f // громкость самого слабого удара пэда
 #define SNARE_GAIN 0.8f
+// Панорамы после включения: синты в центре, ударка немного разведена.
+static const uint8_t PAN_DEFAULT[ACID_PANS] = {64, 64, 80, 48, 64};
 #define PAGES 6
 #define PAGE_FX 4
 #define PAGE_TONAL 5
@@ -123,9 +127,21 @@ void acid_synth_init(acid_synth_t *s, float sr)
     acid_tonal_init(&s->tonal);
     s->clock_now = 0;
     acid_crush_init(&s->crush);
-    acid_delay_init(&s->delay, sr);
-    acid_stutter_init(&s->stutter, sr);
+    if (!s->fx_mem) {
+        // Дилэй читается каждый сэмпл: во внутреннюю память (в PSRAM он поднимал худший рендер).
+        // Статтер работает, только пока включён: в PSRAM.
+        s->fx_mem = acid_mem_big(2 * ACID_DELAY_LEN * sizeof *s->fx_mem, 1);
+        s->st_mem = acid_mem_big(2 * ACID_STUTTER_LEN * sizeof *s->st_mem, 0);
+        if (!s->fx_mem || !s->st_mem) {
+            abort(); // без буферов эффектов играть нечем: лучше перезагрузка, чем запись по NULL
+        }
+    }
+    acid_delay_init(&s->delay, sr, s->fx_mem);
+    acid_stutter_init(&s->stutter, sr, s->st_mem);
     s->send1 = s->send2 = s->send_drums = 0.0f;
+    for (int k = 0; k < ACID_PANS; k++) {
+        acid_pan((float)PAN_DEFAULT[k], &s->pan_l[k], &s->pan_r[k]);
+    }
     s->dl_time = s->delay.time_knob;
     s->dl_fb = 53;
     s->dl_tone = 83;
@@ -407,6 +423,8 @@ static void page_mix(acid_synth_t *s, int slot, int v)
     case 10: acid_pump_set_release(&s->pump, expo(v, 0.03f, 0.9f)); break;
     case 11: acid_djf_set(&s->djf, v, s->djf.res_knob); break;
     case 12: acid_djf_set(&s->djf, s->djf.knob, v); break;
+    case 13: acid_pan((float)v, &s->pan_l[ACID_PAN_SYNTH1], &s->pan_r[ACID_PAN_SYNTH1]); break;
+    case 14: acid_pan((float)v, &s->pan_l[ACID_PAN_SYNTH2], &s->pan_r[ACID_PAN_SYNTH2]); break;
     default: break;
     }
 }
@@ -426,6 +444,9 @@ static void page_drums(acid_synth_t *s, int slot, int v)
     case 10: s->snare_tune = expo(v, 120.0f, 350.0f); break;
     case 11: s->snare_snappy = lin(v, 0.0f, 1.0f); break;
     case 12: s->snare_decay_s = expo(v, 0.03f, 0.3f); break;
+    case 13: acid_pan((float)v, &s->pan_l[ACID_PAN_HAT], &s->pan_r[ACID_PAN_HAT]); return;
+    case 14: acid_pan((float)v, &s->pan_l[ACID_PAN_CLAP], &s->pan_r[ACID_PAN_CLAP]); return;
+    case 15: acid_pan((float)v, &s->pan_l[ACID_PAN_SNARE], &s->pan_r[ACID_PAN_SNARE]); return;
     default: return;
     }
     acid_kick_set(&s->kick, s->kick_tune, s->kick_sweep, s->kick_pitch_s, s->kick_amp_s);
@@ -561,6 +582,8 @@ static void page_fx(acid_synth_t *s, int slot, int v)
     case 7: s->dl_fb = v; break;
     case 8: s->dl_tone = v; break;
     case 9: acid_stutter_set(&s->stutter, v); break;
+    case 10: acid_delay_set_motion(&s->delay, v, s->delay.width); break;
+    case 11: acid_delay_set_motion(&s->delay, s->delay.motion, v); break;
     default: break;
     }
     if (slot >= 6 && slot <= 8) {
@@ -795,7 +818,7 @@ static int fx_on(const acid_synth_t *s)
            s->send1 != 0.0f || s->send2 != 0.0f || s->send_drums != 0.0f;
 }
 
-void acid_synth_render_with(acid_synth_t *s, float *out, size_t n, const float *slot1)
+void acid_synth_render_with_lr(acid_synth_t *s, float *l, float *r, size_t n, const float *slot1)
 {
     acid_slot_t *v = &s->slot[0];
     for (size_t i = 0; i < n; i++) {
@@ -816,24 +839,37 @@ void acid_synth_render_with(acid_synth_t *s, float *out, size_t n, const float *
         }
         float y = slot_next(s, v, s->live ? v->nheld > 0 : acid_seq_gate(&s->seq));
         s->clock_now++;
-        if (fx_on(s)) {
+        if (s->live || fx_on(s)) {
+            // Стерео: панорамы по источникам, бочка в центре.
+            const float *pl = s->pan_l, *pr = s->pan_r;
             float kick = s->kick_gain * s->kick_vel * acid_kick_next(&s->kick);
-            float drums = s->hat_gain * s->hat_vel * acid_hat_next(&s->hat);
-            drums += s->clap_gain * s->clap_vel * acid_clap_next(&s->clap);
-            drums += s->snare_gain * s->snare_vel * acid_snare_next(&s->snare);
-            // Посылы до пампинга: повторы не качаются вместе с сухим звуком.
-            float send = s->send1 * y + s->send2 * slot1[i] + s->send_drums * drums;
-            y = kick + acid_pump_next(&s->pump) * (y + drums + slot1[i]);
+            float hat = s->hat_gain * s->hat_vel * acid_hat_next(&s->hat);
+            float clap = s->clap_gain * s->clap_vel * acid_clap_next(&s->clap);
+            float snare = s->snare_gain * s->snare_vel * acid_snare_next(&s->snare);
+            float s1 = slot1[i];
+            // Посылы до пампинга и панорамы: повторы не качаются вместе с сухим звуком.
+            float send = s->send1 * y + s->send2 * s1 + s->send_drums * (hat + clap + snare);
+            float pump = acid_pump_next(&s->pump);
+            float yl = kick + pump * (pl[ACID_PAN_SYNTH1] * y + pl[ACID_PAN_SYNTH2] * s1 + pl[ACID_PAN_HAT] * hat +
+                                      pl[ACID_PAN_CLAP] * clap + pl[ACID_PAN_SNARE] * snare);
+            float yr = kick + pump * (pr[ACID_PAN_SYNTH1] * y + pr[ACID_PAN_SYNTH2] * s1 + pr[ACID_PAN_HAT] * hat +
+                                      pr[ACID_PAN_CLAP] * clap + pr[ACID_PAN_SNARE] * snare);
             if (send != 0.0f || acid_delay_active(&s->delay)) {
-                y += acid_delay_next(&s->delay, send);
+                float wl, wr;
+                acid_delay_next2(&s->delay, send, &wl, &wr);
+                yl += wl;
+                yr += wr;
             }
             if (acid_stutter_active(&s->stutter)) {
-                y = acid_stutter_next(&s->stutter, y);
+                acid_stutter_next2(&s->stutter, &yl, &yr);
             }
             if (acid_crush_active(&s->crush)) {
-                y = acid_crush_next(&s->crush, y);
+                acid_crush_next2(&s->crush, &yl, &yr);
             }
-            y = acid_djf_next(&s->djf, y);
+            acid_djf_next2(&s->djf, &yl, &yr);
+            l[i] = s->master * OUT_PEAK * acid_tanh(s->drive * yl);
+            r[i] = s->master * OUT_PEAK * acid_tanh(s->drive * yr);
+            continue;
         } else {
             // Нейтральные эффекты: прежний порядок сложения, автопилот бит в бит.
             y += s->kick_gain * s->kick_vel * acid_kick_next(&s->kick);
@@ -844,7 +880,30 @@ void acid_synth_render_with(acid_synth_t *s, float *out, size_t n, const float *
                 y += slot1[i]; // молчащий слот 1 не трогает y: автопилот бит в бит прежний
             }
         }
-        out[i] = s->master * OUT_PEAK * acid_tanh(s->drive * y);
+        l[i] = r[i] = s->master * OUT_PEAK * acid_tanh(s->drive * y);
+    }
+}
+
+void acid_synth_render_lr(acid_synth_t *s, float *l, float *r, size_t n)
+{
+    float slot1[MIX_CHUNK];
+    for (size_t off = 0; off < n; off += MIX_CHUNK) {
+        size_t m = n - off < MIX_CHUNK ? n - off : MIX_CHUNK;
+        acid_synth_render_slot(s, 1, slot1, m);
+        acid_synth_render_with_lr(s, l + off, r + off, m, slot1);
+    }
+}
+
+// Моно: среднее каналов. При L == R (автопилот) точно равно каналу.
+void acid_synth_render_with(acid_synth_t *s, float *out, size_t n, const float *slot1)
+{
+    float l[MIX_CHUNK], r[MIX_CHUNK];
+    for (size_t off = 0; off < n; off += MIX_CHUNK) {
+        size_t m = n - off < MIX_CHUNK ? n - off : MIX_CHUNK;
+        acid_synth_render_with_lr(s, l, r, m, slot1 + off);
+        for (size_t i = 0; i < m; i++) {
+            out[off + i] = 0.5f * (l[i] + r[i]);
+        }
     }
 }
 
