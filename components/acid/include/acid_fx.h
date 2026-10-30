@@ -23,6 +23,7 @@ int acid_pump_active(const acid_pump_t *p);              // 0: глубина н
 typedef struct {
     float sr;
     float ic1, ic2;
+    float ic1r, ic2r;               // состояние правого канала
     float g, k, g_target, k_target; // сглаживаются к цели посэмплово
     float a1, a2, a3;               // коэффициенты SVF от g и k: деление только пока срез едет
     int mode, next_mode;            // 0 обход, 1 ФНЧ, 2 ФВЧ
@@ -34,6 +35,7 @@ typedef struct {
 void acid_djf_init(acid_djf_t *f, float sr);              // ручка 64, резонанс 0: обход
 void acid_djf_set(acid_djf_t *f, int knob, int res_knob); // из обработки CC
 float acid_djf_next(acid_djf_t *f, float in);
+void acid_djf_next2(acid_djf_t *f, float *l, float *r); // общие коэффициенты, своё состояние у каналов
 int acid_djf_active(const acid_djf_t *f);                 // 0: обход и кроссфейд закончен
 float acid_djf_cutoff_hz(int knob);                       // 0 в мёртвой зоне 62..66
 float acid_djf_q(int knob, int res_knob);
@@ -43,12 +45,13 @@ typedef struct {
     int bits_knob, rate_knob;
     float step, inv_step; // шаг квантования, 0 - без квантования
     int factor, cnt;      // удерживать сэмпл factor раз
-    float hold;
+    float hold, hold_r;
 } acid_crush_t;
 
 void acid_crush_init(acid_crush_t *c);
 void acid_crush_set(acid_crush_t *c, int bits_knob, int rate_knob); // 0..127 каждая
 float acid_crush_next(acid_crush_t *c, float x);
+void acid_crush_next2(acid_crush_t *c, float *l, float *r); // один счётчик удержания на оба канала
 int acid_crush_active(const acid_crush_t *c);
 
 // Дилэй по темпу: буфер 16 бит (на плате в PSRAM), ФНЧ в петле, время плывёт как у ленты.
@@ -97,7 +100,8 @@ typedef struct {
 void acid_stutter_init(acid_stutter_t *st, float sr, int16_t *buf); // buf на 2 * ACID_STUTTER_LEN
 void acid_stutter_set(acid_stutter_t *st, int knob); // 0 выкл, 1..127 - 4 зоны: 1/4, 1/8, 1/16, 1/32
 void acid_stutter_set_spb(acid_stutter_t *st, float spb);
-float acid_stutter_next(acid_stutter_t *st, float in);
+float acid_stutter_next(acid_stutter_t *st, float in); // моно: оба канала одинаковые, возврат левого
+void acid_stutter_next2(acid_stutter_t *st, float *l, float *r);
 int acid_stutter_active(const acid_stutter_t *st);
 
 // Панорама 0 слева, 64 центр, 127 справа: в центре оба канала 1, к краю дальний канал уходит в 0.

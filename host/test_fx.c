@@ -779,8 +779,66 @@ TEST(test_pan_law)
     CHECK_NEAR(r, 0.5f, 1e-6f);
 }
 
+TEST(test_stutter_stereo)
+{
+    acid_stutter_init(&st, SR, st_buf);
+    acid_stutter_set(&st, ST_ZONE(3)); // 1/32 при 120 BPM: 3000 сэмплов
+    float lmax = 0.0f, rmax = 0.0f;
+    for (int i = 0; i < 12000; i++) {
+        float l = i < 4000 ? sinf((float)i * 0.05f) * 0.5f : 0.0f;
+        float r = 0.0f;
+        acid_stutter_next2(&st, &l, &r);
+        if (i >= 6000) {
+            lmax = fabsf(l) > lmax ? fabsf(l) : lmax;
+            rmax = fabsf(r) > rmax ? fabsf(r) : rmax;
+        }
+    }
+    CHECK(lmax > 0.3f); // петля крутит левый
+    CHECK(rmax == 0.0f); // правый был тишиной - тишиной и крутится
+}
+
+TEST(test_crush_stereo_shared_hold)
+{
+    acid_crush_t c;
+    acid_crush_init(&c);
+    acid_crush_set(&c, 0, 100);
+    int same = 1;
+    for (int i = 0; i < 2000; i++) {
+        float x = sinf((float)i * 0.01f) * 0.7f;
+        float l = x, r = -x;
+        acid_crush_next2(&c, &l, &r);
+        same &= r == -l;
+    }
+    CHECK(c.factor > 1);
+    CHECK(same);
+}
+
+TEST(test_djf_stereo_independent)
+{
+    acid_djf_t f2, fm;
+    acid_djf_init(&f2, SR);
+    acid_djf_init(&fm, SR);
+    acid_djf_set(&f2, 20, 60);
+    acid_djf_set(&fm, 20, 60);
+    uint32_t rnd = 5;
+    int equal = 1;
+    float rmax = 0.0f;
+    for (int i = 0; i < 9600; i++) {
+        float x = acid_noise(&rnd);
+        float l = x, r = 0.0f;
+        acid_djf_next2(&f2, &l, &r);
+        equal &= l == acid_djf_next(&fm, x);
+        rmax = fabsf(r) > rmax ? fabsf(r) : rmax;
+    }
+    CHECK(equal);       // левый как моно-фильтр
+    CHECK(rmax == 0.0f); // правый со своим состоянием: тишина
+}
+
 int main(void)
 {
+    RUN(test_stutter_stereo);
+    RUN(test_crush_stereo_shared_hold);
+    RUN(test_djf_stereo_independent);
     RUN(test_pan_law);
     RUN(test_pump_neutral);
     RUN(test_pump_dips_and_recovers);

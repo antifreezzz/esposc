@@ -855,17 +855,13 @@ void acid_synth_render_with_lr(acid_synth_t *s, float *l, float *r, size_t n, co
                 yl += wet;
                 yr += wet;
             }
-            if (acid_stutter_active(&s->stutter) || acid_crush_active(&s->crush) || acid_djf_active(&s->djf)) {
-                // Пока эффекты моно: сводим каналы (этап 8, задача 4 делает их стерео).
-                float m = 0.5f * (yl + yr);
-                if (acid_stutter_active(&s->stutter)) {
-                    m = acid_stutter_next(&s->stutter, m);
-                }
-                if (acid_crush_active(&s->crush)) {
-                    m = acid_crush_next(&s->crush, m);
-                }
-                yl = yr = acid_djf_next(&s->djf, m);
+            if (acid_stutter_active(&s->stutter)) {
+                acid_stutter_next2(&s->stutter, &yl, &yr);
             }
+            if (acid_crush_active(&s->crush)) {
+                acid_crush_next2(&s->crush, &yl, &yr);
+            }
+            acid_djf_next2(&s->djf, &yl, &yr);
             l[i] = s->master * OUT_PEAK * acid_tanh(s->drive * yl);
             r[i] = s->master * OUT_PEAK * acid_tanh(s->drive * yr);
             continue;

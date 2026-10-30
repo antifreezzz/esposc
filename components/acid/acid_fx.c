@@ -113,7 +113,7 @@ static void djf_coefs(acid_djf_t *f)
 void acid_djf_init(acid_djf_t *f, float sr)
 {
     f->sr = sr;
-    f->ic1 = f->ic2 = 0.0f;
+    f->ic1 = f->ic2 = f->ic1r = f->ic2r = 0.0f;
     f->g = f->g_target = 0.0f;
     f->k = f->k_target = 1.0f / Q_MIN;
     f->mode = f->next_mode = 0;
@@ -129,7 +129,7 @@ void acid_djf_init(acid_djf_t *f, float sr)
 static void djf_enter(acid_djf_t *f)
 {
     f->mode = f->next_mode;
-    f->ic1 = f->ic2 = 0.0f;
+    f->ic1 = f->ic2 = f->ic1r = f->ic2r = 0.0f;
     f->g = f->g_target;
     f->k = f->k_target;
     djf_coefs(f);
@@ -150,7 +150,8 @@ void acid_djf_set(acid_djf_t *f, int knob, int res_knob)
     }
 }
 
-float acid_djf_next(acid_djf_t *f, float in)
+// Кроссфейд режимов и сглаживание среза, раз на сэмпл для обоих каналов. 0 - обход.
+static int djf_control(acid_djf_t *f)
 {
     float step = f->xfade;
     if (f->next_mode != f->mode) {
@@ -164,7 +165,7 @@ float acid_djf_next(acid_djf_t *f, float in)
         f->wet = f->wet + step < 1.0f ? f->wet + step : 1.0f;
     }
     if (f->mode == 0) {
-        return in;
+        return 0;
     }
     if (f->g != f->g_target || f->k != f->k_target) {
         // Срез едет к цели: коэффициенты заново (деление дорогое, на месте не считаем).
@@ -175,16 +176,33 @@ float acid_djf_next(acid_djf_t *f, float in)
         f->k = k == f->k || fabsf(dk) < 1e-4f * f->k_target ? f->k_target : k;
         djf_coefs(f);
     }
+    return 1;
+}
 
-    // TPT SVF, как acid_svf_bp_hp в acid_noise.c.
+// TPT SVF, как acid_svf_bp_hp в acid_noise.c.
+static float djf_tap(const acid_djf_t *f, float in, float *ic1, float *ic2)
+{
     float a1 = f->a1, a2 = f->a2, a3 = f->a3;
-    float v3 = in - f->ic2;
-    float v1 = a1 * f->ic1 + a2 * v3;
-    float v2 = f->ic2 + a2 * f->ic1 + a3 * v3;
-    f->ic1 = 2.0f * v1 - f->ic1;
-    f->ic2 = 2.0f * v2 - f->ic2;
+    float v3 = in - *ic2;
+    float v1 = a1 * *ic1 + a2 * v3;
+    float v2 = *ic2 + a2 * *ic1 + a3 * v3;
+    *ic1 = 2.0f * v1 - *ic1;
+    *ic2 = 2.0f * v2 - *ic2;
     float y = f->mode == 1 ? v2 : in - f->k * v1 - v2;
     return f->wet < 1.0f ? in + f->wet * (y - in) : y;
+}
+
+float acid_djf_next(acid_djf_t *f, float in)
+{
+    return djf_control(f) ? djf_tap(f, in, &f->ic1, &f->ic2) : in;
+}
+
+void acid_djf_next2(acid_djf_t *f, float *l, float *r)
+{
+    if (djf_control(f)) {
+        *l = djf_tap(f, *l, &f->ic1, &f->ic2);
+        *r = djf_tap(f, *r, &f->ic1r, &f->ic2r);
+    }
 }
 
 int acid_djf_active(const acid_djf_t *f)
@@ -194,7 +212,7 @@ int acid_djf_active(const acid_djf_t *f)
 
 void acid_crush_init(acid_crush_t *c)
 {
-    c->hold = 0.0f;
+    c->hold = c->hold_r = 0.0f;
     c->cnt = 0;
     acid_crush_set(c, 0, 0);
 }
@@ -210,6 +228,12 @@ void acid_crush_set(acid_crush_t *c, int bits_knob, int rate_knob)
     c->factor = rate_knob ? (int)(powf(32.0f, (float)rate_knob / 127.0f) + 0.5f) : 1;
 }
 
+static float crush_quant(const acid_crush_t *c, float x)
+{
+    float v = x * c->inv_step;
+    return (float)(int)(v >= 0.0f ? v + 0.5f : v - 0.5f) * c->step; // без floorf: он из libm и медленный
+}
+
 float acid_crush_next(acid_crush_t *c, float x)
 {
     if (c->factor > 1) {
@@ -219,11 +243,24 @@ float acid_crush_next(acid_crush_t *c, float x)
         c->cnt = c->cnt + 1 < c->factor ? c->cnt + 1 : 0;
         x = c->hold;
     }
-    if (c->step > 0.0f) {
-        float v = x * c->inv_step;
-        x = (float)(int)(v >= 0.0f ? v + 0.5f : v - 0.5f) * c->step; // без floorf: он из libm и медленный
+    return c->step > 0.0f ? crush_quant(c, x) : x;
+}
+
+void acid_crush_next2(acid_crush_t *c, float *l, float *r)
+{
+    if (c->factor > 1) {
+        if (c->cnt == 0) {
+            c->hold = *l;
+            c->hold_r = *r;
+        }
+        c->cnt = c->cnt + 1 < c->factor ? c->cnt + 1 : 0;
+        *l = c->hold;
+        *r = c->hold_r;
     }
-    return x;
+    if (c->step > 0.0f) {
+        *l = crush_quant(c, *l);
+        *r = crush_quant(c, *r);
+    }
 }
 
 int acid_crush_active(const acid_crush_t *c)
@@ -383,30 +420,43 @@ void acid_stutter_set_spb(acid_stutter_t *st, float spb)
     st->spb = spb; // длина петли меняется со следующим включением
 }
 
-float acid_stutter_next(acid_stutter_t *st, float in)
+static int16_t stutter_q(float in)
 {
-    float loop = in;
+    float x = in * STUTTER_SCALE;
+    x = x > 32767.0f ? 32767.0f : (x < -32767.0f ? -32767.0f : x);
+    return (int16_t)x;
+}
+
+void acid_stutter_next2(acid_stutter_t *st, float *l, float *r)
+{
+    int16_t *bl = st->buf, *br = st->buf + ACID_STUTTER_LEN;
+    float in_l = *l, in_r = *r;
+    float loop_l = in_l, loop_r = in_r;
     if (st->rec < st->len + ACID_STUTTER_SEAM) {
         // Пишем кусок и ещё шов: продолжение звука нужно для кроссфейда на стыке петли.
-        float x = in * STUTTER_SCALE;
-        x = x > 32767.0f ? 32767.0f : (x < -32767.0f ? -32767.0f : x);
-        st->buf[st->rec++] = (int16_t)x;
+        bl[st->rec] = stutter_q(in_l);
+        br[st->rec] = stutter_q(in_r);
+        st->rec++;
         st->looping |= st->rec > st->len;
     }
     if (st->looping) {
         int k = st->pos;
-        float y = (float)st->buf[k];
+        float yl = (float)bl[k], yr = (float)br[k];
         if (k < ACID_STUTTER_SEAM) {
             // Начало прохода: от продолжения записи (стык непрерывен) к началу куска.
             float a = (float)k * (1.0f / ACID_STUTTER_SEAM);
-            y = a * y + (1.0f - a) * (float)st->buf[st->len + k];
+            yl = a * yl + (1.0f - a) * (float)bl[st->len + k];
+            yr = a * yr + (1.0f - a) * (float)br[st->len + k];
         }
         if (st->xf > 0) {
             float a = 1.0f - (float)st->xf * (1.0f / ACID_STUTTER_SEAM);
-            y = a * y + (1.0f - a) * (float)st->buf[st->opos++];
+            yl = a * yl + (1.0f - a) * (float)bl[st->opos];
+            yr = a * yr + (1.0f - a) * (float)br[st->opos];
+            st->opos++;
             st->xf--;
         }
-        loop = y * (1.0f / STUTTER_SCALE);
+        loop_l = yl * (1.0f / STUTTER_SCALE);
+        loop_r = yr * (1.0f / STUTTER_SCALE);
         st->pos = k + 1 < st->len ? k + 1 : 0;
     }
     if (st->on && !st->restart) {
@@ -419,10 +469,23 @@ float acid_stutter_next(acid_stutter_t *st, float in)
             st->rec = st->pos = st->xf = 0;
             st->len = st->restart ? st->new_len : 0;
             st->restart = 0;
-            return in;
+            return; // живой звук как есть
         }
     }
-    return st->wet == 1.0f ? loop : in + st->wet * (loop - in);
+    if (st->wet == 1.0f) {
+        *l = loop_l;
+        *r = loop_r;
+    } else {
+        *l = in_l + st->wet * (loop_l - in_l);
+        *r = in_r + st->wet * (loop_r - in_r);
+    }
+}
+
+float acid_stutter_next(acid_stutter_t *st, float in)
+{
+    float l = in, r = in;
+    acid_stutter_next2(st, &l, &r);
+    return l;
 }
 
 int acid_stutter_active(const acid_stutter_t *st)
