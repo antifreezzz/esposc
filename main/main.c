@@ -31,10 +31,12 @@ static acid_demo_t s_demo;
 static int s_demo_on; // играет демо: события от него, MIDI от BSP не слушаем
 static const acid_bank_t *s_bank; // тарелки из флэша, NULL - молчат
 
-// Синт 2 считается на ядре 0 на кусок вперёд: пока ядро 1 считает кусок c, ядро 0 считает
-// кусок c + 1 синта 2. События MIDI до синта 2 доходят на кусок позже (0.67 мс).
+// Ядро 0 на каждый кусок c: тарелки и перкуссия куска c (ядро 1 тем временем считает синт 1 и ударку c),
+// затем синт 2 на кусок вперёд (c + 1, пока ядро 1 сводит c). События MIDI до синта 2 доходят на кусок
+// позже (0.67 мс). Тарелки и перкуссия - тот же кусок: звучат вместе с остальной ударкой.
 static float s_slot1[2][CHUNK];
 static int s_slot1_next; // какой буфер считает ядро 0
+static acid_synth_side_t s_side;
 static TaskHandle_t s_synth_task;
 static TaskHandle_t s_slot1_task;
 static int64_t s_slot1_worst_us;
@@ -56,6 +58,8 @@ static void slot1_task(void *arg)
     for (;;) {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         int64_t t0 = esp_timer_get_time();
+        acid_synth_render_side(&s_synth, &s_side, CHUNK);
+        xTaskNotifyGive(s_synth_task);
         acid_synth_render_slot(&s_synth, 1, s_slot1[s_slot1_next], CHUNK);
         int64_t dt = esp_timer_get_time() - t0;
         s_slot1_worst_us = dt > s_slot1_worst_us ? dt : s_slot1_worst_us;
@@ -64,11 +68,12 @@ static void slot1_task(void *arg)
     }
 }
 
-// Блок кусками по CHUNK, события MIDI (BSP или демо) перед каждым куском. Пока ядро 0 считает синт 2,
-// состояние синта трогает только рендер ядра 1 (без синта 2); к концу блока ядро 0 свободно.
+// Блок кусками по CHUNK, события MIDI (BSP или демо) перед каждым куском. Пока ядро 0 занято, ядро 1 трогает
+// только своё состояние (синт 1, ударка, потом смесь и эффекты); к концу куска ядро 0 свободно.
 static void render_block(float *l, float *r)
 {
     static acid_midi_event_t demo_ev[DEMO_EVENTS];
+    static acid_synth_src_t src;
     for (int off = 0; off < BLOCK; off += CHUNK) {
         acid_midi_event_t ev;
         while (midi_in_receive(&ev)) {
@@ -85,8 +90,10 @@ static void render_block(float *l, float *r)
         int ready = s_slot1_next;
         s_slot1_next ^= 1;
         xTaskNotifyGive(s_slot1_task);
-        acid_synth_render_with_lr(&s_synth, l + off, r + off, CHUNK, s_slot1[ready]);
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        acid_synth_render_src(&s_synth, &src, CHUNK);
+        ulTaskNotifyTake(pdFALSE, portMAX_DELAY); // тарелки и перкуссия готовы
+        acid_synth_render_mix_lr(&s_synth, l + off, r + off, CHUNK, s_slot1[ready], &src, &s_side);
+        ulTaskNotifyTake(pdFALSE, portMAX_DELAY); // синт 2 следующего куска готов, ядро 0 свободно
     }
 }
 
@@ -215,18 +222,18 @@ static void synth_task(void *arg)
             int64_t slot1_mean_us = blocks ? s_slot1_sum_us / (blocks * (BLOCK / CHUNK)) : 0;
             if (u != last_underruns || worst_us > BLOCK_US * 7 / 10) {
                 ESP_LOGW(TAG, "underruns %lu (+%lu), xfer errors %lu, render worst %lld mean %lld us of %d, "
-                         "synth 2 worst %lld mean %lld us of %d",
+                         "core 0 worst %lld mean %lld us of %d",
                          (unsigned long)u, (unsigned long)(u - last_underruns),
                          (unsigned long)audio_out_transfer_errors(), worst_us, mean_us, BLOCK_US,
                          s_slot1_worst_us, slot1_mean_us, CHUNK * 1000000 / SR);
             } else {
-                ESP_LOGI(TAG, "ok, render worst %lld mean %lld us of %d, synth 2 worst %lld mean %lld us of %d",
+                ESP_LOGI(TAG, "ok, render worst %lld mean %lld us of %d, core 0 worst %lld mean %lld us of %d",
                          worst_us, mean_us, BLOCK_US, s_slot1_worst_us, slot1_mean_us, CHUNK * 1000000 / SR);
             }
 #ifdef ACID_PROFILE
             if (blocks) {
                 uint32_t div = (uint32_t)blocks * 240; // такты -> мкс на блок
-                ESP_LOGI(TAG, "core 1 us/block: cym %lu perc %lu synth1 %lu drums %lu fx %lu",
+                ESP_LOGI(TAG, "us/block: cym %lu perc %lu synth1 %lu drums %lu fx %lu",
                          (unsigned long)(acid_prof[ACID_PROF_CYM] / div), (unsigned long)(acid_prof[ACID_PROF_PERC] / div),
                          (unsigned long)(acid_prof[ACID_PROF_SYNTH1] / div), (unsigned long)(acid_prof[ACID_PROF_DRUMS] / div),
                          (unsigned long)(acid_prof[ACID_PROF_FX] / div));

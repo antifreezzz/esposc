@@ -138,6 +138,20 @@ void acid_synth_render_with(acid_synth_t *s, float *out, size_t n, const float *
 // Стерео: два плоских буфера. Моно-версии выше - среднее каналов.
 void acid_synth_render_lr(acid_synth_t *s, float *l, float *r, size_t n);
 void acid_synth_render_with_lr(acid_synth_t *s, float *l, float *r, size_t n, const float *slot1);
+// Тот же with_lr по ядрам, кусок n <= ACID_SPLIT_MAX. side - тарелки и перкуссия (их состояние трогает
+// только он), src - синт 1 и ударка; side и src независимы и могут считаться одновременно на разных ядрах,
+// mix сводит их со слотом 1 и прогоняет через эффекты. Вместе бит в бит как with_lr.
+#define ACID_SPLIT_MAX 64
+typedef struct {
+    float cyl[ACID_SPLIT_MAX], cyr[ACID_SPLIT_MAX], pcl[ACID_SPLIT_MAX], pcr[ACID_SPLIT_MAX];
+} acid_synth_side_t;
+typedef struct {
+    float y[ACID_SPLIT_MAX], kick[ACID_SPLIT_MAX], hat[ACID_SPLIT_MAX], clap[ACID_SPLIT_MAX], snare[ACID_SPLIT_MAX];
+} acid_synth_src_t;
+void acid_synth_render_side(acid_synth_t *s, acid_synth_side_t *side, size_t n);
+void acid_synth_render_src(acid_synth_t *s, acid_synth_src_t *src, size_t n);
+void acid_synth_render_mix_lr(acid_synth_t *s, float *l, float *r, size_t n, const float *slot1,
+                              const acid_synth_src_t *src, const acid_synth_side_t *side);
 float acid_synth_pitch_hz(const acid_synth_t *s); // высота слота 0
 // 1 и сброс флага, если с прошлого вызова сменили тип синтеза (пора записать память во flash).
 int acid_synth_take_save(acid_synth_t *s);

@@ -49,7 +49,7 @@ static const uint8_t PAN_DEFAULT[ACID_PANS] = {64, 64, 80, 48, 64};
 #define PAGE_TONAL 9
 #define EARLY_NOTE 480 // нота моложе 10 мс на границе шага - на новый шаг сразу (джиттер MIDI)
 #define PAGE_SYNTH1 6
-#define MIX_CHUNK 64 // кусок буфера слота 1 в общем рендере
+#define MIX_CHUNK ACID_SPLIT_MAX // кусок буфера слота 1 в общем рендере
 #define FADE_N 192     // 4 мс ухода и столько же прихода при смене типа синтеза
 #define PLAITS_GAIN 1.0f // уровень Plaits относительно 303
 #define IDLE_BLOCKS 400  // 100 мс точной тишины без гейта: молчащий Plaits не считаем
@@ -753,34 +753,44 @@ void acid_synth_render_slot(acid_synth_t *s, int k, float *out, size_t n)
     }
 }
 
-void acid_synth_render_with_lr(acid_synth_t *s, float *l, float *r, size_t n, const float *slot1)
+void acid_synth_render_side(acid_synth_t *s, acid_synth_side_t *side, size_t n)
+{
+    // Тарелки и перкуссия кусками: голос за голосом быстрее.
+    ACID_PROF_T(t);
+    acid_cym_render(&s->cym, side->cyl, side->cyr, (int)n);
+    ACID_PROF_ADD(ACID_PROF_CYM, t);
+    acid_perc_render(&s->perc, side->pcl, side->pcr, (int)n);
+    ACID_PROF_ADD(ACID_PROF_PERC, t);
+}
+
+void acid_synth_render_src(acid_synth_t *s, acid_synth_src_t *src, size_t n)
 {
     acid_slot_t *v = &s->slot[0];
-    float cyl[MIX_CHUNK], cyr[MIX_CHUNK]; // тарелки и перкуссия кусками: голос за голосом быстрее
-    float pcl[MIX_CHUNK], pcr[MIX_CHUNK];
     ACID_PROF_T(t);
     for (size_t i = 0; i < n; i++) {
-        if (i % MIX_CHUNK == 0) {
-            int m = (int)(n - i < MIX_CHUNK ? n - i : MIX_CHUNK);
-            acid_cym_render(&s->cym, cyl, cyr, m);
-            ACID_PROF_ADD(ACID_PROF_CYM, t);
-            acid_perc_render(&s->perc, pcl, pcr, m);
-            ACID_PROF_ADD(ACID_PROF_PERC, t);
-        }
         slot_tick(s, v);
-        float y = slot_next(s, v, v->nheld > 0);
-        ACID_PROF_ADD(ACID_PROF_SYNTH1, t);
+        src->y[i] = slot_next(s, v, v->nheld > 0);
         s->clock_now++;
-        // Стерео: панорамы по источникам, бочка в центре.
-        const float *pl = s->pan_l, *pr = s->pan_r;
-        float kick = s->kick_gain * s->kick_vel * acid_kick_next(&s->kick);
-        float hat = s->hat_gain * s->hat_vel * acid_hat_next(&s->hat);
-        float clap = s->clap_gain * s->clap_vel * acid_clap_next(&s->clap);
-        float snare = s->snare_gain * s->snare_vel * acid_snare_next(&s->snare);
+        ACID_PROF_ADD(ACID_PROF_SYNTH1, t);
+        src->kick[i] = s->kick_gain * s->kick_vel * acid_kick_next(&s->kick);
+        src->hat[i] = s->hat_gain * s->hat_vel * acid_hat_next(&s->hat);
+        src->clap[i] = s->clap_gain * s->clap_vel * acid_clap_next(&s->clap);
+        src->snare[i] = s->snare_gain * s->snare_vel * acid_snare_next(&s->snare);
         ACID_PROF_ADD(ACID_PROF_DRUMS, t);
+    }
+}
+
+void acid_synth_render_mix_lr(acid_synth_t *s, float *l, float *r, size_t n, const float *slot1,
+                              const acid_synth_src_t *src, const acid_synth_side_t *side)
+{
+    ACID_PROF_T(t);
+    // Стерео: панорамы по источникам, бочка в центре.
+    const float *pl = s->pan_l, *pr = s->pan_r;
+    for (size_t i = 0; i < n; i++) {
+        float y = src->y[i], kick = src->kick[i], hat = src->hat[i], clap = src->clap[i], snare = src->snare[i];
         float s1 = slot1[i];
-        float cl = cyl[i % MIX_CHUNK], cr = cyr[i % MIX_CHUNK]; // уже стерео с балансом
-        float ql = pcl[i % MIX_CHUNK], qr = pcr[i % MIX_CHUNK]; // перкуссия, уже с панорамой
+        float cl = side->cyl[i], cr = side->cyr[i]; // уже стерео с балансом
+        float ql = side->pcl[i], qr = side->pcr[i]; // перкуссия, уже с панорамой
         // Посылы до пампинга и панорамы: повторы не качаются вместе с сухим звуком.
         float send = s->send1 * y + s->send2 * s1 + s->send_drums * (hat + clap + snare + 0.5f * (cl + cr + ql + qr));
         float pump = acid_pump_next(&s->pump);
@@ -803,7 +813,19 @@ void acid_synth_render_with_lr(acid_synth_t *s, float *l, float *r, size_t n, co
         acid_djf_next2(&s->djf, &yl, &yr);
         l[i] = s->master * OUT_PEAK * acid_tanh(s->drive * yl);
         r[i] = s->master * OUT_PEAK * acid_tanh(s->drive * yr);
-        ACID_PROF_ADD(ACID_PROF_FX, t);
+    }
+    ACID_PROF_ADD(ACID_PROF_FX, t);
+}
+
+void acid_synth_render_with_lr(acid_synth_t *s, float *l, float *r, size_t n, const float *slot1)
+{
+    acid_synth_side_t side;
+    acid_synth_src_t src;
+    for (size_t off = 0; off < n; off += ACID_SPLIT_MAX) {
+        size_t m = n - off < ACID_SPLIT_MAX ? n - off : ACID_SPLIT_MAX;
+        acid_synth_render_src(s, &src, m);
+        acid_synth_render_side(s, &side, m);
+        acid_synth_render_mix_lr(s, l + off, r + off, m, slot1 + off, &src, &side);
     }
 }
 
