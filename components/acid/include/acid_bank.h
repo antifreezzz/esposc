@@ -56,3 +56,23 @@ typedef struct {
 
 // Стандартный декодер IMA ADPCM: полубайт -> следующий отсчёт.
 int16_t acid_adpcm_step(acid_adpcm_t *st, uint8_t nibble);
+
+extern const int16_t acid_adpcm_steps[89];
+extern const int8_t acid_adpcm_adj[8];
+// Таблица горячего цикла: для (индекс шага, полубайт) приращение со знаком и следующий индекс.
+extern int32_t acid_adpcm_diff[89 * 16];
+extern uint8_t acid_adpcm_nexti[89 * 16];
+// Заполнить таблицу (один раз, до рендера; повторный вызов ничего не делает).
+void acid_adpcm_init_lut(void);
+
+// То же, что acid_adpcm_step, по таблице: две загрузки и ограничение вместо арифметики шага.
+static inline int acid_adpcm_next(int *pred, int *index, int nib)
+{
+    int k = (*index << 4) | nib;
+    int p = *pred + acid_adpcm_diff[k];
+    p = p > 32767 ? 32767 : p;
+    p = p < -32768 ? -32768 : p;
+    *index = acid_adpcm_nexti[k];
+    *pred = p;
+    return p;
+}

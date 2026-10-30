@@ -264,6 +264,19 @@ TEST(test_cym_ride_roll_no_buildup)
     CHECK(second <= 1.05f * first);
 }
 
+// Бюджет платы (замер этапа 9): 8 слотов на строе 127 с двумя modal и всеми эффектами упирались в 2000 мкс.
+TEST(test_cym_voice_budget)
+{
+    CHECK(ACID_CYM_SLOTS <= 6);
+    CHECK(ACID_CYM_VOICES < ACID_CYM_SLOTS); // хоть один слот под уход, чтобы забор был без щелчка
+    setup();
+    for (int i = 0; i < 40; i++) {
+        acid_cym_trigger(&c, &bank, 49 + 2 * (i % 3), 1.0f);
+        run(SR / 20, NULL);
+        CHECK(acid_cym_voices(&c) <= 6);
+    }
+}
+
 TEST(test_cym_null_bank_silent)
 {
     setup();
@@ -288,6 +301,7 @@ int main(void)
     RUN(test_cym_pan_balance);
     RUN(test_cym_ride_bell_follow_ride_knobs);
     RUN(test_cym_ride_roll_no_buildup);
+    RUN(test_cym_voice_budget);
     RUN(test_cym_null_bank_silent);
     TEST_MAIN_END();
 }

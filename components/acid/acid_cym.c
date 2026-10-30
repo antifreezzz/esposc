@@ -13,6 +13,7 @@
 
 void acid_cym_init(acid_cym_t *c, float sr)
 {
+    acid_adpcm_init_lut();
     memset(c, 0, sizeof *c);
     c->sr = sr;
     c->sens = 100.0f / 127.0f;
@@ -86,8 +87,8 @@ static int decode(acid_cym_voice_t *v)
         }
     }
     uint8_t b = *v->p++;
-    v->cur[0] = (float)acid_adpcm_step(&v->dec[0], b & 15) * (1.0f / 32768.0f);
-    v->cur[1] = (float)acid_adpcm_step(&v->dec[1], b >> 4) * (1.0f / 32768.0f);
+    v->cur[0] = (float)acid_adpcm_step(&v->dec[0], b & 15); // в единицах int16, масштаб - в усилении
+    v->cur[1] = (float)acid_adpcm_step(&v->dec[1], b >> 4);
     v->pos++;
     return 1;
 }
@@ -156,44 +157,139 @@ void acid_cym_trigger(acid_cym_t *c, const acid_bank_t *b, int note, float vel)
     }
 }
 
-void acid_cym_next(acid_cym_t *c, float *l, float *r)
+// Заголовок блока ADPCM: состояние декодера, ошибка не тянется дальше блока.
+static inline const uint8_t *block_hdr(const uint8_t *p, int *pl, int *il, int *pr, int *ir)
 {
-    float sl = 0.0f, sr = 0.0f;
-    for (int i = 0; i < ACID_CYM_SLOTS; i++) {
-        acid_cym_voice_t *v = &c->v[i];
-        if (v->rr == NULL) {
-            continue;
-        }
-        int w = v->which;
-        float g = v->amp * v->env * v->fade * c->gain[w];
-        float x0 = v->prev[0] + (v->cur[0] - v->prev[0]) * v->phase;
-        float x1 = v->prev[1] + (v->cur[1] - v->prev[1]) * v->phase;
-        sl += g * c->pan_l[w] * x0;
-        sr += g * c->pan_r[w] * x1;
-        v->env *= c->tail_coef[w];
-        if (v->fade_step != 0.0f) {
-            v->fade -= v->fade_step;
-            if (v->fade <= 0.0f) {
-                v->rr = NULL;
-                continue;
+    *pl = (int16_t)(p[0] | p[1] << 8);
+    *il = p[2] > 88 ? 88 : p[2];
+    *pr = (int16_t)(p[4] | p[5] << 8);
+    *ir = p[6] > 88 ? 88 : p[6];
+    return p + ACID_BANK_BLOCK_HDR;
+}
+
+// Голос целиком на кусок: состояние в локальных переменных, декодер по таблице (горячий цикл платы).
+// Кадры prev/cur в единицах int16, масштаб 1/32768 - в усилении.
+static void voice_render(acid_cym_t *c, acid_cym_voice_t *v, float *l, float *r, int n)
+{
+    int w = v->which;
+    float gl = v->amp * c->gain[w] * c->pan_l[w] * (1.0f / 32768.0f);
+    float gr = v->amp * c->gain[w] * c->pan_r[w] * (1.0f / 32768.0f);
+    float coef = c->tail_coef[w], rate = c->rate[w];
+    float env = v->env, fade = v->fade, fstep = v->fade_step, phase = v->phase;
+    float p0 = v->prev[0], p1 = v->prev[1], c0 = v->cur[0], c1 = v->cur[1];
+    int pl = v->dec[0].pred, il = v->dec[0].index, pr = v->dec[1].pred, ir = v->dec[1].index;
+    const uint8_t *p = v->p;
+    uint32_t pos = v->pos, frames = v->rr->frames;
+    // Уход кончится через столько сэмплов (включая последний звучащий).
+    int fade_left = fstep > 0.0f ? (int)ceilf(fade / fstep) : n + 1;
+    int alive = 1;
+    if (rate == 1.0f && phase == 0.0f) {
+        // Строй 64: кадр за кадром без интерполяции (самый частый случай).
+        int i = 0;
+        while (i < n) {
+            if (pos >= frames) {
+                // Последний кадр: отдать prev, и голос кончился.
+                float g = env * fade;
+                l[i] += g * gl * p0;
+                r[i] += g * gr * p1;
+                alive = 0;
+                break;
             }
-        }
-        v->phase += c->rate[w];
-        while (v->phase >= 1.0f) {
-            v->phase -= 1.0f;
-            v->prev[0] = v->cur[0];
-            v->prev[1] = v->cur[1];
-            if (!decode(v)) {
-                v->rr = NULL;
+            if ((pos & (ACID_BANK_BLOCK - 1)) == 0) {
+                p = block_hdr(p, &pl, &il, &pr, &ir);
+            }
+            // Отрезок до конца блока ADPCM, сэмпла, ухода или куска - без проверок внутри.
+            uint32_t left = ACID_BANK_BLOCK - (pos & (ACID_BANK_BLOCK - 1));
+            left = left < frames - pos ? left : frames - pos;
+            int m = n - i < (int)left ? n - i : (int)left;
+            m = m < fade_left ? m : fade_left;
+            for (int k = 0; k < m; k++, i++) {
+                float g = env * fade;
+                l[i] += g * gl * p0;
+                r[i] += g * gr * p1;
+                env *= coef;
+                fade -= fstep;
+                p0 = c0;
+                p1 = c1;
+                int b = *p++;
+                c0 = (float)acid_adpcm_next(&pl, &il, b & 15);
+                c1 = (float)acid_adpcm_next(&pr, &ir, b >> 4);
+            }
+            pos += (uint32_t)m;
+            fade_left -= m;
+            if (fade_left <= 0 || env < 1e-4f) {
+                alive = 0; // ушёл или хвост ручкой заглушён
                 break;
             }
         }
-        if (v->rr && v->env < 1e-4f) {
-            v->rr = NULL; // хвост ручкой заглушён
+    } else {
+        for (int i = 0; i < n; i++) {
+            float g = env * fade;
+            l[i] += g * gl * (p0 + (c0 - p0) * phase);
+            r[i] += g * gr * (p1 + (c1 - p1) * phase);
+            env *= coef;
+            fade -= fstep;
+            if (--fade_left <= 0) {
+                alive = 0;
+                break;
+            }
+            phase += rate;
+            while (phase >= 1.0f) {
+                phase -= 1.0f;
+                p0 = c0;
+                p1 = c1;
+                if (pos >= frames) {
+                    alive = 0;
+                    break;
+                }
+                if ((pos & (ACID_BANK_BLOCK - 1)) == 0) {
+                    p = block_hdr(p, &pl, &il, &pr, &ir);
+                }
+                int b = *p++;
+                c0 = (float)acid_adpcm_next(&pl, &il, b & 15);
+                c1 = (float)acid_adpcm_next(&pr, &ir, b >> 4);
+                pos++;
+            }
+            if (!alive || env < 1e-4f) {
+                alive = 0;
+                break;
+            }
         }
     }
-    *l = sl;
-    *r = sr;
+    if (!alive) {
+        v->rr = NULL;
+        return;
+    }
+    v->env = env;
+    v->fade = fade;
+    v->phase = phase;
+    v->prev[0] = p0;
+    v->prev[1] = p1;
+    v->cur[0] = c0;
+    v->cur[1] = c1;
+    v->dec[0].pred = (int16_t)pl;
+    v->dec[0].index = (uint8_t)il;
+    v->dec[1].pred = (int16_t)pr;
+    v->dec[1].index = (uint8_t)ir;
+    v->p = p;
+    v->pos = pos;
+}
+
+void acid_cym_render(acid_cym_t *c, float *l, float *r, int n)
+{
+    for (int i = 0; i < n; i++) {
+        l[i] = r[i] = 0.0f;
+    }
+    for (int k = 0; k < ACID_CYM_SLOTS; k++) {
+        if (c->v[k].rr != NULL) {
+            voice_render(c, &c->v[k], l, r, n);
+        }
+    }
+}
+
+void acid_cym_next(acid_cym_t *c, float *l, float *r)
+{
+    acid_cym_render(c, l, r, 1);
 }
 
 int acid_cym_voices(const acid_cym_t *c)

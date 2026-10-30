@@ -719,7 +719,11 @@ void acid_synth_render_slot(acid_synth_t *s, int k, float *out, size_t n)
 void acid_synth_render_with_lr(acid_synth_t *s, float *l, float *r, size_t n, const float *slot1)
 {
     acid_slot_t *v = &s->slot[0];
+    float cyl[MIX_CHUNK], cyr[MIX_CHUNK]; // тарелки кусками: голос за голосом быстрее
     for (size_t i = 0; i < n; i++) {
+        if (i % MIX_CHUNK == 0) {
+            acid_cym_render(&s->cym, cyl, cyr, (int)(n - i < MIX_CHUNK ? n - i : MIX_CHUNK));
+        }
         slot_tick(s, v);
         float y = slot_next(s, v, v->nheld > 0);
         s->clock_now++;
@@ -730,8 +734,7 @@ void acid_synth_render_with_lr(acid_synth_t *s, float *l, float *r, size_t n, co
         float clap = s->clap_gain * s->clap_vel * acid_clap_next(&s->clap);
         float snare = s->snare_gain * s->snare_vel * acid_snare_next(&s->snare);
         float s1 = slot1[i];
-        float cl = 0.0f, cr = 0.0f;
-        acid_cym_next(&s->cym, &cl, &cr); // уже стерео с балансом
+        float cl = cyl[i % MIX_CHUNK], cr = cyr[i % MIX_CHUNK]; // уже стерео с балансом
         // Посылы до пампинга и панорамы: повторы не качаются вместе с сухим звуком.
         float send = s->send1 * y + s->send2 * s1 + s->send_drums * (hat + clap + snare + 0.5f * (cl + cr));
         float pump = acid_pump_next(&s->pump);

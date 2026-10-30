@@ -180,6 +180,26 @@ TEST(test_bank_vector)
     CHECK(bad == 0);
 }
 
+// Табличный декодер горячего цикла бит в бит как эталонный, на всех шагах, полубайтах и краях pred.
+TEST(test_adpcm_lut_matches_reference)
+{
+    acid_adpcm_init_lut();
+    static const int preds[] = {-32768, -32000, -1000, -1, 0, 1, 1000, 32000, 32767};
+    int bad = 0;
+    for (int ix = 0; ix <= 88; ix++) {
+        for (int nib = 0; nib < 16; nib++) {
+            for (unsigned k = 0; k < sizeof preds / sizeof preds[0]; k++) {
+                acid_adpcm_t ref = {(int16_t)preds[k], (uint8_t)ix};
+                int pred = preds[k], index = ix;
+                int16_t want = acid_adpcm_step(&ref, (uint8_t)nib);
+                int got = acid_adpcm_next(&pred, &index, nib);
+                bad += got != want || index != ref.index;
+            }
+        }
+    }
+    CHECK(bad == 0);
+}
+
 int main(void)
 {
     RUN(test_bank_opens_fixture);
@@ -196,5 +216,6 @@ int main(void)
     RUN(test_bank_rr_bytes);
     RUN(test_crc32_matches_zlib);
     RUN(test_bank_vector);
+    RUN(test_adpcm_lut_matches_reference);
     TEST_MAIN_END();
 }

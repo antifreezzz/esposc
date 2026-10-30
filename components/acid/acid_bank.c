@@ -5,7 +5,7 @@
 _Static_assert(sizeof(acid_bank_hdr_t) == ACID_BANK_HDR_SIZE, "bank header layout");
 _Static_assert(sizeof(acid_bank_note_t) == 4 && sizeof(acid_bank_layer_t) == 4 && sizeof(acid_bank_rr_t) == 8, "bank tables");
 
-static const int16_t STEPS[89] = {
+const int16_t acid_adpcm_steps[89] = {
     7,     8,     9,     10,    11,    12,    13,    14,    16,    17,    19,    21,    23,    25,    28,
     31,    34,    37,    41,    45,    50,    55,    60,    66,    73,    80,    88,    97,    107,   118,
     130,   143,   157,   173,   190,   209,   230,   253,   279,   307,   337,   371,   408,   449,   494,
@@ -13,11 +13,14 @@ static const int16_t STEPS[89] = {
     2272,  2499,  2749,  3024,  3327,  3660,  4026,  4428,  4871,  5358,  5894,  6484,  7132,  7845,  8630,
     9493,  10442, 11487, 12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767};
 
-static const int8_t INDEX_ADJ[8] = {-1, -1, -1, -1, 2, 4, 6, 8};
+const int8_t acid_adpcm_adj[8] = {-1, -1, -1, -1, 2, 4, 6, 8};
 
-int16_t acid_adpcm_step(acid_adpcm_t *st, uint8_t nibble)
+int32_t acid_adpcm_diff[89 * 16];
+uint8_t acid_adpcm_nexti[89 * 16];
+
+static int adpcm_diff(int index, int nibble)
 {
-    int step = STEPS[st->index];
+    int step = acid_adpcm_steps[index];
     int diff = step >> 3;
     if (nibble & 4) {
         diff += step;
@@ -28,10 +31,36 @@ int16_t acid_adpcm_step(acid_adpcm_t *st, uint8_t nibble)
     if (nibble & 1) {
         diff += step >> 2;
     }
-    int pred = st->pred + ((nibble & 8) ? -diff : diff);
+    return (nibble & 8) ? -diff : diff;
+}
+
+static int adpcm_index(int index, int nibble)
+{
+    index += acid_adpcm_adj[nibble & 7];
+    return index < 0 ? 0 : index > 88 ? 88 : index;
+}
+
+void acid_adpcm_init_lut(void)
+{
+    static int done;
+    if (done) {
+        return;
+    }
+    for (int ix = 0; ix <= 88; ix++) {
+        for (int nib = 0; nib < 16; nib++) {
+            acid_adpcm_diff[ix << 4 | nib] = adpcm_diff(ix, nib);
+            acid_adpcm_nexti[ix << 4 | nib] = (uint8_t)adpcm_index(ix, nib);
+        }
+    }
+    done = 1;
+}
+
+// Эталонный декодер: арифметикой шага, без таблицы.
+int16_t acid_adpcm_step(acid_adpcm_t *st, uint8_t nibble)
+{
+    int pred = st->pred + adpcm_diff(st->index, nibble);
     pred = pred > 32767 ? 32767 : pred < -32768 ? -32768 : pred;
-    int index = st->index + INDEX_ADJ[nibble & 7];
-    st->index = (uint8_t)(index < 0 ? 0 : index > 88 ? 88 : index);
+    st->index = (uint8_t)adpcm_index(st->index, nibble);
     st->pred = (int16_t)pred;
     return st->pred;
 }
@@ -59,6 +88,7 @@ size_t acid_bank_rr_bytes(uint32_t frames)
 
 int acid_bank_open(acid_bank_t *b, const void *img, size_t len)
 {
+    acid_adpcm_init_lut();
     memset(b, 0, sizeof *b);
     const uint8_t *p = img;
     if (len < ACID_BANK_HDR_SIZE) {
