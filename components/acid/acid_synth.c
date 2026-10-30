@@ -31,7 +31,6 @@
 #define MERGE_S 0.05f      // повтор той же ноты в этом окне от нажатия склеивается с ней
 #define DRUM_VEL_FLOOR 0.3f // громкость самого слабого удара пэда
 #define SNARE_GAIN 0.8f
-#define FX_MEM_LEN (2 * ACID_DELAY_LEN + 2 * ACID_STUTTER_LEN)
 // Панорамы после включения: синты в центре, ударка немного разведена.
 static const uint8_t PAN_DEFAULT[ACID_PANS] = {64, 64, 80, 48, 64};
 #define PAGES 6
@@ -129,13 +128,16 @@ void acid_synth_init(acid_synth_t *s, float sr)
     s->clock_now = 0;
     acid_crush_init(&s->crush);
     if (!s->fx_mem) {
-        s->fx_mem = acid_mem_big(FX_MEM_LEN * sizeof *s->fx_mem);
-        if (!s->fx_mem) {
+        // Дилэй читается каждый сэмпл: во внутреннюю память (в PSRAM он поднимал худший рендер).
+        // Статтер работает, только пока включён: в PSRAM.
+        s->fx_mem = acid_mem_big(2 * ACID_DELAY_LEN * sizeof *s->fx_mem, 1);
+        s->st_mem = acid_mem_big(2 * ACID_STUTTER_LEN * sizeof *s->st_mem, 0);
+        if (!s->fx_mem || !s->st_mem) {
             abort(); // без буферов эффектов играть нечем: лучше перезагрузка, чем запись по NULL
         }
     }
     acid_delay_init(&s->delay, sr, s->fx_mem);
-    acid_stutter_init(&s->stutter, sr, s->fx_mem + 2 * ACID_DELAY_LEN);
+    acid_stutter_init(&s->stutter, sr, s->st_mem);
     s->send1 = s->send2 = s->send_drums = 0.0f;
     for (int k = 0; k < ACID_PANS; k++) {
         acid_pan((float)PAN_DEFAULT[k], &s->pan_l[k], &s->pan_r[k]);
