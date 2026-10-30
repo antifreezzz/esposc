@@ -6,3 +6,7 @@ idf_component_register(SRCS "acid_osc.c" "acid_env.c" "acid_filter.c"
                        LDFRAGMENTS "linker.lf"
                        REQUIRES plaits
                        PRIV_REQUIRES heap)
+# Стенд замеров: разбивка рендера по участкам (acid_prof.h).
+if(ESPOSC_STRESS)
+    target_compile_definitions(${COMPONENT_LIB} PUBLIC ACID_PROFILE)
+endif()

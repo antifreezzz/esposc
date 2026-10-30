@@ -1,4 +1,9 @@
 #include "acid_synth.h"
+#include "acid_prof.h"
+
+#ifdef ACID_PROFILE
+uint32_t acid_prof[ACID_PROF_N];
+#endif
 
 #include <math.h>
 #include <stdlib.h>
@@ -753,14 +758,18 @@ void acid_synth_render_with_lr(acid_synth_t *s, float *l, float *r, size_t n, co
     acid_slot_t *v = &s->slot[0];
     float cyl[MIX_CHUNK], cyr[MIX_CHUNK]; // тарелки и перкуссия кусками: голос за голосом быстрее
     float pcl[MIX_CHUNK], pcr[MIX_CHUNK];
+    ACID_PROF_T(t);
     for (size_t i = 0; i < n; i++) {
         if (i % MIX_CHUNK == 0) {
             int m = (int)(n - i < MIX_CHUNK ? n - i : MIX_CHUNK);
             acid_cym_render(&s->cym, cyl, cyr, m);
+            ACID_PROF_ADD(ACID_PROF_CYM, t);
             acid_perc_render(&s->perc, pcl, pcr, m);
+            ACID_PROF_ADD(ACID_PROF_PERC, t);
         }
         slot_tick(s, v);
         float y = slot_next(s, v, v->nheld > 0);
+        ACID_PROF_ADD(ACID_PROF_SYNTH1, t);
         s->clock_now++;
         // Стерео: панорамы по источникам, бочка в центре.
         const float *pl = s->pan_l, *pr = s->pan_r;
@@ -768,6 +777,7 @@ void acid_synth_render_with_lr(acid_synth_t *s, float *l, float *r, size_t n, co
         float hat = s->hat_gain * s->hat_vel * acid_hat_next(&s->hat);
         float clap = s->clap_gain * s->clap_vel * acid_clap_next(&s->clap);
         float snare = s->snare_gain * s->snare_vel * acid_snare_next(&s->snare);
+        ACID_PROF_ADD(ACID_PROF_DRUMS, t);
         float s1 = slot1[i];
         float cl = cyl[i % MIX_CHUNK], cr = cyr[i % MIX_CHUNK]; // уже стерео с балансом
         float ql = pcl[i % MIX_CHUNK], qr = pcr[i % MIX_CHUNK]; // перкуссия, уже с панорамой
@@ -793,6 +803,7 @@ void acid_synth_render_with_lr(acid_synth_t *s, float *l, float *r, size_t n, co
         acid_djf_next2(&s->djf, &yl, &yr);
         l[i] = s->master * OUT_PEAK * acid_tanh(s->drive * yl);
         r[i] = s->master * OUT_PEAK * acid_tanh(s->drive * yr);
+        ACID_PROF_ADD(ACID_PROF_FX, t);
     }
 }
 

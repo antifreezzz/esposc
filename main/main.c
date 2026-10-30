@@ -2,6 +2,7 @@
 
 #include "acid.h"
 #include "acid_demo.h"
+#include "acid_prof.h"
 #include "audio_out.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -222,6 +223,18 @@ static void synth_task(void *arg)
                 ESP_LOGI(TAG, "ok, render worst %lld mean %lld us of %d, synth 2 worst %lld mean %lld us of %d",
                          worst_us, mean_us, BLOCK_US, s_slot1_worst_us, slot1_mean_us, CHUNK * 1000000 / SR);
             }
+#ifdef ACID_PROFILE
+            if (blocks) {
+                uint32_t div = (uint32_t)blocks * 240; // такты -> мкс на блок
+                ESP_LOGI(TAG, "core 1 us/block: cym %lu perc %lu synth1 %lu drums %lu fx %lu",
+                         (unsigned long)(acid_prof[ACID_PROF_CYM] / div), (unsigned long)(acid_prof[ACID_PROF_PERC] / div),
+                         (unsigned long)(acid_prof[ACID_PROF_SYNTH1] / div), (unsigned long)(acid_prof[ACID_PROF_DRUMS] / div),
+                         (unsigned long)(acid_prof[ACID_PROF_FX] / div));
+            }
+            for (int k = 0; k < ACID_PROF_N; k++) {
+                acid_prof[k] = 0;
+            }
+#endif
             last_underruns = u;
             worst_us = sum_us = 0;
             blocks = 0;
