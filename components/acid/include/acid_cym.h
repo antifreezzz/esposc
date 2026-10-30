@@ -4,8 +4,8 @@
 #include "acid_bank.h"
 
 // Тарелки из набора сэмплов: слои по velocity, повторы по кругу, хвост, строй, баланс.
-#define ACID_CYM_VOICES 5 // звучащих одновременно (бюджет платы, замер этапа 9)
-#define ACID_CYM_SLOTS 6  // вместе с уходящими (забранные и перебитые)
+#define ACID_CYM_SLOTS 6  // голосов всего, вместе с уходящими (бюджет платы, замер этапа 9)
+#define ACID_CYM_RESERVE 3 // свободных или забираемых слотов после удара: три тарелки разом без обрыва
 #define ACID_CYM_LAYERS 8 // счётчики повторов на слои; слои выше делят последний
 
 enum { ACID_CYM_CRASH, ACID_CYM_RIDE, ACID_CYM_BELL, ACID_CYM_N }; // ноты 49, 51, 53
@@ -32,6 +32,7 @@ typedef struct {
     float pan_l[ACID_CYM_N], pan_r[ACID_CYM_N];
     float sens;
     float sr;
+    uint32_t hard_cuts; // слышный голос стёрт без ухода (для тестов, должно быть 0)
 } acid_cym_t;
 
 void acid_cym_init(acid_cym_t *c, float sr);

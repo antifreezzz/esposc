@@ -96,26 +96,55 @@ TEST(test_cym_round_robin)
     CHECK(last_voice()->rr_index == a);
 }
 
-TEST(test_cym_steal_quietest_fades)
+// Длинные хвосты (5 с): слоты кончаются, как вживую на райде с крэшем и куполом.
+static void setup_long(void)
 {
-    // Нот всего три, а повтор той же ноты уводит прежний голос: 6 звучащих собираем клонами голоса.
-    setup();
-    acid_cym_trigger(&c, &bank, 49, 0.1f);
-    for (int i = 0; i < ACID_CYM_VOICES - 1; i++) {
-        c.v[i + 1] = c.v[0]; // клон голоса: занятый звучащий слот
-        c.v[i + 1].amp = 1.0f;
-        c.v[i + 1].which = ACID_CYM_BELL;
+    static const fixture_note_t LONG[] = {
+        {49, 1, {127}, {1}, 5 * SR},
+        {51, 1, {127}, {1}, 5 * SR},
+        {53, 1, {127}, {1}, 5 * SR},
+    };
+    size_t n = fixture_bank(img, 2 * 1024 * 1024, LONG, 3);
+    CHECK(n > 0 && acid_bank_open(&bank, img, n));
+    acid_cym_init(&c, (float)SR);
+    acid_cym_set_sens(&c, 1.0f);
+}
+
+// Райд восьмыми на 180 BPM, крэш на каждый такт, купол на 2 и 4: ни один слышный голос не стирается
+// без ухода (забор - за 5 мс).
+TEST(test_cym_live_pattern_no_hard_cut)
+{
+    setup_long();
+    int step = SR * 60 / 180 / 2;
+    for (int k = 0; k < 80; k++) {
+        acid_cym_trigger(&c, &bank, 51, 1.0f);
+        if (k % 8 == 0) {
+            acid_cym_trigger(&c, &bank, 49, 1.0f);
+        }
+        if (k % 8 == 2 || k % 8 == 6) {
+            acid_cym_trigger(&c, &bank, 53, 1.0f);
+        }
+        CHECK(acid_cym_voices(&c) <= ACID_CYM_SLOTS);
+        run(step, NULL);
     }
-    c.v[0].which = ACID_CYM_CRASH;
-    CHECK(acid_cym_sounding(&c) == ACID_CYM_VOICES);
+    CHECK(c.hard_cuts == 0);
+}
+
+// Три тарелки разом при полных слотах: забранные уходят за 5 мс, а не обрываются.
+TEST(test_cym_steal_fades_when_full)
+{
+    setup_long();
+    for (int k = 0; k < 12; k++) {
+        acid_cym_trigger(&c, &bank, 49 + 2 * (k % 3), 1.0f);
+        run(SR / 20, NULL);
+    }
+    acid_cym_trigger(&c, &bank, 49, 1.0f);
     acid_cym_trigger(&c, &bank, 51, 1.0f);
-    CHECK(acid_cym_sounding(&c) == ACID_CYM_VOICES);
-    CHECK(c.v[0].rr != NULL && c.v[0].fade_step > 0.0f); // тихий уходит, а не обрывается
-    run(SR / 1000, NULL);
-    CHECK(c.v[0].rr != NULL); // через 1 мс ещё звучит
-    run(SR / 100, NULL);
-    CHECK(c.v[0].rr == NULL || c.v[0].fade_step == 0.0f); // через 10 мс ушёл
-    CHECK(acid_cym_voices(&c) == ACID_CYM_VOICES);
+    acid_cym_trigger(&c, &bank, 53, 1.0f);
+    CHECK(c.hard_cuts == 0);
+    CHECK(acid_cym_voices(&c) <= ACID_CYM_SLOTS);
+    run(SR / 100, NULL); // через 10 мс забранные ушли: есть место под следующие удары
+    CHECK(acid_cym_voices(&c) <= ACID_CYM_SLOTS - ACID_CYM_RESERVE);
 }
 
 TEST(test_cym_slots_full_no_crash)
@@ -124,7 +153,6 @@ TEST(test_cym_slots_full_no_crash)
     for (int i = 0; i < 50; i++) {
         acid_cym_trigger(&c, &bank, 49 + 2 * (i % 3), 1.0f);
         CHECK(acid_cym_voices(&c) <= ACID_CYM_SLOTS);
-        CHECK(acid_cym_sounding(&c) <= ACID_CYM_VOICES);
     }
     CHECK(isfinite(run(SR / 10, NULL)));
 }
@@ -268,7 +296,7 @@ TEST(test_cym_ride_roll_no_buildup)
 TEST(test_cym_voice_budget)
 {
     CHECK(ACID_CYM_SLOTS <= 6);
-    CHECK(ACID_CYM_VOICES < ACID_CYM_SLOTS); // хоть один слот под уход, чтобы забор был без щелчка
+    CHECK(ACID_CYM_RESERVE >= 1 && ACID_CYM_RESERVE < ACID_CYM_SLOTS); // свободные слоты под удары без обрыва
     setup();
     for (int i = 0; i < 40; i++) {
         acid_cym_trigger(&c, &bank, 49 + 2 * (i % 3), 1.0f);
@@ -291,7 +319,8 @@ int main(void)
     RUN(test_cym_layer_by_velocity);
     RUN(test_cym_sens_zero_full_layer);
     RUN(test_cym_round_robin);
-    RUN(test_cym_steal_quietest_fades);
+    RUN(test_cym_live_pattern_no_hard_cut);
+    RUN(test_cym_steal_fades_when_full);
     RUN(test_cym_slots_full_no_crash);
     RUN(test_cym_retrigger_fades_previous);
     RUN(test_cym_bell_keeps_ride);

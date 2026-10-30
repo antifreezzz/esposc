@@ -93,6 +93,33 @@ static int decode(acid_cym_voice_t *v)
     return 1;
 }
 
+static int stealing(const acid_cym_voice_t *v, float sr)
+{
+    return v->fade_step >= 0.99f / (STEAL_S * sr);
+}
+
+// После удара держим ACID_CYM_RESERVE слотов свободными или забираемыми (уход за 5 мс): следующие удары,
+// даже три разом, встают в свободный слот, и ничего слышного не обрывается.
+static void reserve(acid_cym_t *c, const acid_cym_voice_t *fresh)
+{
+    for (;;) {
+        int spare = 0;
+        acid_cym_voice_t *quiet = NULL;
+        for (int i = 0; i < ACID_CYM_SLOTS; i++) {
+            acid_cym_voice_t *v = &c->v[i];
+            if (v->rr == NULL || stealing(v, c->sr)) {
+                spare++;
+            } else if (v != fresh && (!quiet || level(v) < level(quiet))) {
+                quiet = v;
+            }
+        }
+        if (spare >= ACID_CYM_RESERVE || quiet == NULL) {
+            return;
+        }
+        quiet->fade_step = 1.0f / (STEAL_S * c->sr); // и уходящий медленно - быстрее
+    }
+}
+
 void acid_cym_trigger(acid_cym_t *c, const acid_bank_t *b, int note, float vel)
 {
     int which = (note - NOTE0) / 2;
@@ -113,9 +140,8 @@ void acid_cym_trigger(acid_cym_t *c, const acid_bank_t *b, int note, float vel)
     int ri = c->rr_next[which][ci] % layer->nrr;
     c->rr_next[which][ci] = (uint8_t)((ri + 1) % layer->nrr);
 
-    // Прежний удар той же ноты уходит; при 6 звучащих уходит самый тихий.
-    int sounding = 0;
-    acid_cym_voice_t *quiet = NULL, *free_v = NULL, *faded = NULL;
+    // Прежний удар той же ноты уходит медленно, звенит под новым.
+    acid_cym_voice_t *free_v = NULL, *faded = NULL;
     for (int i = 0; i < ACID_CYM_SLOTS; i++) {
         acid_cym_voice_t *v = &c->v[i];
         if (v->rr == NULL) {
@@ -125,20 +151,14 @@ void acid_cym_trigger(acid_cym_t *c, const acid_bank_t *b, int note, float vel)
         if (v->which == which) {
             fade_out(v, RETRIG_S, c->sr);
         }
-        if (v->fade_step == 0.0f) {
-            sounding++;
-            quiet = !quiet || level(v) < level(quiet) ? v : quiet;
-        } else {
-            faded = !faded || level(v) < level(faded) ? v : faded;
-        }
-    }
-    if (sounding >= ACID_CYM_VOICES && quiet) {
-        fade_out(quiet, STEAL_S, c->sr);
-        faded = !faded || level(quiet) < level(faded) ? quiet : faded;
+        faded = !faded || level(v) < level(faded) ? v : faded;
     }
     acid_cym_voice_t *v = free_v ? free_v : faded; // слоты кончились: обрываем самый тихий из уходящих
     if (v == NULL) {
         return;
+    }
+    if (v != free_v && level(v) > 1e-3f) {
+        c->hard_cuts++;
     }
     memset(v, 0, sizeof *v);
     v->rr = &b->rrs[layer->first_rr + ri];
@@ -155,6 +175,7 @@ void acid_cym_trigger(acid_cym_t *c, const acid_bank_t *b, int note, float vel)
     if (!decode(v)) {
         v->cur[0] = v->cur[1] = 0.0f; // сэмпл в один кадр
     }
+    reserve(c, v);
 }
 
 // Заголовок блока ADPCM: состояние декодера, ошибка не тянется дальше блока.
