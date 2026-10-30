@@ -157,8 +157,19 @@ TEST(test_demo_reset_clean)
     CHECK(p < 1e-3f);
 }
 
+// Каждая ручка части доходит: их не больше, чем помнит плеер.
+TEST(test_demo_song_fits)
+{
+    int ok = 1;
+    for (int i = 0; i < acid_demo_song.nparts; i++) {
+        ok &= acid_demo_song.parts[i].nknobs <= ACID_DEMO_KNOBS;
+    }
+    CHECK(ok);
+}
+
 int main(void)
 {
+    RUN(test_demo_song_fits);
     RUN(test_demo_smoke_loop);
     RUN(test_demo_coverage);
     RUN(test_demo_reset_clean);

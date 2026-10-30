@@ -29,7 +29,7 @@ typedef struct {
 // vary с круга 1: N - концы плавной ручки плавают на +-N; ACID_DEMO_PICK - одно случайное значение
 // между from и to на часть (круг 0 - from, to может быть и меньше from).
 #define ACID_DEMO_PICK 0xFF
-#define ACID_DEMO_KNOBS 32 // ручек в части не больше
+#define ACID_DEMO_KNOBS 40 // ручек в части не больше
 typedef struct {
     uint8_t page, enc, from, to, vary;
 } acid_demo_knob_t;
