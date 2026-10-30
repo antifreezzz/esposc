@@ -5,3 +5,6 @@ managed_components/
 *.wav
 sdkconfig
 dependencies.lock
+__pycache__/
+.superpowers/
+*.bin

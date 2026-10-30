@@ -1,4 +1,5 @@
 #include "acid_bank.h"
+#include "adpcm_vector.h"
 #include "bank_fixture.h"
 #include "test.h"
 
@@ -168,6 +169,17 @@ TEST(test_crc32_matches_zlib)
     CHECK(acid_crc32((const uint8_t *)"123456789", 9) == 0xCBF43926u);
 }
 
+// Декодер прошивки и скрипт сборки (tools/samples) декодируют одинаково, бит в бит.
+TEST(test_bank_vector)
+{
+    acid_adpcm_t st = {0, 0};
+    int bad = 0;
+    for (int i = 0; i < ADPCM_VECTOR_N; i++) {
+        bad += acid_adpcm_step(&st, ADPCM_VECTOR_NIB[i]) != ADPCM_VECTOR_OUT[i];
+    }
+    CHECK(bad == 0);
+}
+
 int main(void)
 {
     RUN(test_bank_opens_fixture);
@@ -183,5 +195,6 @@ int main(void)
     RUN(test_adpcm_index_clamped);
     RUN(test_bank_rr_bytes);
     RUN(test_crc32_matches_zlib);
+    RUN(test_bank_vector);
     TEST_MAIN_END();
 }
