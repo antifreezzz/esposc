@@ -67,14 +67,24 @@ typedef struct {
     float tone;      // коэффициент ФНЧ в петле
     float lp;        // состояние ФНЧ
     float d, d_target; // задержка в сэмплах: текущая и цель
-    int zero_run;    // нулевых записей подряд; >= ACID_DELAY_LEN - буфер весь в нулях
+    int zero_run;    // нулевых записей подряд (обе линии); >= ACID_DELAY_LEN - буферы в нулях
+    float lp_b;      // ФНЧ линии B
+    int motion;      // 0 центр, 1 пинг-понг, 2 случайная точка на повтор
+    int width;       // ширина повторов 0..127
+    float m;         // доля пинг-понга в петле, плывёт 0..1
+    float pos_a, pos_b, tgt_a, tgt_b; // панорама выходов линий: текущая и цель
+    int rnd_left;    // сэмплов до новой случайной точки
+    uint32_t rnd;
 } acid_delay_t;
 
 // 120 BPM, 3/16, fb 0.4, тон 4 кГц; buf на 2 * ACID_DELAY_LEN чистится.
 void acid_delay_init(acid_delay_t *d, float sr, int16_t *buf);
 void acid_delay_set(acid_delay_t *d, int time_knob, int fb_knob, int tone_knob);
 void acid_delay_set_spb(acid_delay_t *d, float spb);
-float acid_delay_next(acid_delay_t *d, float in); // in - сумма посылов, возврат - повторы
+float acid_delay_next(acid_delay_t *d, float in); // моно: среднее каналов acid_delay_next2
+// in - сумма посылов (моно), повторы в два канала по движению.
+void acid_delay_next2(acid_delay_t *d, float in, float *l, float *r);
+void acid_delay_set_motion(acid_delay_t *d, int motion, int width); // motion > 2 игнор, width 0..127
 int acid_delay_active(const acid_delay_t *d);     // 0: в буфере одни нули, next можно не звать
 float acid_delay_time_samples(const acid_delay_t *d); // целевая задержка
 

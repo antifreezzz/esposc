@@ -834,8 +834,155 @@ TEST(test_djf_stereo_independent)
     CHECK(rmax == 0.0f); // правый со своим состоянием: тишина
 }
 
+static acid_delay_t dl2;
+static int16_t dl2_buf[2 * ACID_DELAY_LEN];
+static float dlb_l[48000], dlb_r[48000];
+
+// Импульс в посыл и тишина; повторы в dlb_l/dlb_r. Время 1/16 при 120 BPM = 6000 сэмплов, fb 0.5.
+static void delay_impulse(acid_delay_t *d, int16_t *buf, int motion, int width, int n)
+{
+    acid_delay_init(d, SR, buf);
+    acid_delay_set(d, 0, 67, 127);
+    d->d = d->d_target;
+    acid_delay_set_motion(d, motion, width);
+    for (int i = 0; i < n; i++) {
+        acid_delay_next2(d, i == 0 ? 1.0f : 0.0f, &dlb_l[i], &dlb_r[i]);
+    }
+}
+
+static float win_peak(const float *x, int from, int to)
+{
+    float p = 0.0f;
+    for (int i = from; i < to; i++) {
+        p = fabsf(x[i]) > p ? fabsf(x[i]) : p;
+    }
+    return p;
+}
+
+TEST(test_delay_center_same_as_before)
+{
+    delay_impulse(&dl2, dl2_buf, 0, 127, 20000);
+    acid_delay_init(&dl, SR, dl_buf);
+    acid_delay_set(&dl, 0, 67, 127);
+    dl.d = dl.d_target;
+    int same = 1;
+    for (int i = 0; i < 20000; i++) {
+        float m = acid_delay_next(&dl, i == 0 ? 1.0f : 0.0f);
+        same &= dlb_l[i] == m && dlb_r[i] == m;
+    }
+    CHECK(win_peak(dlb_l, 5900, 6300) > 0.05f);
+    CHECK(same);
+}
+
+TEST(test_delay_pingpong)
+{
+    delay_impulse(&dl2, dl2_buf, 1, 127, 20000);
+    CHECK(win_peak(dlb_l, 5900, 6300) > 0.05f);  // первый повтор слева
+    CHECK(win_peak(dlb_r, 5900, 6300) < 1e-4f);
+    CHECK(win_peak(dlb_r, 11900, 12300) > 0.02f); // второй справа
+    CHECK(win_peak(dlb_l, 11900, 12300) < 1e-4f);
+    CHECK(win_peak(dlb_l, 17900, 18300) > 0.01f); // третий снова слева
+    CHECK(win_peak(dlb_r, 17900, 18300) < 1e-4f);
+}
+
+TEST(test_delay_width_zero)
+{
+    delay_impulse(&dl2, dl2_buf, 1, 0, 20000);
+    int same = 1;
+    for (int i = 0; i < 20000; i++) {
+        same &= dlb_l[i] == dlb_r[i];
+    }
+    CHECK(win_peak(dlb_l, 11900, 12300) > 0.02f);
+    CHECK(same);
+}
+
+TEST(test_delay_random_within_width)
+{
+    acid_delay_init(&dl2, SR, dl2_buf);
+    acid_delay_set(&dl2, 0, 67, 127);
+    dl2.d = dl2.d_target;
+    acid_delay_set_motion(&dl2, 2, 64);
+    float last = dl2.tgt_a;
+    int changes = 0, min_gap = 1 << 30, since = 0, inside = 1;
+    for (int i = 0; i < 48000; i++) {
+        float l, r;
+        acid_delay_next2(&dl2, i % 6000 == 0 ? 1.0f : 0.0f, &l, &r);
+        since++;
+        if (dl2.tgt_a != last) {
+            if (changes++) {
+                min_gap = since < min_gap ? since : min_gap; // первая точка - сразу при включении
+            }
+            since = 0;
+            last = dl2.tgt_a;
+        }
+        inside &= dl2.pos_a >= 31.0f && dl2.pos_a <= 97.0f;
+    }
+    CHECK(inside);
+    CHECK(changes >= 5);
+    CHECK(min_gap >= 5999 || changes <= 1);
+}
+
+// Повторы синуса звучат; наибольший скачок между сэмплами. motion -1: переключения 0 -> 1 -> 0 по ходу.
+// motion -1: переключения 0 -> 1 -> 0 по ходу; иначе движение с начала.
+static float motion_jump(int motion)
+{
+    acid_delay_init(&dl2, SR, dl2_buf);
+    acid_delay_set(&dl2, 0, 100, 127);
+    dl2.d = dl2.d_target;
+    int do_switch = motion < 0;
+    acid_delay_set_motion(&dl2, do_switch ? 0 : motion, 127);
+    float pl = 0.0f, pr = 0.0f, j = 0.0f;
+    for (int i = 0; i < 48000; i++) {
+        if (do_switch && i == 20000) {
+            acid_delay_set_motion(&dl2, 1, 127);
+        }
+        if (do_switch && i == 32000) {
+            acid_delay_set_motion(&dl2, 0, 127);
+        }
+        float x = 0.3f * sinf((float)i * 0.05f);
+        float l, r;
+        acid_delay_next2(&dl2, x, &l, &r);
+        if (i > 6000) {
+            j = fabsf(l - pl) > j ? fabsf(l - pl) : j;
+            j = fabsf(r - pr) > j ? fabsf(r - pr) : j;
+        }
+        pl = l;
+        pr = r;
+    }
+    return j;
+}
+
+TEST(test_delay_motion_switch_smooth)
+{
+    float base = motion_jump(0);
+    float sw = motion_jump(-1);
+    CHECK(base > 0.0f);
+    CHECK(sw <= 1.5f * base);
+}
+
+TEST(test_delay_random_smooth)
+{
+    CHECK(motion_jump(2) <= 1.5f * motion_jump(0)); // смена точки без щелчка
+}
+
+TEST(test_delay_motion_ignores_3)
+{
+    acid_delay_init(&dl2, SR, dl2_buf);
+    acid_delay_set_motion(&dl2, 1, 100);
+    acid_delay_set_motion(&dl2, 3, 90);
+    CHECK(dl2.motion == 1);
+    CHECK(dl2.width == 90);
+}
+
 int main(void)
 {
+    RUN(test_delay_center_same_as_before);
+    RUN(test_delay_pingpong);
+    RUN(test_delay_width_zero);
+    RUN(test_delay_random_within_width);
+    RUN(test_delay_motion_switch_smooth);
+    RUN(test_delay_random_smooth);
+    RUN(test_delay_motion_ignores_3);
     RUN(test_stutter_stereo);
     RUN(test_crush_stereo_shared_hold);
     RUN(test_djf_stereo_independent);

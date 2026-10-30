@@ -580,6 +580,8 @@ static void page_fx(acid_synth_t *s, int slot, int v)
     case 7: s->dl_fb = v; break;
     case 8: s->dl_tone = v; break;
     case 9: acid_stutter_set(&s->stutter, v); break;
+    case 10: acid_delay_set_motion(&s->delay, v, s->delay.width); break;
+    case 11: acid_delay_set_motion(&s->delay, s->delay.motion, v); break;
     default: break;
     }
     if (slot >= 6 && slot <= 8) {
@@ -851,9 +853,10 @@ void acid_synth_render_with_lr(acid_synth_t *s, float *l, float *r, size_t n, co
             float yr = kick + pump * (pr[ACID_PAN_SYNTH1] * y + pr[ACID_PAN_SYNTH2] * s1 + pr[ACID_PAN_HAT] * hat +
                                       pr[ACID_PAN_CLAP] * clap + pr[ACID_PAN_SNARE] * snare);
             if (send != 0.0f || acid_delay_active(&s->delay)) {
-                float wet = acid_delay_next(&s->delay, send);
-                yl += wet;
-                yr += wet;
+                float wl, wr;
+                acid_delay_next2(&s->delay, send, &wl, &wr);
+                yl += wl;
+                yr += wr;
             }
             if (acid_stutter_active(&s->stutter)) {
                 acid_stutter_next2(&s->stutter, &yl, &yr);

@@ -983,8 +983,21 @@ TEST(test_live_drum_pan_defaults)
     CHECK(diff == 0);
 }
 
+TEST(test_live_fx_motion_knobs)
+{
+    live();
+    cc(10, 4);  // страница эффектов
+    cc(19, 1);  // энкодер 11: пинг-понг
+    cc(16, 100); // энкодер 12: ширина
+    CHECK(s.delay.motion == 1);
+    CHECK(s.delay.width == 100);
+    cc(19, 3); // вне списка: игнор
+    CHECK(s.delay.motion == 1);
+}
+
 int main(void)
 {
+    RUN(test_live_fx_motion_knobs);
     RUN(test_live_hat_pan_left);
     RUN(test_live_synth_center_equal);
     RUN(test_live_synth_pan_right);

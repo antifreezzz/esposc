@@ -272,6 +272,8 @@ int acid_crush_active(const acid_crush_t *c)
 #define DELAY_SLEW 0.5f      // задержка меняется не быстрее 0.5 сэмпла за сэмпл: высота плывёт до x1.5
 #define DELAY_TONE_LO 500.0f
 #define DELAY_TONE_HI 12000.0f
+#define DELAY_MOVE_STEP (1.0f / 240.0f)  // смена движения за 5 мс
+#define DELAY_PAN_STEP (127.0f / 240.0f) // точка панорамы через всю ширину за 5 мс
 
 // Доли четверти по значению ручки времени 0..4: 1/16, 1/8, 3/16, 1/4, 3/8.
 static const float DELAY_DIVS[5] = {0.25f, 0.5f, 0.75f, 1.0f, 1.5f};
@@ -293,6 +295,13 @@ void acid_delay_init(acid_delay_t *d, float sr, int16_t *buf)
     d->w = 0;
     d->lp = 0.0f;
     d->zero_run = ACID_DELAY_LEN;
+    d->lp_b = 0.0f;
+    d->motion = 0;
+    d->width = 127;
+    d->m = 0.0f;
+    d->pos_a = d->pos_b = d->tgt_a = d->tgt_b = 64.0f;
+    d->rnd_left = 0;
+    d->rnd = 0x2545F491u;
     d->spb = sr * 0.5f;
     acid_delay_set(d, 2, 53, 83); // 3/16, fb ~0.4, тон ~4 кГц
     d->d = d->d_target;
@@ -315,36 +324,104 @@ void acid_delay_set_spb(acid_delay_t *d, float spb)
     delay_target(d);
 }
 
-float acid_delay_next(acid_delay_t *d, float in)
+void acid_delay_set_motion(acid_delay_t *d, int motion, int width)
+{
+    if (motion <= 2) {
+        d->motion = motion; // вне списка: движение прежнее
+    }
+    d->width = width;
+}
+
+static float delay_lp(float lp, float r, float tone)
+{
+    lp += (r - lp) * tone;
+    return fabsf(lp) < 1e-7f ? 0.0f : lp; // без хвоста в субнормалах
+}
+
+static int16_t delay_q(float in)
+{
+    float x = in * DELAY_SCALE;
+    x = x > 32767.0f ? 32767.0f : (x < -32767.0f ? -32767.0f : x);
+    return (int16_t)x; // к нулю: тихий хвост сам уходит в 0, без зацикливания на младшем бите
+}
+
+static float slew(float x, float target, float step)
+{
+    float dx = target - x;
+    return dx > step ? x + step : (dx < -step ? x - step : target);
+}
+
+// Цели панорамы выходов линий по движению и ширине.
+static void delay_pan_targets(acid_delay_t *d)
+{
+    float lo = 64.0f - (float)d->width * (64.0f / 127.0f); // на 127 ровно 0
+    float hi = 64.0f + (float)d->width * (63.0f / 127.0f); // на 127 ровно 127
+    if (d->motion == 1) {
+        d->tgt_a = lo;
+        d->tgt_b = hi;
+    } else if (d->motion == 2) {
+        if (--d->rnd_left <= 0) {
+            // Новая точка на каждый повтор (раз во время дилэя).
+            d->rnd ^= d->rnd << 13;
+            d->rnd ^= d->rnd >> 17;
+            d->rnd ^= d->rnd << 5;
+            float u = (float)(d->rnd >> 8) * (1.0f / 16777216.0f);
+            d->tgt_a = lo + u * (hi - lo);
+            d->rnd_left = (int)d->d;
+        }
+        d->tgt_b = 64.0f;
+    } else {
+        d->tgt_a = d->tgt_b = 64.0f;
+    }
+}
+
+void acid_delay_next2(acid_delay_t *d, float in, float *l, float *r)
 {
     float dd = d->d_target - d->d;
     d->d += dd > DELAY_SLEW ? DELAY_SLEW : (dd < -DELAY_SLEW ? -DELAY_SLEW : dd);
 
-    // Дробное чтение назад от точки записи, линейная интерполяция.
+    // Дробное чтение назад от точки записи, линейная интерполяция; линия B той же задержкой.
+    const int16_t *ba = d->buf, *bb = d->buf + ACID_DELAY_LEN;
     float pos = (float)d->w - d->d;
     pos += pos < 0.0f ? (float)ACID_DELAY_LEN : 0.0f;
     int i0 = (int)pos;
     i0 = i0 < ACID_DELAY_LEN ? i0 : i0 - ACID_DELAY_LEN; // pos чуть меньше 0 округляется ровно в LEN
     float f = pos - (float)i0;
     int i1 = i0 + 1 < ACID_DELAY_LEN ? i0 + 1 : 0;
-    float r = ((float)d->buf[i0] + f * (float)(d->buf[i1] - d->buf[i0])) * (1.0f / DELAY_SCALE);
+    float ra = ((float)ba[i0] + f * (float)(ba[i1] - ba[i0])) * (1.0f / DELAY_SCALE);
+    float rb = ((float)bb[i0] + f * (float)(bb[i1] - bb[i0])) * (1.0f / DELAY_SCALE);
+    d->lp = delay_lp(d->lp, ra, d->tone);
+    d->lp_b = delay_lp(d->lp_b, rb, d->tone);
 
-    d->lp += (r - d->lp) * d->tone;
-    if (fabsf(d->lp) < 1e-7f) {
-        d->lp = 0.0f; // без хвоста в субнормалах
-    }
-    float x = (in + d->fb * d->lp) * DELAY_SCALE;
-    x = x > 32767.0f ? 32767.0f : (x < -32767.0f ? -32767.0f : x);
-    int16_t q = (int16_t)x; // к нулю: тихий хвост сам уходит в 0, без зацикливания на младшем бите
-    d->buf[d->w] = q;
+    // Пинг-понг: A -> B -> A, каждый переход с обратной связью. m плавно переключает петлю.
+    d->m = slew(d->m, d->motion == 1 ? 1.0f : 0.0f, DELAY_MOVE_STEP);
+    int16_t qa = delay_q(in + d->fb * ((1.0f - d->m) * d->lp + d->m * d->lp_b));
+    int16_t qb = delay_q(d->m * d->fb * d->lp);
+    d->buf[d->w] = qa;
+    d->buf[ACID_DELAY_LEN + d->w] = qb;
     d->w = d->w + 1 < ACID_DELAY_LEN ? d->w + 1 : 0;
-    d->zero_run = q ? 0 : (d->zero_run < ACID_DELAY_LEN ? d->zero_run + 1 : d->zero_run);
-    return d->lp;
+    d->zero_run = (qa | qb) ? 0 : (d->zero_run < ACID_DELAY_LEN ? d->zero_run + 1 : d->zero_run);
+
+    delay_pan_targets(d);
+    d->pos_a = slew(d->pos_a, d->tgt_a, DELAY_PAN_STEP);
+    d->pos_b = slew(d->pos_b, d->tgt_b, DELAY_PAN_STEP);
+    float al, ar, bl, br;
+    acid_pan(d->pos_a, &al, &ar);
+    acid_pan(d->pos_b, &bl, &br);
+    *l = al * d->lp + bl * d->lp_b;
+    *r = ar * d->lp + br * d->lp_b;
+}
+
+float acid_delay_next(acid_delay_t *d, float in)
+{
+    float l, r;
+    acid_delay_next2(d, in, &l, &r);
+    return 0.5f * (l + r);
 }
 
 int acid_delay_active(const acid_delay_t *d)
 {
-    return d->zero_run < ACID_DELAY_LEN || d->lp != 0.0f;
+    return d->zero_run < ACID_DELAY_LEN || d->lp != 0.0f || d->lp_b != 0.0f;
 }
 
 float acid_delay_time_samples(const acid_delay_t *d)
