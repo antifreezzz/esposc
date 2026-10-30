@@ -8,3 +8,4 @@ dependencies.lock
 __pycache__/
 .superpowers/
 *.bin
+build-stress/

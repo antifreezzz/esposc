@@ -81,6 +81,7 @@ typedef struct {
 } acid_demo_t;
 
 extern const acid_demo_song_t acid_demo_song; // демо-трек прошивки
+extern const acid_demo_song_t acid_stress_song; // стенд замеров: худший случай рендера без передышек
 
 void acid_demo_init(acid_demo_t *d, const acid_demo_song_t *song);
 // События следующего куска в out (не больше cap), возврат - число. Порядок: Start, CC, note off, note on, клок.

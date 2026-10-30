@@ -37,6 +37,17 @@ static int s_slot1_next; // какой буфер считает ядро 0
 static TaskHandle_t s_synth_task;
 static TaskHandle_t s_slot1_task;
 static int64_t s_slot1_worst_us;
+static int64_t s_slot1_sum_us;
+
+// Стенд замеров (сборка с -DESPOSC_STRESS=1): вместо демо стресс-песня, BSP не слушаем, защита от перегруза
+// выключена, чтобы видеть полную цену худшего случая.
+#ifdef ESPOSC_STRESS
+#define DEMO_SONG acid_stress_song
+#define BENCH 1
+#else
+#define DEMO_SONG acid_demo_song
+#define BENCH 0
+#endif
 
 static void slot1_task(void *arg)
 {
@@ -47,6 +58,7 @@ static void slot1_task(void *arg)
         acid_synth_render_slot(&s_synth, 1, s_slot1[s_slot1_next], CHUNK);
         int64_t dt = esp_timer_get_time() - t0;
         s_slot1_worst_us = dt > s_slot1_worst_us ? dt : s_slot1_worst_us;
+        s_slot1_sum_us += dt;
         xTaskNotifyGive(s_synth_task);
     }
 }
@@ -108,7 +120,7 @@ static void enter_mode(int live, const uint8_t *blob, int blob_ok)
         }
         s_demo_on = 0;
     } else {
-        acid_demo_init(&s_demo, &acid_demo_song);
+        acid_demo_init(&s_demo, &DEMO_SONG);
         s_demo_on = 1;
     }
 }
@@ -120,7 +132,8 @@ static void synth_task(void *arg)
     static int16_t pcm[BLOCK * 2];
     static uint8_t blob[ACID_SYNTH_BLOB];
     uint32_t last_underruns = 0;
-    int64_t worst_us = 0;
+    int64_t worst_us = 0, sum_us = 0;
+    int blocks = 0;
     int64_t next_stats = esp_timer_get_time() + STATS_PERIOD_US;
     int live = 0;
     int fade = 0; // блоков ухода громкости до смены режима
@@ -135,6 +148,9 @@ static void synth_task(void *arg)
         ESP_LOGI(TAG, "knobs restored");
     }
     enter_mode(0, blob, blob_ok);
+    if (BENCH) {
+        ESP_LOGW(TAG, "STRESS BENCH build: stress song, BSP ignored, overload guard off");
+    }
     ESP_LOGI(TAG, "free: internal %u, psram %u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     xTaskCreatePinnedToCore(slot1_task, "slot1", 4096, NULL, 6, &s_slot1_task, 0);
@@ -151,7 +167,7 @@ static void synth_task(void *arg)
                 acid_synth_notes_off(&s_synth); // вместе с событиями ушли и note off: чистим стек нот
             }
         }
-        if (midi_in_connected() != live && fade == 0) {
+        if (!BENCH && midi_in_connected() != live && fade == 0) {
             fade = FADE_BLOCKS; // уходим без щелчка, потом меняем режим
         }
         int64_t t0 = esp_timer_get_time();
@@ -168,9 +184,11 @@ static void synth_task(void *arg)
         acid_pcm_lr_to_s16(out_l, out_r, pcm, BLOCK);
         int64_t dt = esp_timer_get_time() - t0;
         worst_us = dt > worst_us ? dt : worst_us;
+        sum_us += dt;
+        blocks++;
         // Защита от лавины: тяжёлый блок - перкуссия и тарелки на одном голосе, пока не отпустит.
         int was_tight = s_synth.tight;
-        acid_synth_set_load(&s_synth, (float)dt / (float)BLOCK_US);
+        acid_synth_set_load(&s_synth, BENCH ? 0.0f : (float)dt / (float)BLOCK_US);
         if (s_synth.tight != was_tight) {
             ESP_LOGW(TAG, "overload guard %s (block %lld us)", s_synth.tight ? "on" : "off", dt);
         }
@@ -192,18 +210,22 @@ static void synth_task(void *arg)
 
         if (t0 >= next_stats) {
             uint32_t u = audio_out_underruns();
+            int64_t mean_us = blocks ? sum_us / blocks : 0;
+            int64_t slot1_mean_us = blocks ? s_slot1_sum_us / (blocks * (BLOCK / CHUNK)) : 0;
             if (u != last_underruns || worst_us > BLOCK_US * 7 / 10) {
-                ESP_LOGW(TAG, "underruns %lu (+%lu), xfer errors %lu, worst render %lld us of %d, synth 2 %lld us of %d",
+                ESP_LOGW(TAG, "underruns %lu (+%lu), xfer errors %lu, render worst %lld mean %lld us of %d, "
+                         "synth 2 worst %lld mean %lld us of %d",
                          (unsigned long)u, (unsigned long)(u - last_underruns),
-                         (unsigned long)audio_out_transfer_errors(), worst_us, BLOCK_US,
-                         s_slot1_worst_us, CHUNK * 1000000 / SR);
+                         (unsigned long)audio_out_transfer_errors(), worst_us, mean_us, BLOCK_US,
+                         s_slot1_worst_us, slot1_mean_us, CHUNK * 1000000 / SR);
             } else {
-                ESP_LOGI(TAG, "ok, worst render %lld us of %d, synth 2 %lld us of %d", worst_us, BLOCK_US,
-                         s_slot1_worst_us, CHUNK * 1000000 / SR);
+                ESP_LOGI(TAG, "ok, render worst %lld mean %lld us of %d, synth 2 worst %lld mean %lld us of %d",
+                         worst_us, mean_us, BLOCK_US, s_slot1_worst_us, slot1_mean_us, CHUNK * 1000000 / SR);
             }
             last_underruns = u;
-            worst_us = 0;
-            s_slot1_worst_us = 0;
+            worst_us = sum_us = 0;
+            blocks = 0;
+            s_slot1_worst_us = s_slot1_sum_us = 0;
             next_stats = t0 + STATS_PERIOD_US;
         }
     }
