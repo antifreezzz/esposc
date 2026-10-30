@@ -46,11 +46,24 @@ static const acid_demo_note_t riser[16] = {
 #define CR ACID_DEMO_CRASH
 #define R ACID_DEMO_RIDE
 #define B ACID_DEMO_BELL
+#define RM ACID_DEMO_RIM
+#define CW ACID_DEMO_COW
+#define T1 ACID_DEMO_TOM1
+#define T2 ACID_DEMO_TOM2
+#define T3 ACID_DEMO_TOM3
+#define T4 ACID_DEMO_TOM4
+#define T5 ACID_DEMO_TOM5
+#define T6 ACID_DEMO_TOM6
 
-static const uint16_t dr_intro[16] = {K | H, 0, H, 0, K | H, 0, H, 0, K | H, 0, H, 0, K | H, 0, H, H};
-static const uint16_t dr_groove[16] = {K | A, H, O, H, K | C, H, O, H | S, K, H, O, H, K | C | A, H, O, S};
-static const uint16_t dr_break[16] = {H, H, H, H, H | S, H, H, H, H, H, H | S, H, H | S, S, S | H, S | A};
-static const uint16_t dr_drop[16] = {K | A | C | R, H, R, H, K | C | R, H, R, H | S, K | R, H, R, H, K | C | S | R, H, B | A, S};
+static const uint32_t dr_intro[16] = {K | H, 0, H, 0, K | H, 0, H, 0, K | H, 0, H, 0, K | H, 0, H, H};
+static const uint32_t dr_groove[16] = {K | A, H, O, H, K | C, H, O, H | S, K, H, O, H, K | C | A, H, O, S};
+static const uint32_t dr_break[16] = {H, H, H, H, H | S, H, H, H, H, H, H | S, H, H | S, S, S | H, S | A};
+static const uint32_t dr_drop[16] = {K | A | C | R, H, R, H, K | C | R, H, R, H | S, K | R, H, R, H, K | C | S | R, H, B | A, S};
+// Сбивки на такт перед сменой части: томы, рим, ковбелл.
+static const uint32_t dr_fill_a[16] = {K | H, H, K | H, CW, K | C, H, CW, H | S, T6, T6, T5, T4, T3 | A, T2, T1, T1 | A};
+static const uint32_t dr_fill_b[16] = {K | H, RM, H, RM, K | C, RM, H, RM, T1, T3, T5, T6, T6 | A, T4, T2, RM | A};
+static const uint32_t dr_fill_c[16] = {K | R, CW, R, CW, K | C | R, CW, T5, T5, T4, T4, T3, T3, T2 | A, T2, T1, T1 | A};
+static const uint32_t dr_fill_d[16] = {K | H, H, RM, H, K | C, RM, T6, T5, T4 | RM, T3, T2, T1, T6 | A, T4 | RM, T2 | A, T1 | A};
 
 #define P ACID_DEMO_PICK
 
@@ -112,6 +125,20 @@ static const acid_demo_knob_t k_outro[] = {
     {0, 3, 90, 64, 0},   {0, 5, 100, 100, 0}, {6, 3, 90, 25, 10},  {0, 12, 64, 15, 0},  {8, 4, 40, 0, 0},    {8, 5, 50, 0, 0},
     {8, 6, 35, 0, 0},    {0, 10, 80, 0, 0},   {7, 6, 40, 40, 0},   {2, 3, 127, 127, 0}, {2, 4, 64, 64, 0},
 };
+// Сбивки: модели и звук перкуссии каждой сбивки (страницы 3 томы, 4 рим, 5 ковбелл). За круг звучат все пять моделей.
+static const acid_demo_knob_t k_fill_a[] = { // аналоговые томы, ковбелл на квадратах
+    {3, 2, 0, 0, 0},  {3, 3, 48, 48, 0}, {3, 4, 79, 79, 0}, {3, 8, 40, 40, 0}, {3, 11, 0, 0, 0},
+    {3, 15, 37, 37, 0}, {3, 16, 50, 50, 0}, {5, 2, 1, 1, 0}, {5, 3, 55, 55, 0}, {5, 7, 83, 83, 0},
+};
+static const acid_demo_knob_t k_fill_b[] = { // модальные томы (дерево), рим аналоговый
+    {3, 2, 3, 3, 0},  {3, 8, 30, 30, 0}, {3, 15, 50, 50, 0}, {4, 2, 0, 0, 0}, {4, 8, 70, 70, 0},
+};
+static const acid_demo_knob_t k_fill_c[] = { // FM-томы с ползущим строем, ковбелл шумом
+    {3, 2, 2, 2, 0},  {3, 3, 30, 70, 0}, {3, 8, 40, 40, 0}, {5, 2, 4, 4, 0}, {5, 7, 90, 90, 0},
+};
+static const acid_demo_knob_t k_fill_d[] = { // шумовые томы с крашером, модальный рим
+    {3, 2, 4, 4, 0},  {3, 3, 60, 60, 0}, {3, 11, 60, 60, 0}, {4, 2, 3, 3, 0}, {4, 8, 90, 90, 0},
+};
 // 10 Хвост к интро.
 static const acid_demo_knob_t k_tail[] = {{0, 12, 15, 25, 0}};
 
@@ -127,13 +154,17 @@ static const uint8_t pool_out[] = {12, 16, 2};   // granular formant, speech, ph
 
 static const acid_demo_part_t parts[] = {
     {8, bass_a, NULL, dr_intro, KN(k_intro), NULL, 0, 0, 0},
-    {16, bass_a, arp, dr_groove, KN(k_groove), POOL(pool_fm), 1, CR},
+    {15, bass_a, arp, dr_groove, KN(k_groove), POOL(pool_fm), 1, CR},
+    {1, bass_a, arp, dr_fill_a, KN(k_fill_a), NULL, 0, 1, 0},
     {8, bass_a, pad, dr_groove, KN(k_tonal), POOL(pool_pad), 1, 0},
-    {8, bass_a, pluck, dr_groove, KN(k_pingpong), POOL(pool_pluck), 1, 0},
+    {7, bass_a, pluck, dr_groove, KN(k_pingpong), POOL(pool_pluck), 1, 0},
+    {1, bass_a, pluck, dr_fill_b, KN(k_fill_b), NULL, 0, 1, 0},
     {8, bass_b, NULL, dr_break, KN(k_break), NULL, 0, 1, 0},
     {2, bass_b, NULL, dr_groove, KN(k_stutter), NULL, 0, 0, 0},
-    {16, bass_b, stab, dr_drop, KN(k_drop), POOL(pool_stab), 1, CR},
-    {16, bass_b, riser, dr_drop, KN(k_peak), POOL(pool_noise), 1, CR},
+    {15, bass_b, stab, dr_drop, KN(k_drop), POOL(pool_stab), 1, CR},
+    {1, bass_b, stab, dr_fill_c, KN(k_fill_c), NULL, 0, 1, 0},
+    {15, bass_b, riser, dr_drop, KN(k_peak), POOL(pool_noise), 1, CR},
+    {1, bass_b, NULL, dr_fill_d, KN(k_fill_d), NULL, 0, 1, 0},
     {8, bass_a, pluck, dr_groove, KN(k_outro), POOL(pool_out), 0, CR},
     {2, bass_a, NULL, dr_intro, KN(k_tail), NULL, 0, 0, 0},
 };

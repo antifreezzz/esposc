@@ -10,7 +10,7 @@
 static const acid_demo_note_t syn1[16] = {
     {45, 100, 1}, {0, 0, 0}, {48, 110, 2}, {50, 90, 1}, // шаг 2 - слайд в шаг 3
 };
-static const uint16_t drums[16] = {ACID_DEMO_KICK, 0, 0, 0, ACID_DEMO_KICK | ACID_DEMO_SNARE, 0, 0, 0,
+static const uint32_t drums[16] = {ACID_DEMO_KICK, 0, 0, 0, ACID_DEMO_KICK | ACID_DEMO_SNARE, 0, 0, 0,
                                    ACID_DEMO_CRASH | ACID_DEMO_RIDE | ACID_DEMO_BELL};
 static const acid_demo_knob_t knobs1[] = {{2, 3, 0, 127, 0}}; // синт 1 cutoff 0 -> 127 за часть
 // Часть 3: вариации ручек и нот синта 1.
