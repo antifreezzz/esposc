@@ -10,7 +10,8 @@
 #define ENC_TYPE 2
 #define NO_VALUE 0xFF
 
-static const uint8_t DRUM_NOTES[5] = {36, 38, 39, 42, 46}; // по битам KICK..OHAT
+// По битам KICK..OHAT, бит ACC пропускается (0), дальше CRASH, RIDE, BELL.
+static const uint8_t DRUM_NOTES[9] = {36, 38, 39, 42, 46, 0, 49, 51, 53};
 
 static int32_t part_len(const acid_demo_part_t *p)
 {
@@ -193,9 +194,10 @@ int acid_demo_events(acid_demo_t *d, acid_midi_event_t *out, int cap)
         int step = (int)(d->k / ACID_DEMO_STEP) % 16;
         synth_step(d, &o, p->syn1 ? d->syn1 : NULL, CH_SYN1, step);
         synth_step(d, &o, p->syn2, CH_SYN2, step);
-        uint8_t bits = p->drums ? p->drums[step] : 0;
-        for (int b = 0; b < 5; b++) {
-            if (bits & (1 << b)) {
+        uint16_t bits = p->drums ? p->drums[step] : 0;
+        bits |= d->k == 0 ? p->first : 0;
+        for (int b = 0; b < 9; b++) {
+            if (DRUM_NOTES[b] && (bits & (1 << b))) {
                 note_on(d, &o, CH_DRUMS, DRUM_NOTES[b], bits & ACID_DEMO_ACC ? 127 : 96, d->t + ACID_DEMO_STEP / 2);
             }
         }

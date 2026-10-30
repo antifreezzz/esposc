@@ -43,11 +43,14 @@ static const acid_demo_note_t riser[16] = {
 #define H ACID_DEMO_CHAT
 #define O ACID_DEMO_OHAT
 #define A ACID_DEMO_ACC
+#define CR ACID_DEMO_CRASH
+#define R ACID_DEMO_RIDE
+#define B ACID_DEMO_BELL
 
-static const uint8_t dr_intro[16] = {K | H, 0, H, 0, K | H, 0, H, 0, K | H, 0, H, 0, K | H, 0, H, H};
-static const uint8_t dr_groove[16] = {K | A, H, O, H, K | C, H, O, H | S, K, H, O, H, K | C | A, H, O, S};
-static const uint8_t dr_break[16] = {H, H, H, H, H | S, H, H, H, H, H, H | S, H, H | S, S, S | H, S | A};
-static const uint8_t dr_drop[16] = {K | A | C, H, O, H, K | C, H, O, H | S, K, H, O, H, K | C | S, H, O | A, S};
+static const uint16_t dr_intro[16] = {K | H, 0, H, 0, K | H, 0, H, 0, K | H, 0, H, 0, K | H, 0, H, H};
+static const uint16_t dr_groove[16] = {K | A, H, O, H, K | C, H, O, H | S, K, H, O, H, K | C | A, H, O, S};
+static const uint16_t dr_break[16] = {H, H, H, H, H | S, H, H, H, H, H, H | S, H, H | S, S, S | H, S | A};
+static const uint16_t dr_drop[16] = {K | A | C | R, H, R, H, K | C | R, H, R, H | S, K | R, H, R, H, K | C | S | R, H, B | A, S};
 
 #define P ACID_DEMO_PICK
 
@@ -61,6 +64,7 @@ static const acid_demo_knob_t k_intro[] = {
     {3, 8, 0, 0, 0},     {3, 9, 40, 40, 0},   {3, 10, 64, 64, 0},  {3, 3, 20, 60, 8},   // cutoff
     {5, 2, 0, 0, 0},     {5, 3, 0, 0, 0},     {5, 4, 0, 0, 0},     {5, 5, 0, 0, 0},     {5, 6, 0, 0, 0},
     {5, 7, 2, 2, 0},     {5, 10, 0, 0, 0},    {5, 11, 0, 0, 0},    {6, 2, 0, 0, 0},
+    {2, 3, 127, 127, 0}, {2, 4, 64, 64, 0},
 };
 // 2 Грув: FM-арпеджио справа, пампинг набирается, дилэй в центре.
 static const acid_demo_knob_t k_groove[] = {
@@ -101,12 +105,12 @@ static const acid_demo_knob_t k_drop[] = {
 // 8 Пик: шумовой райзер, drive и ручки ударки ползут.
 static const acid_demo_knob_t k_peak[] = {
     {6, 2, 0, 0, 0},     {0, 3, 64, 90, 0},   {0, 5, 80, 80, 0},  {1, 6, 60, 110, 0},  {1, 10, 40, 90, 0},  {1, 12, 60, 100, 0},
-    {4, 4, 20, 110, 0},  {4, 6, 100, 100, 0}, {5, 5, 50, 50, 0},
+    {4, 4, 20, 110, 0},  {4, 6, 100, 100, 0}, {5, 5, 50, 50, 0},  {2, 3, 127, 60, 0},  {2, 4, 64, 76, 0},
 };
 // 9 Аутро: всё закрывается.
 static const acid_demo_knob_t k_outro[] = {
     {0, 3, 90, 64, 0},   {0, 5, 100, 100, 0}, {3, 3, 90, 25, 10},  {0, 12, 64, 15, 0},  {5, 4, 40, 0, 0},    {5, 5, 50, 0, 0},
-    {5, 6, 35, 0, 0},    {0, 10, 80, 0, 0},   {4, 6, 40, 40, 0},
+    {5, 6, 35, 0, 0},    {0, 10, 80, 0, 0},   {4, 6, 40, 40, 0},   {2, 3, 127, 127, 0}, {2, 4, 64, 64, 0},
 };
 // 10 Хвост к интро.
 static const acid_demo_knob_t k_tail[] = {{0, 12, 15, 25, 0}};
@@ -122,16 +126,16 @@ static const uint8_t pool_out[] = {12, 16, 2};   // granular formant, speech, ph
 #define POOL(p) p, (uint8_t)(sizeof p)
 
 static const acid_demo_part_t parts[] = {
-    {8, bass_a, NULL, dr_intro, KN(k_intro), NULL, 0, 0},
-    {16, bass_a, arp, dr_groove, KN(k_groove), POOL(pool_fm), 1},
-    {8, bass_a, pad, dr_groove, KN(k_tonal), POOL(pool_pad), 1},
-    {8, bass_a, pluck, dr_groove, KN(k_pingpong), POOL(pool_pluck), 1},
-    {8, bass_b, NULL, dr_break, KN(k_break), NULL, 0, 1},
-    {2, bass_b, NULL, dr_groove, KN(k_stutter), NULL, 0, 0},
-    {16, bass_b, stab, dr_drop, KN(k_drop), POOL(pool_stab), 1},
-    {16, bass_b, riser, dr_drop, KN(k_peak), POOL(pool_noise), 1},
-    {8, bass_a, pluck, dr_groove, KN(k_outro), POOL(pool_out), 0},
-    {2, bass_a, NULL, dr_intro, KN(k_tail), NULL, 0, 0},
+    {8, bass_a, NULL, dr_intro, KN(k_intro), NULL, 0, 0, 0},
+    {16, bass_a, arp, dr_groove, KN(k_groove), POOL(pool_fm), 1, CR},
+    {8, bass_a, pad, dr_groove, KN(k_tonal), POOL(pool_pad), 1, 0},
+    {8, bass_a, pluck, dr_groove, KN(k_pingpong), POOL(pool_pluck), 1, 0},
+    {8, bass_b, NULL, dr_break, KN(k_break), NULL, 0, 1, 0},
+    {2, bass_b, NULL, dr_groove, KN(k_stutter), NULL, 0, 0, 0},
+    {16, bass_b, stab, dr_drop, KN(k_drop), POOL(pool_stab), 1, CR},
+    {16, bass_b, riser, dr_drop, KN(k_peak), POOL(pool_noise), 1, CR},
+    {8, bass_a, pluck, dr_groove, KN(k_outro), POOL(pool_out), 0, CR},
+    {2, bass_a, NULL, dr_intro, KN(k_tail), NULL, 0, 0, 0},
 };
 
 const acid_demo_song_t acid_demo_song = {parts, (int)(sizeof parts / sizeof parts[0])};

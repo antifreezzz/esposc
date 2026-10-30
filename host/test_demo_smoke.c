@@ -14,7 +14,7 @@ static acid_demo_t d;
 
 typedef struct {
     int wave[2], models[ACID_TYPES], drum[128], hat_knob, pump, djf[3], drive, pan;
-    int motion[3], times[5], sends, crush, stutter[5], tonal_step, scale_chrom, scale_mode;
+    int motion[3], times[5], sends, crush, stutter[5], tonal_step, scale_chrom, scale_mode, cym_knob;
     long silent_windows, wide_windows;
     int finite;
 } seen_t;
@@ -64,6 +64,9 @@ static void play_cycle(seen_t *z, int c)
         }
         z->models[s.slot[1].type] = 1;
         z->hat_knob |= s.hat_tone != ACID_HAT_HZ;
+        for (int k = 0; k < 2; k++) {
+            z->cym_knob |= s.cym_tail[k] != 127 || s.cym_tune[k] != 64 || s.cym_pan[k] != 64;
+        }
         z->pump |= acid_pump_active(&s.pump);
         z->djf[s.djf.mode] = 1;
         z->drive |= s.drive != 0.8f;
@@ -114,6 +117,8 @@ TEST(test_demo_coverage)
         CHECK(z.wave[0] && z.wave[1]);
         CHECK(count(z.models, ACID_TYPES, 1) >= 5);
         CHECK(z.drum[36] && z.drum[38] && z.drum[39] && z.drum[42] && z.drum[46]);
+        CHECK(z.drum[49] && z.drum[51] && z.drum[53]);
+        CHECK(z.cym_knob);
         CHECK(z.hat_knob);
         CHECK(z.pump);
         CHECK(z.djf[1] && z.djf[2]);
