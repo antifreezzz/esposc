@@ -32,6 +32,7 @@ typedef struct {
     float pan_l[ACID_CYM_N], pan_r[ACID_CYM_N];
     float sens;
     float sr;
+    int limit; // звенящих голосов после удара не больше (перегруз - меньше)
     uint32_t hard_cuts; // слышный голос стёрт без ухода (для тестов, должно быть 0)
 } acid_cym_t;
 
@@ -44,5 +45,7 @@ void acid_cym_trigger(acid_cym_t *c, const acid_bank_t *b, int note, float vel);
 // Кусок n сэмплов в l, r (перезаписывает). Голос за голосом: так быстрее на плате.
 void acid_cym_render(acid_cym_t *c, float *l, float *r, int n);
 void acid_cym_next(acid_cym_t *c, float *l, float *r); // один сэмпл, для тестов
+// Звенящих голосов не больше n (1..ACID_CYM_SLOTS - ACID_CYM_RESERVE): лишние сразу уходят за 5 мс.
+void acid_cym_set_limit(acid_cym_t *c, int n);
 int acid_cym_voices(const acid_cym_t *c);   // занятые слоты
 int acid_cym_sounding(const acid_cym_t *c); // занятые и не уходящие

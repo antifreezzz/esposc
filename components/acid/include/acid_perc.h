@@ -55,6 +55,7 @@ typedef struct {
     float sr;
     float click_coef, exc_coef; // спад щелчка и возбудителя на сэмпл
     uint32_t seed;
+    int limit;          // звучащих голосов не больше (перегруз - меньше)
     uint32_t hard_cuts; // слышный голос стёрт без ухода (для тестов, должно быть 0)
 } acid_perc_t;
 
@@ -67,5 +68,7 @@ int acid_perc_inst_of(int note, int *tom);
 void acid_perc_trigger(acid_perc_t *p, int note, float v);
 // Кусок n сэмплов в l, r (перезаписывает). Голос за голосом, ручки действуют и на звучащие голоса.
 void acid_perc_render(acid_perc_t *p, float *l, float *r, int n);
+// Звучащих голосов не больше n (1..ACID_PERC_SOUNDING): лишние самые тихие сразу уходят за 5 мс.
+void acid_perc_set_limit(acid_perc_t *p, int n);
 int acid_perc_voices(const acid_perc_t *p);   // занятые слоты
 int acid_perc_sounding(const acid_perc_t *p); // занятые и не уходящие

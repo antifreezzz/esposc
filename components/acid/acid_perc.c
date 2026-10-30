@@ -108,6 +108,7 @@ void acid_perc_init(acid_perc_t *p, float sr)
     memset(p, 0, sizeof *p);
     p->sr = sr;
     p->seed = 0x2545f491u;
+    p->limit = ACID_PERC_SOUNDING;
     p->click_coef = coef(CLICK_S, sr);
     p->exc_coef = coef(EXC_S, sr);
     for (int i = 0; i < ACID_PERC_N; i++) {
@@ -150,6 +151,30 @@ static void fade_out(acid_perc_t *p, acid_perc_voice_t *v, float s)
     }
 }
 
+// Самые тихие звучащие уходят за 5 мс, пока звучащих больше keep.
+static void shed(acid_perc_t *p, int sounding, int keep)
+{
+    for (; sounding > keep; sounding--) {
+        acid_perc_voice_t *q = NULL;
+        for (int i = 0; i < ACID_PERC_SLOTS; i++) {
+            acid_perc_voice_t *v = &p->v[i];
+            if (v->active && v->fade_step == 0.0f && (!q || level(v) < level(q))) {
+                q = v;
+            }
+        }
+        if (!q) {
+            return;
+        }
+        fade_out(p, q, STEAL_S);
+    }
+}
+
+void acid_perc_set_limit(acid_perc_t *p, int n)
+{
+    p->limit = n < 1 ? 1 : n > ACID_PERC_SOUNDING ? ACID_PERC_SOUNDING : n;
+    shed(p, acid_perc_sounding(p), p->limit);
+}
+
 void acid_perc_trigger(acid_perc_t *p, int note, float vel)
 {
     int tom;
@@ -168,17 +193,7 @@ void acid_perc_trigger(acid_perc_t *p, int note, float vel)
             }
         }
     }
-    while (sounding >= ACID_PERC_SOUNDING) {
-        acid_perc_voice_t *q = NULL;
-        for (int i = 0; i < ACID_PERC_SLOTS; i++) {
-            acid_perc_voice_t *v = &p->v[i];
-            if (v->active && v->fade_step == 0.0f && (!q || level(v) < level(q))) {
-                q = v;
-            }
-        }
-        fade_out(p, q, STEAL_S);
-        sounding--;
-    }
+    shed(p, sounding, p->limit - 1); // место новому удару
     acid_perc_voice_t *slot = NULL;
     for (int i = 0; i < ACID_PERC_SLOTS && !slot; i++) {
         slot = p->v[i].active ? NULL : &p->v[i];

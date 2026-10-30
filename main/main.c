@@ -168,6 +168,12 @@ static void synth_task(void *arg)
         acid_pcm_lr_to_s16(out_l, out_r, pcm, BLOCK);
         int64_t dt = esp_timer_get_time() - t0;
         worst_us = dt > worst_us ? dt : worst_us;
+        // Защита от лавины: тяжёлый блок - перкуссия и тарелки на одном голосе, пока не отпустит.
+        int was_tight = s_synth.tight;
+        acid_synth_set_load(&s_synth, (float)dt / (float)BLOCK_US);
+        if (s_synth.tight != was_tight) {
+            ESP_LOGW(TAG, "overload guard %s (block %lld us)", s_synth.tight ? "on" : "off", dt);
+        }
 
         // Сменили тип синтеза: память ручек пишем, когда выход помолчит (flash стопорит кэш).
         // Ручки демо не сохраняем.

@@ -314,8 +314,31 @@ TEST(test_cym_null_bank_silent)
     CHECK(run(1000, NULL) == 0.0f);
 }
 
+// Перегруз: лимит звенящих тарелок падает, лишние уходят за 5 мс.
+TEST(test_cym_limit_fades_excess)
+{
+    setup();
+    acid_cym_trigger(&c, &bank, 49, 1.0f);
+    acid_cym_trigger(&c, &bank, 51, 1.0f);
+    acid_cym_trigger(&c, &bank, 53, 1.0f);
+    CHECK(acid_cym_sounding(&c) == 3);
+    acid_cym_set_limit(&c, 1);
+    CHECK(acid_cym_sounding(&c) == 1);
+    run(480, NULL);
+    CHECK(acid_cym_voices(&c) == 1);
+    acid_cym_trigger(&c, &bank, 49, 1.0f);
+    run(48, NULL);
+    CHECK(acid_cym_sounding(&c) == 1);
+    acid_cym_set_limit(&c, ACID_CYM_SLOTS - ACID_CYM_RESERVE);
+    acid_cym_trigger(&c, &bank, 51, 1.0f);
+    acid_cym_trigger(&c, &bank, 53, 1.0f);
+    CHECK(acid_cym_sounding(&c) >= 3);
+    CHECK(c.hard_cuts == 0);
+}
+
 int main(void)
 {
+    RUN(test_cym_limit_fades_excess);
     RUN(test_cym_layer_by_velocity);
     RUN(test_cym_sens_zero_full_layer);
     RUN(test_cym_round_robin);

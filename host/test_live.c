@@ -1302,8 +1302,49 @@ TEST(test_live_fx_motion_knobs)
     CHECK(s.delay.motion == 1);
 }
 
+// Защита от лавины: блок считается дольше 90% бюджета - перкуссия и тарелки на одном голосе,
+// пока нагрузка не продержится ниже 75% полсекунды (250 блоков).
+TEST(test_live_load_guard)
+{
+    with_bank();
+    on(DRUMS, 41, 127);
+    on(DRUMS, 37, 127);
+    on(DRUMS, 56, 127);
+    on(DRUMS, 49, 127);
+    on(DRUMS, 51, 127);
+    CHECK(acid_perc_sounding(&s.perc) == 3 && acid_cym_sounding(&s.cym) == 2);
+    acid_synth_set_load(&s, 0.85f);
+    CHECK(!s.tight);
+    acid_synth_set_load(&s, 0.95f);
+    CHECK(s.tight);
+    CHECK(acid_perc_sounding(&s.perc) == 1 && acid_cym_sounding(&s.cym) == 1);
+    on(DRUMS, 45, 127);
+    on(DRUMS, 53, 127);
+    CHECK(acid_perc_sounding(&s.perc) == 1 && acid_cym_sounding(&s.cym) == 1);
+    for (int i = 0; i < 1000; i++) {
+        acid_synth_set_load(&s, 0.8f); // между порогами: держимся
+    }
+    CHECK(s.tight);
+    for (int i = 0; i < 249; i++) {
+        acid_synth_set_load(&s, 0.5f);
+    }
+    CHECK(s.tight);
+    acid_synth_set_load(&s, 0.95f); // всплеск сбрасывает счёт спокойных блоков
+    for (int i = 0; i < 249; i++) {
+        acid_synth_set_load(&s, 0.5f);
+    }
+    CHECK(s.tight);
+    acid_synth_set_load(&s, 0.5f);
+    CHECK(!s.tight);
+    on(DRUMS, 41, 127);
+    on(DRUMS, 50, 127);
+    CHECK(acid_perc_sounding(&s.perc) == 3);
+    CHECK(s.perc.hard_cuts == 0 && s.cym.hard_cuts == 0);
+}
+
 int main(void)
 {
+    RUN(test_live_load_guard);
     RUN(test_live_fx_motion_knobs);
     RUN(test_live_hat_pan_left);
     RUN(test_live_synth_center_equal);

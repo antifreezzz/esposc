@@ -367,8 +367,34 @@ TEST(test_perc_knobs_while_ringing)
     CHECK(p.hard_cuts == 0);
 }
 
+// Перегруз: лимит звучащих голосов падает, лишние уходят сразу и плавно.
+TEST(test_perc_limit_fades_excess)
+{
+    fresh();
+    for (int i = 0; i < ACID_PERC_N; i++) {
+        acid_perc_set(&p, i, ACID_PERC_DECAY, 127);
+    }
+    acid_perc_trigger(&p, 41, 1.0f);
+    acid_perc_trigger(&p, 37, 1.0f);
+    acid_perc_trigger(&p, 56, 0.5f);
+    CHECK(acid_perc_sounding(&p) == 3);
+    acid_perc_set_limit(&p, 1);
+    CHECK(acid_perc_sounding(&p) == 1);
+    CHECK(acid_perc_voices(&p) == 3); // уходящие ещё звучат
+    run(MS(10), NULL, 0);
+    CHECK(acid_perc_voices(&p) == 1);
+    acid_perc_trigger(&p, 45, 1.0f);
+    CHECK(acid_perc_sounding(&p) == 1);
+    acid_perc_set_limit(&p, ACID_PERC_SOUNDING);
+    acid_perc_trigger(&p, 50, 1.0f);
+    acid_perc_trigger(&p, 43, 1.0f);
+    CHECK(acid_perc_sounding(&p) == 3);
+    CHECK(p.hard_cuts == 0);
+}
+
 int main(void)
 {
+    RUN(test_perc_limit_fades_excess);
     RUN(test_perc_silent_until_trigger);
     RUN(test_perc_models_sound_and_end);
     RUN(test_perc_every_knob_acts);

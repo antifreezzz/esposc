@@ -17,6 +17,7 @@ void acid_cym_init(acid_cym_t *c, float sr)
     memset(c, 0, sizeof *c);
     c->sr = sr;
     c->sens = 100.0f / 127.0f;
+    c->limit = ACID_CYM_SLOTS - ACID_CYM_RESERVE;
     for (int w = 0; w < ACID_CYM_N; w++) {
         c->gain[w] = 1.0f;
         c->tail_coef[w] = 1.0f;
@@ -113,11 +114,18 @@ static void reserve(acid_cym_t *c, const acid_cym_voice_t *fresh)
                 quiet = v;
             }
         }
-        if (spare >= ACID_CYM_RESERVE || quiet == NULL) {
+        if (spare >= ACID_CYM_SLOTS - c->limit || quiet == NULL) {
             return;
         }
         quiet->fade_step = 1.0f / (STEAL_S * c->sr); // и уходящий медленно - быстрее
     }
+}
+
+void acid_cym_set_limit(acid_cym_t *c, int n)
+{
+    int max = ACID_CYM_SLOTS - ACID_CYM_RESERVE;
+    c->limit = n < 1 ? 1 : n > max ? max : n;
+    reserve(c, NULL);
 }
 
 void acid_cym_trigger(acid_cym_t *c, const acid_bank_t *b, int note, float vel)

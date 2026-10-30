@@ -151,6 +151,7 @@ void acid_synth_init(acid_synth_t *s, float sr)
     s->dl_tone = 83;
     acid_cym_init(&s->cym, sr);
     acid_perc_init(&s->perc, sr);
+    s->tight = s->calm = 0;
     s->bank = NULL;
     for (int k = 0; k < 2; k++) {
         s->cym_tail[k] = 127;
@@ -166,6 +167,25 @@ void acid_synth_init(acid_synth_t *s, float sr)
 void acid_synth_set_bank(acid_synth_t *s, const acid_bank_t *b)
 {
     s->bank = b;
+}
+
+void acid_synth_set_load(acid_synth_t *s, float load)
+{
+    if (load >= ACID_LOAD_HIGH) {
+        s->calm = 0;
+        if (!s->tight) {
+            s->tight = 1;
+            acid_perc_set_limit(&s->perc, 1);
+            acid_cym_set_limit(&s->cym, 1);
+        }
+    } else if (s->tight) {
+        s->calm = load < ACID_LOAD_LOW ? s->calm + 1 : 0;
+        if (s->calm >= ACID_LOAD_CALM) {
+            s->tight = 0;
+            acid_perc_set_limit(&s->perc, ACID_PERC_SOUNDING);
+            acid_cym_set_limit(&s->cym, ACID_CYM_SLOTS - ACID_CYM_RESERVE);
+        }
+    }
 }
 
 float acid_synth_pitch_hz(const acid_synth_t *s)

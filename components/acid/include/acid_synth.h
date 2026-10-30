@@ -108,6 +108,7 @@ typedef struct {
     const acid_bank_t *bank;
     uint8_t cym_tail[2], cym_tune[2], cym_pan[2];
     acid_perc_t perc; // страницы 3-5: томы, рим, ковбелл
+    int tight, calm;  // защита от перегруза: перкуссия и тарелки на одном голосе; спокойных блоков подряд
     int page; // 0 микс, 1 ударка, 2 ударка 2, 3 томы, 4 рим, 5 ковбелл, 6 синт 1, 7 синт 2, 8 эффекты, 9 тональность
 
     int save;          // сменили тип или ручку слоя тональности: память ручек пора записать
@@ -120,6 +121,13 @@ typedef struct {
 void acid_synth_init(acid_synth_t *s, float sr);
 // Набор сэмплов тарелок; init сбрасывает в NULL, после init ставить заново.
 void acid_synth_set_bank(acid_synth_t *s, const acid_bank_t *b);
+// Нагрузка прошлого блока (время рендера / бюджет блока), звать между блоками. Выше ACID_LOAD_HIGH
+// перкуссия и тарелки уходят на один голос (лишние за 5 мс), назад - после ACID_LOAD_CALM блоков ниже
+// ACID_LOAD_LOW: перегруз блока лавинный, лучше беднее звук, чем обрыв в тишину.
+#define ACID_LOAD_HIGH 0.9f
+#define ACID_LOAD_LOW 0.75f
+#define ACID_LOAD_CALM 250 // 0.5 с блоками по 2 мс
+void acid_synth_set_load(acid_synth_t *s, float load);
 void acid_synth_render(acid_synth_t *s, float *out, size_t n);
 // Рендер по частям (слот 1 на другом ядре): сырой выход слота k (сейчас только k = 1),
 // затем всё остальное с готовым слотом 1 из буфера. Вместе звучат как acid_synth_render.
