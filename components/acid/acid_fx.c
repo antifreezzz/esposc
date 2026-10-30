@@ -1,4 +1,5 @@
 #include "acid_fx.h"
+#include "acid_math.h"
 
 #include <math.h>
 #include <string.h>
@@ -340,6 +341,12 @@ static float delay_lp(float lp, float r, float tone)
 
 static int16_t delay_q(float in)
 {
+    // Выше 1 - мягкое насыщение к 2 (как лента): громкий посыл и разгон обратной связи без среза.
+    if (in > 1.0f) {
+        in = 1.0f + acid_tanh(in - 1.0f);
+    } else if (in < -1.0f) {
+        in = -1.0f - acid_tanh(-in - 1.0f);
+    }
     float x = in * DELAY_SCALE;
     x = x > 32767.0f ? 32767.0f : (x < -32767.0f ? -32767.0f : x);
     return (int16_t)x; // к нулю: тихий хвост сам уходит в 0, без зацикливания на младшем бите
@@ -429,8 +436,6 @@ float acid_delay_time_samples(const acid_delay_t *d)
     return d->d_target;
 }
 
-#define STUTTER_SCALE 16384.0f
-
 // Доли четверти по значению ручки 1..4: 1/4, 1/8, 1/16, 1/32.
 static const float STUTTER_DIVS[4] = {1.0f, 0.5f, 0.25f, 0.125f};
 
@@ -443,7 +448,7 @@ static int stutter_len(const acid_stutter_t *st)
     return (int)t;
 }
 
-void acid_stutter_init(acid_stutter_t *st, float sr, int16_t *buf)
+void acid_stutter_init(acid_stutter_t *st, float sr, float *buf)
 {
     st->buf = buf;
     st->spb = sr * 0.5f;
@@ -497,43 +502,36 @@ void acid_stutter_set_spb(acid_stutter_t *st, float spb)
     st->spb = spb; // длина петли меняется со следующим включением
 }
 
-static int16_t stutter_q(float in)
-{
-    float x = in * STUTTER_SCALE;
-    x = x > 32767.0f ? 32767.0f : (x < -32767.0f ? -32767.0f : x);
-    return (int16_t)x;
-}
-
 void acid_stutter_next2(acid_stutter_t *st, float *l, float *r)
 {
-    int16_t *bl = st->buf, *br = st->buf + ACID_STUTTER_LEN;
+    float *bl = st->buf, *br = st->buf + ACID_STUTTER_LEN;
     float in_l = *l, in_r = *r;
     float loop_l = in_l, loop_r = in_r;
     if (st->rec < st->len + ACID_STUTTER_SEAM) {
         // Пишем кусок и ещё шов: продолжение звука нужно для кроссфейда на стыке петли.
-        bl[st->rec] = stutter_q(in_l);
-        br[st->rec] = stutter_q(in_r);
+        bl[st->rec] = in_l;
+        br[st->rec] = in_r;
         st->rec++;
         st->looping |= st->rec > st->len;
     }
     if (st->looping) {
         int k = st->pos;
-        float yl = (float)bl[k], yr = (float)br[k];
+        float yl = bl[k], yr = br[k];
         if (k < ACID_STUTTER_SEAM) {
             // Начало прохода: от продолжения записи (стык непрерывен) к началу куска.
             float a = (float)k * (1.0f / ACID_STUTTER_SEAM);
-            yl = a * yl + (1.0f - a) * (float)bl[st->len + k];
-            yr = a * yr + (1.0f - a) * (float)br[st->len + k];
+            yl = a * yl + (1.0f - a) * bl[st->len + k];
+            yr = a * yr + (1.0f - a) * br[st->len + k];
         }
         if (st->xf > 0) {
             float a = 1.0f - (float)st->xf * (1.0f / ACID_STUTTER_SEAM);
-            yl = a * yl + (1.0f - a) * (float)bl[st->opos];
-            yr = a * yr + (1.0f - a) * (float)br[st->opos];
+            yl = a * yl + (1.0f - a) * bl[st->opos];
+            yr = a * yr + (1.0f - a) * br[st->opos];
             st->opos++;
             st->xf--;
         }
-        loop_l = yl * (1.0f / STUTTER_SCALE);
-        loop_r = yr * (1.0f / STUTTER_SCALE);
+        loop_l = yl;
+        loop_r = yr;
         st->pos = k + 1 < st->len ? k + 1 : 0;
     }
     if (st->on && !st->restart) {

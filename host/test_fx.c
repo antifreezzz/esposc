@@ -550,7 +550,7 @@ TEST(test_delay_no_stale_tail)
 // --- Статтер ---
 
 static acid_stutter_t st;
-static int16_t st_buf[2 * ACID_STUTTER_LEN];
+static float st_buf[2 * ACID_STUTTER_LEN];
 
 #define ST_ZONE(z) ((z) + 1) // значение ручки: 1 1/4, 2 1/8, 3 1/16, 4 1/32
 
@@ -797,6 +797,42 @@ TEST(test_stutter_stereo)
     CHECK(rmax == 0.0f); // правый был тишиной - тишиной и крутится
 }
 
+// Громкий вход (бочка 2 + синты) крутится в петле без клипа: петля - копия сухого звука.
+TEST(test_stutter_loud_not_clipped)
+{
+    acid_stutter_init(&st, SR, st_buf);
+    acid_stutter_set(&st, ST_ZONE(2)); // 1/16: 6000
+    float pk = 0.0f;
+    for (int i = 0; i < 48000; i++) {
+        yb[i] = acid_stutter_next(&st, 3.0f * sinf((float)i * 0.01f));
+        pk = i >= 12000 && fabsf(yb[i]) > pk ? fabsf(yb[i]) : pk;
+    }
+    CHECK(periodic(6000, 12000, 48000));
+    CHECK(pk > 2.9f);
+}
+
+// Повтор дилэя от постоянного входа x (fb 0, тон открыт).
+static float delay_steady(float x)
+{
+    delay_ready(1, 0, 127);
+    float y = 0.0f;
+    for (int i = 0; i < 24000; i++) {
+        y = acid_delay_next(&dl, x);
+    }
+    return y;
+}
+
+// Перегруз линии дилэя - мягкое насыщение до 2, не срез: до 1 вход как есть.
+TEST(test_delay_soft_ceiling)
+{
+    CHECK_NEAR(delay_steady(0.5f), 0.5f, 1e-3f);
+    float a = delay_steady(1.5f), b = delay_steady(3.0f), c = delay_steady(6.0f);
+    CHECK(a > 1.2f);
+    CHECK(a < b);
+    CHECK(b < c);
+    CHECK(c < 2.0f);
+}
+
 TEST(test_crush_stereo_shared_hold)
 {
     acid_crush_t c;
@@ -976,6 +1012,8 @@ TEST(test_delay_motion_ignores_3)
 
 int main(void)
 {
+    RUN(test_stutter_loud_not_clipped);
+    RUN(test_delay_soft_ceiling);
     RUN(test_delay_center_same_as_before);
     RUN(test_delay_pingpong);
     RUN(test_delay_width_zero);

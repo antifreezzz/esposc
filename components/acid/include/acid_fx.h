@@ -93,7 +93,7 @@ float acid_delay_time_samples(const acid_delay_t *d); // целевая заде
 #define ACID_STUTTER_SEAM 96   // 2 мс кроссфейда на шве петли
 
 typedef struct {
-    int16_t *buf;    // 2 * ACID_STUTTER_LEN: левый, затем правый
+    float *buf;      // 2 * ACID_STUTTER_LEN: левый, затем правый; float - петля без клипа и без потерь
     float spb;
     int knob;
     int on;          // запись или петля (ручка не в 0)
@@ -107,7 +107,7 @@ typedef struct {
     float wet, xstep; // доля петли в выходе и её шаг (2 мс)
 } acid_stutter_t;
 
-void acid_stutter_init(acid_stutter_t *st, float sr, int16_t *buf); // buf на 2 * ACID_STUTTER_LEN
+void acid_stutter_init(acid_stutter_t *st, float sr, float *buf); // buf на 2 * ACID_STUTTER_LEN
 void acid_stutter_set(acid_stutter_t *st, int knob); // 0 выкл, 1..127 - 4 зоны: 1/4, 1/8, 1/16, 1/32
 void acid_stutter_set_spb(acid_stutter_t *st, float spb);
 float acid_stutter_next(acid_stutter_t *st, float in); // моно: оба канала одинаковые, возврат левого
