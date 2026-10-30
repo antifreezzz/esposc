@@ -18,6 +18,17 @@ enum {
     ACID_DEMO_CHAT = 8,
     ACID_DEMO_OHAT = 16,
     ACID_DEMO_ACC = 32, // все удары шага громче
+    ACID_DEMO_CRASH = 64,
+    ACID_DEMO_RIDE = 128,
+    ACID_DEMO_BELL = 256,
+    ACID_DEMO_RIM = 1 << 9,
+    ACID_DEMO_COW = 1 << 10,
+    ACID_DEMO_TOM1 = 1 << 11, // томы снизу вверх: 41, 43, 45, 47, 48, 50
+    ACID_DEMO_TOM2 = 1 << 12,
+    ACID_DEMO_TOM3 = 1 << 13,
+    ACID_DEMO_TOM4 = 1 << 14,
+    ACID_DEMO_TOM5 = 1 << 15,
+    ACID_DEMO_TOM6 = 1 << 16,
 };
 
 // Нота шага: len в шестнадцатых, 0 - пауза. Нота следующего шага до off этой - слайд (перекрытие).
@@ -37,12 +48,13 @@ typedef struct {
 typedef struct {
     uint8_t bars;
     const acid_demo_note_t *syn1, *syn2; // 16 шагов, повтор каждый такт; NULL - молчит
-    const uint8_t *drums;                // 16 шагов, биты ACID_DEMO_*; NULL - молчит
+    const uint32_t *drums;               // 16 шагов, биты ACID_DEMO_*; NULL - молчит
     const acid_demo_knob_t *knobs;
     uint8_t nknobs;
     const uint8_t *syn2_pool; // модели синта 2: круг 0 - pool[0], дальше случайно из пула
     uint8_t npool;
     uint8_t vary_syn1;        // с круга 1: 1-3 переворота акцента или слайда в нотах синта 1
+    uint32_t first;           // биты ACID_DEMO_* только на первом шаге части (крэш на входе)
 } acid_demo_part_t;
 
 typedef struct {

@@ -1,0 +1,7 @@
+# Флэш 8 МБ. nvs и phy_init там же, что в стандартной таблице: память ручек не теряется.
+# samples - образ тарелок (tools/samples/build_samples.py), заливается отдельно, idf.py flash его не трогает.
+# Name,    Type, SubType, Offset,   Size
+nvs,       data, nvs,     0x9000,   0x6000
+phy_init,  data, phy,     0xf000,   0x1000
+factory,   app,  factory, 0x10000,  0x200000
+samples,   data, 0x40,    0x210000, 0x5F0000

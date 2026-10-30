@@ -30,14 +30,20 @@
 #define MERGE_S 0.05f      // повтор той же ноты в этом окне от нажатия склеивается с ней
 #define DRUM_VEL_FLOOR 0.3f // громкость самого слабого удара пэда
 #define SNARE_GAIN 0.8f
+#define CYM_GAIN_MAX 1.5f
+// Громкость тарелок после включения (крэш, райд, купол): пик удара ~0.8 пика закрытого хэта на Naked Drums.
+static const uint8_t CYM_KNOB[ACID_CYM_N] = {28, 35, 40};
 #define SYNTH_GAIN 0.9f // общая громкость синтов: на 10% тише прежнего (просьба пользователя)
 // Панорамы после включения: синты в центре, ударка немного разведена.
 static const uint8_t PAN_DEFAULT[ACID_PANS] = {64, 64, 80, 48, 64};
-#define PAGES 6
-#define PAGE_FX 4
-#define PAGE_TONAL 5
+#define PAGES 10
+#define PAGE_DRUMS2 2 // ударка 2: тарелки
+#define PAGE_TOMS 3   // перкуссия: томы, рим, ковбелл
+#define PAGE_COW 5
+#define PAGE_FX 8
+#define PAGE_TONAL 9
 #define EARLY_NOTE 480 // нота моложе 10 мс на границе шага - на новый шаг сразу (джиттер MIDI)
-#define PAGE_SYNTH1 2
+#define PAGE_SYNTH1 6
 #define MIX_CHUNK 64 // кусок буфера слота 1 в общем рендере
 #define FADE_N 192     // 4 мс ухода и столько же прихода при смене типа синтеза
 #define PLAITS_GAIN 1.0f // уровень Plaits относительно 303
@@ -143,7 +149,47 @@ void acid_synth_init(acid_synth_t *s, float sr)
     s->dl_time = s->delay.time_knob;
     s->dl_fb = 53;
     s->dl_tone = 83;
+    acid_cym_init(&s->cym, sr);
+    acid_perc_init(&s->perc, sr);
+    s->tight = s->calm = 0;
+    s->load_avg = 0.0f;
+    s->bank = NULL;
+    for (int k = 0; k < 2; k++) {
+        s->cym_tail[k] = 127;
+        s->cym_tune[k] = 64;
+        s->cym_pan[k] = 64;
+    }
+    for (int w = 0; w < ACID_CYM_N; w++) {
+        s->cym.gain[w] = CYM_GAIN_MAX * (float)CYM_KNOB[w] / 127.0f;
+    }
     s->page = PAGE_SYNTH1;
+}
+
+void acid_synth_set_bank(acid_synth_t *s, const acid_bank_t *b)
+{
+    s->bank = b;
+}
+
+void acid_synth_set_load(acid_synth_t *s, float load)
+{
+    // Одиночный тяжёлый блок буфер выхода переживёт, лавину даёт устойчивый перегруз: смотрим на среднее.
+    s->load_avg += (load - s->load_avg) * (1.0f / ACID_LOAD_AVG);
+    load = s->load_avg;
+    if (load >= ACID_LOAD_HIGH) {
+        s->calm = 0;
+        if (!s->tight) {
+            s->tight = 1;
+            acid_perc_set_limit(&s->perc, 1);
+            acid_cym_set_limit(&s->cym, 1);
+        }
+    } else if (s->tight) {
+        s->calm = load < ACID_LOAD_LOW ? s->calm + 1 : 0;
+        if (s->calm >= ACID_LOAD_CALM) {
+            s->tight = 0;
+            acid_perc_set_limit(&s->perc, ACID_PERC_SOUNDING);
+            acid_cym_set_limit(&s->cym, ACID_CYM_SLOTS - ACID_CYM_RESERVE);
+        }
+    }
 }
 
 float acid_synth_pitch_hz(const acid_synth_t *s)
@@ -270,6 +316,11 @@ static void drum_on(acid_synth_t *s, int note, int vel)
     } else if (note == 42 || note == 44 || note == 46) {
         acid_hat_trigger(&s->hat, note == 46);
         s->hat_vel = v;
+    } else if (acid_perc_inst_of(note, NULL) >= 0) {
+        acid_perc_trigger(&s->perc, note, v);
+    } else if (note == 49 || note == 51 || note == 53) {
+        // Без пола: слои записанной динамики делит ручка чувствительности (страница 2).
+        acid_cym_trigger(&s->cym, s->bank, note, (float)vel / 127.0f);
     }
 }
 
@@ -328,6 +379,26 @@ static void page_drums(acid_synth_t *s, int slot, int v)
     acid_hat_set(&s->hat, s->hat_tone, s->hat_closed_s, s->hat_open_s);
     acid_clap_set(&s->clap, s->clap_tone, s->clap_tail_s);
     acid_snare_set(&s->snare, s->snare_tune, s->snare_snappy, s->snare_decay_s);
+}
+
+// Страница 2: тарелки. Крэш энкодеры 2-5, райд 6-9 (купол следом за райдом), 10 купол, 11 чувствительность.
+static void page_drums2(acid_synth_t *s, int slot, int v)
+{
+    if (slot >= 1 && slot <= 8) {
+        int k = (slot - 1) / 4, w = k == 0 ? ACID_CYM_CRASH : ACID_CYM_RIDE;
+        float gain = s->cym.gain[w];
+        switch ((slot - 1) % 4) {
+        case 0: gain = lin(v, 0.0f, CYM_GAIN_MAX); break;
+        case 1: s->cym_tail[k] = (uint8_t)v; break;
+        case 2: s->cym_tune[k] = (uint8_t)v; break;
+        default: s->cym_pan[k] = (uint8_t)v; break;
+        }
+        acid_cym_set(&s->cym, w, gain, s->cym_tail[k], s->cym_tune[k], s->cym_pan[k]);
+    } else if (slot == 9) {
+        acid_cym_set(&s->cym, ACID_CYM_BELL, lin(v, 0.0f, CYM_GAIN_MAX), 127, 64, 64);
+    } else if (slot == 10) {
+        acid_cym_set_sens(&s->cym, lin(v, 0.0f, 1.0f));
+    }
 }
 
 static float bip(int v)
@@ -495,6 +566,10 @@ static void control_change(acid_synth_t *s, int num, int v)
         page_mix(s, slot, v);
     } else if (s->page == 1) {
         page_drums(s, slot, v);
+    } else if (s->page == PAGE_DRUMS2) {
+        page_drums2(s, slot, v);
+    } else if (s->page >= PAGE_TOMS && s->page <= PAGE_COW) {
+        acid_perc_set(&s->perc, s->page - PAGE_TOMS, slot - 1, v); // энкодер 2 - первая ручка
     } else if (s->page == PAGE_FX) {
         page_fx(s, slot, v);
     } else if (s->page == PAGE_TONAL) {
@@ -676,7 +751,14 @@ void acid_synth_render_slot(acid_synth_t *s, int k, float *out, size_t n)
 void acid_synth_render_with_lr(acid_synth_t *s, float *l, float *r, size_t n, const float *slot1)
 {
     acid_slot_t *v = &s->slot[0];
+    float cyl[MIX_CHUNK], cyr[MIX_CHUNK]; // тарелки и перкуссия кусками: голос за голосом быстрее
+    float pcl[MIX_CHUNK], pcr[MIX_CHUNK];
     for (size_t i = 0; i < n; i++) {
+        if (i % MIX_CHUNK == 0) {
+            int m = (int)(n - i < MIX_CHUNK ? n - i : MIX_CHUNK);
+            acid_cym_render(&s->cym, cyl, cyr, m);
+            acid_perc_render(&s->perc, pcl, pcr, m);
+        }
         slot_tick(s, v);
         float y = slot_next(s, v, v->nheld > 0);
         s->clock_now++;
@@ -687,13 +769,15 @@ void acid_synth_render_with_lr(acid_synth_t *s, float *l, float *r, size_t n, co
         float clap = s->clap_gain * s->clap_vel * acid_clap_next(&s->clap);
         float snare = s->snare_gain * s->snare_vel * acid_snare_next(&s->snare);
         float s1 = slot1[i];
+        float cl = cyl[i % MIX_CHUNK], cr = cyr[i % MIX_CHUNK]; // уже стерео с балансом
+        float ql = pcl[i % MIX_CHUNK], qr = pcr[i % MIX_CHUNK]; // перкуссия, уже с панорамой
         // Посылы до пампинга и панорамы: повторы не качаются вместе с сухим звуком.
-        float send = s->send1 * y + s->send2 * s1 + s->send_drums * (hat + clap + snare);
+        float send = s->send1 * y + s->send2 * s1 + s->send_drums * (hat + clap + snare + 0.5f * (cl + cr + ql + qr));
         float pump = acid_pump_next(&s->pump);
         float yl = kick + pump * (pl[ACID_PAN_SYNTH1] * y + pl[ACID_PAN_SYNTH2] * s1 + pl[ACID_PAN_HAT] * hat +
-                                  pl[ACID_PAN_CLAP] * clap + pl[ACID_PAN_SNARE] * snare);
+                                  pl[ACID_PAN_CLAP] * clap + pl[ACID_PAN_SNARE] * snare + cl + ql);
         float yr = kick + pump * (pr[ACID_PAN_SYNTH1] * y + pr[ACID_PAN_SYNTH2] * s1 + pr[ACID_PAN_HAT] * hat +
-                                  pr[ACID_PAN_CLAP] * clap + pr[ACID_PAN_SNARE] * snare);
+                                  pr[ACID_PAN_CLAP] * clap + pr[ACID_PAN_SNARE] * snare + cr + qr);
         if (send != 0.0f || acid_delay_active(&s->delay)) {
             float wl, wr;
             acid_delay_next2(&s->delay, send, &wl, &wr);

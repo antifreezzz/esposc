@@ -9,6 +9,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "midi_in.h"
+#include "samples_part.h"
 #include "store.h"
 #include "usb_host_task.h"
 
@@ -27,6 +28,7 @@ static const char *TAG = "main";
 static acid_synth_t s_synth;
 static acid_demo_t s_demo;
 static int s_demo_on; // играет демо: события от него, MIDI от BSP не слушаем
+static const acid_bank_t *s_bank; // тарелки из флэша, NULL - молчат
 
 // Синт 2 считается на ядре 0 на кусок вперёд: пока ядро 1 считает кусок c, ядро 0 считает
 // кусок c + 1 синта 2. События MIDI до синта 2 доходят на кусок позже (0.67 мс).
@@ -99,6 +101,7 @@ static void block_fade(float *l, float *r, float g0, float g1)
 static void enter_mode(int live, const uint8_t *blob, int blob_ok)
 {
     acid_synth_init(&s_synth, (float)SR);
+    acid_synth_set_bank(&s_synth, s_bank);
     if (live) {
         if (blob_ok) {
             acid_synth_import(&s_synth, blob, ACID_SYNTH_BLOB);
@@ -124,6 +127,7 @@ static void synth_task(void *arg)
     int save_pending = 0;
     int quiet = 0;
 
+    s_bank = samples_part_open();
     // blob - ручки пользователя: из flash и после каждого сохранения. Демо их не трогает.
     acid_synth_init(&s_synth, (float)SR);
     int blob_ok = store_load(blob, sizeof blob) == ACID_SYNTH_BLOB && acid_synth_import(&s_synth, blob, sizeof blob);
@@ -164,6 +168,12 @@ static void synth_task(void *arg)
         acid_pcm_lr_to_s16(out_l, out_r, pcm, BLOCK);
         int64_t dt = esp_timer_get_time() - t0;
         worst_us = dt > worst_us ? dt : worst_us;
+        // Защита от лавины: тяжёлый блок - перкуссия и тарелки на одном голосе, пока не отпустит.
+        int was_tight = s_synth.tight;
+        acid_synth_set_load(&s_synth, (float)dt / (float)BLOCK_US);
+        if (s_synth.tight != was_tight) {
+            ESP_LOGW(TAG, "overload guard %s (block %lld us)", s_synth.tight ? "on" : "off", dt);
+        }
 
         // Сменили тип синтеза: память ручек пишем, когда выход помолчит (flash стопорит кэш).
         // Ручки демо не сохраняем.

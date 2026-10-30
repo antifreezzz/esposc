@@ -1,0 +1,20 @@
+{
+ "notes": {
+  "49": {
+   "sfz": "Stereo/Naked Drums.sfz",
+   "key": 55
+  },
+  "51": {
+   "sfz": "Stereo/Naked Drums.sfz",
+   "key": 51
+  },
+  "53": {
+   "sfz": "Stereo/Naked Drums.sfz",
+   "key": 53
+  }
+ },
+ "mics": {
+  "OH_": 1.0,
+  "CloseRoom_": 0.6
+ }
+}

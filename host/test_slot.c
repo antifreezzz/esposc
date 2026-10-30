@@ -80,7 +80,7 @@ TEST(test_slot_defaults)
 TEST(test_slot_type_select)
 {
     live();
-    page(2);
+    page(6);
     type(24);
     CHECK(s.slot[0].type == 24);
     type(FM2);
@@ -93,7 +93,7 @@ TEST(test_slot_type_select)
 TEST(test_slot_plaits_plays)
 {
     live();
-    page(2);
+    page(6);
     type(FM2);
     CHECK(s.slot[0].type == FM2);
     cc(4, 0); // timbre 0: FM без модуляции, чистый синус
@@ -118,7 +118,7 @@ TEST(test_slot_plaits_level)
     rms(2400);
     float r303 = rms(24000);
     live();
-    page(2);
+    page(6);
     type(FM2);
     CHECK(s.slot[0].type == FM2);
     on(BASS, 45, 100);
@@ -145,7 +145,7 @@ TEST(test_plaits_slot_retrigger)
 {
     // Note off и note on в одном куске MIDI: триггер опускается и снова поднимается.
     live();
-    page(2);
+    page(6);
     type(FM2);
     on(BASS, 45, 100);
     rms(4800);
@@ -161,7 +161,7 @@ TEST(test_plaits_slot_retrigger)
 TEST(test_plaits_slot_slide)
 {
     live();
-    page(2);
+    page(6);
     type(FM2);
     on(BASS, 45, 100);
     rms(4800);
@@ -204,7 +204,7 @@ static void check_switch(int t)
 TEST(test_slot_type_switch_no_click)
 {
     live();
-    page(2);
+    page(6);
     on(BASS, 45, 127);
     check_switch(FM2);
     check_switch(0); // и обратно, с Plaits на 303
@@ -213,7 +213,7 @@ TEST(test_slot_type_switch_no_click)
 TEST(test_slot_knob_memory)
 {
     live();
-    page(2);
+    page(6);
     cc(3, 0); // 303: cutoff
     CHECK_NEAR(s.slot[0].cut_base, 60.0f, 0.1f);
     type(FM2);
@@ -225,14 +225,14 @@ TEST(test_slot_knob_memory)
     CHECK_NEAR(s.slot[0].pp.harmonics, 100 / 127.0f, 1e-4f);
     type(FM2 + 1); // эту модель не трогали: умолчания, а не ручки FM
     CHECK_NEAR(s.slot[0].pp.harmonics, 0.5f, 1e-6f);
-    page(3);
+    page(7);
     CHECK_NEAR(s.slot[1].pp.harmonics, 0.5f, 1e-6f); // синт 2 со своей памятью
 }
 
 TEST(test_slot_plaits_page)
 {
     live();
-    page(2);
+    page(6);
     type(FM2);
     acid_slot_t *v = &s.slot[0];
     cc(3, 127);
@@ -290,7 +290,7 @@ TEST(test_slot_save_flag)
 {
     live();
     CHECK(acid_synth_take_save(&s) == 0);
-    page(2);
+    page(6);
     cc(3, 10);
     rms(960);
     CHECK(acid_synth_take_save(&s) == 0); // ручка без смены типа - не пишем
@@ -303,11 +303,11 @@ TEST(test_slot_export_import)
 {
     static acid_synth_t b;
     live();
-    page(2);
+    page(6);
     cc(3, 0);
     type(5);
     cc(4, 127);
-    page(3);
+    page(7);
     type(0);
     cc(4, 0);
     static uint8_t blob[ACID_SYNTH_BLOB];
@@ -330,7 +330,7 @@ TEST(test_tonal_blob_roundtrip)
     static acid_synth_t b;
     live();
     acid_synth_take_save(&s);
-    page(5);
+    page(9);
     CHECK(acid_synth_take_save(&s) == 0);
     cc(2, 2);   // длина 2 такта
     CHECK(acid_synth_take_save(&s) == 1);
@@ -366,7 +366,7 @@ TEST(test_slot_import_applies_type)
     static uint8_t blob[ACID_SYNTH_BLOB];
     static acid_synth_t b;
     live();
-    page(2);
+    page(6);
     type(FM2);
     acid_synth_export(&s, blob, sizeof blob);
     acid_synth_init(&b, SR);

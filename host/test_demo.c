@@ -10,7 +10,8 @@
 static const acid_demo_note_t syn1[16] = {
     {45, 100, 1}, {0, 0, 0}, {48, 110, 2}, {50, 90, 1}, // шаг 2 - слайд в шаг 3
 };
-static const uint8_t drums[16] = {ACID_DEMO_KICK, 0, 0, 0, ACID_DEMO_KICK | ACID_DEMO_SNARE};
+static const uint32_t drums[16] = {ACID_DEMO_KICK, 0, 0, 0, ACID_DEMO_KICK | ACID_DEMO_SNARE, 0, 0, 0,
+                                   ACID_DEMO_CRASH | ACID_DEMO_RIDE | ACID_DEMO_BELL};
 static const acid_demo_knob_t knobs1[] = {{2, 3, 0, 127, 0}}; // синт 1 cutoff 0 -> 127 за часть
 // Часть 3: вариации ручек и нот синта 1.
 static const acid_demo_knob_t knobs3[] = {
@@ -20,7 +21,7 @@ static const acid_demo_knob_t knobs3[] = {
 static const uint8_t pool[] = {11, 3, 21};
 static const acid_demo_part_t parts[] = {
     {.bars = 1, .syn1 = syn1, .drums = drums, .knobs = knobs1, .nknobs = 1},
-    {.bars = 1, .syn1 = syn1, .syn2_pool = pool, .npool = 3},
+    {.bars = 1, .syn1 = syn1, .syn2_pool = pool, .npool = 3, .first = ACID_DEMO_CRASH},
     {.bars = 1, .syn1 = syn1, .knobs = knobs3, .nknobs = 2, .vary_syn1 = 1},
 };
 static const acid_demo_song_t song = {parts, 3};
@@ -86,6 +87,38 @@ TEST(test_demo_note_on_step)
         }
     }
     CHECK(at == 2 * STEP);
+}
+
+TEST(test_demo_cymbal_bits)
+{
+    acid_demo_init(&d, &song);
+    int got = 0;
+    for (int k = 0; k <= 8 * STEP; k++) {
+        int n = chunk();
+        if (k == 8 * STEP) {
+            got = find(n, ACID_MIDI_NOTE_ON, 1, 49) >= 0 && find(n, ACID_MIDI_NOTE_ON, 1, 51) >= 0 &&
+                  find(n, ACID_MIDI_NOTE_ON, 1, 53) >= 0;
+        }
+    }
+    CHECK(got);
+}
+
+// Удары first - только на первом шаге части (крэш на входе), в остальных шагах их нет.
+TEST(test_demo_part_first_hit)
+{
+    acid_demo_init(&d, &song);
+    int at_entry = 0, elsewhere = 0;
+    for (int k = 0; k < LOOP; k++) {
+        int n = chunk();
+        int crash = find(n, ACID_MIDI_NOTE_ON, 1, 49) >= 0;
+        if (k == BAR) {
+            at_entry = crash;
+        } else if (k != 8 * STEP) { // в части 1 крэш стоит в шаге 8
+            elsewhere += crash;
+        }
+    }
+    CHECK(at_entry);
+    CHECK(elsewhere == 0);
 }
 
 TEST(test_demo_slide_overlap)
@@ -169,7 +202,7 @@ static int model_of_cycle(int c)
             continue;
         }
         for (int i = 0; i + 1 < n; i++) {
-            if (ev[i].type == ACID_MIDI_CC && ev[i].d1 == 10 && ev[i].d2 == 3 && ev[i + 1].d1 == 74) {
+            if (ev[i].type == ACID_MIDI_CC && ev[i].d1 == 10 && ev[i].d2 == 7 && ev[i + 1].d1 == 74) { // страница синта 2
                 model = ev[i + 1].d2;
             }
         }
@@ -276,6 +309,8 @@ int main(void)
     RUN(test_demo_clock_every_960);
     RUN(test_demo_start_at_loop);
     RUN(test_demo_note_on_step);
+    RUN(test_demo_cymbal_bits);
+    RUN(test_demo_part_first_hit);
     RUN(test_demo_slide_overlap);
     RUN(test_demo_knob_ramp);
     RUN(test_demo_page_before_enc);

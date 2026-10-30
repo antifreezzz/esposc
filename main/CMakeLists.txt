@@ -1,3 +1,3 @@
-idf_component_register(SRCS "main.c" "usb_host_task.c" "audio_out_uac.c" "midi_in_usb.c" "store.c"
+idf_component_register(SRCS "main.c" "usb_host_task.c" "audio_out_uac.c" "midi_in_usb.c" "store.c" "samples_part.c"
                        INCLUDE_DIRS "."
-                       REQUIRES acid esp_timer nvs_flash)
+                       REQUIRES acid esp_timer nvs_flash esp_partition)

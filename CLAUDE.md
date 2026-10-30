@@ -27,6 +27,10 @@
 cmake -S host -B host/build && cmake --build host/build && ctest --test-dir host/build
 # прошивка
 . ~/esp/esp-idf-v6.1/export.sh && idf.py -p /dev/ttyACM0 flash
+# образ тарелок (раздел samples, idf.py flash его не трогает; сборка - в README)
+esptool.py --chip esp32s3 -p /dev/ttyACM0 write_flash 0x210000 cymbals.bin
+# тесты сборщика образа
+python3 -m unittest discover -s tools/samples
 ```
 
 Лог без `idf.py monitor` (ему нужен tty): pyserial, `serial.Serial('/dev/ttyACM0', 115200)`,
@@ -43,7 +47,10 @@ cmake -S host -B host/build && cmake --build host/build && ctest --test-dir host
   ```
   Демо (`acid_demo_song.c`) - смоук-тест: шлёт MIDI как BSP. Меняешь ручки или поведение - проверь, что
   `host/test_demo_smoke` по-прежнему видит каждую фичу; новая фича - добавь её в песню и в тест охвата.
-- Бюджет: блок 2000 мкс, синт 2 666 мкс на кусок. Худший случай - оба синта на modal (тип 21).
+- Бюджет: блок 2000 мкс, синт 2 666 мкс на кусок. Худший случай - оба синта на modal (тип 21), все эффекты,
+  тарелки на строе +12, дробь перкуссии на модальной модели. Перегруз блока лавинный (underrun -> USB грузит ядро 0 -> стопор в десятки мс):
+  новое в рендере мерить на плате, не только на ПК (тарелки на ПК стоили копейки, на плате - нет).
+  Защита от лавины - `acid_synth_set_load` (перкуссия и тарелки на один голос); стресс держится только ей.
 - Blob памяти ручек версионирован магией `BLOB_MAGIC` в `acid_synth.c`: меняешь раскладку
   `knob[][]` или число типов - подними версию, иначе старый blob из NVS применится криво.
 
@@ -54,3 +61,7 @@ cmake -S host -B host/build && cmake --build host/build && ctest --test-dir host
   Мутации откатывать точечно (sed, Edit) или сначала коммитить.
 - Snap-chromium не пишет в `/tmp`: скриншот `--headless --screenshot=$HOME/x.png`, потом перенести.
 - `idf.py` после правок `sdkconfig.defaults` их не подхватывает, если `sdkconfig` уже есть: править и его (он в .gitignore).
+- В горячем цикле рендера на плате не звать libm (`tanf`, `exp2f`, `floorf`, `powf`): из флэша они стоили
+  перкуссии в 5 раз больше всего остального голоса. Быстрые замены - в `acid_perc.c` (`fexp2`, `ftan`, `wrap`).
+- `tools/samples` (сборщик образа и его тесты) - системный `/usr/bin/python3` с numpy. После `export.sh` ESP-IDF
+  `python3` - его venv без numpy: тесты падают на импорте. Запускать в отдельной оболочке или `/usr/bin/python3`.
