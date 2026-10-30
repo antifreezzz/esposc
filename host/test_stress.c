@@ -1,4 +1,4 @@
-// Стресс-песня стенда: держит худший случай рендера (оба синта modal, все эффекты, тарелки на +12,
+// Стресс-песня стенда: держит худший случай рендера (оба синта modal с перегрузом, все эффекты, тарелки на +12,
 // дробь перкуссии на модальной модели), чтобы замеры на плате были сравнимы между правками.
 #include "acid.h"
 #include "acid_demo.h"
@@ -41,6 +41,9 @@ TEST(test_stress_worst_case)
         ok &= s.stutter.knob > 0 && s.djf.mode != 0 && s.drive > 2.9f;
         ok &= s.send1 > 0.0f && s.send2 > 0.0f && s.send_drums > 0.0f;
         ok &= s.cym_tune[0] == 76 && s.cym_tune[1] == 76;
+        for (int j = 0; j < 2; j++) { // перегруз синтов на максимуме с воем
+            ok &= s.slot[j].drv.drive == 127 && s.slot[j].drv.howl > 0;
+        }
         held += ok;
         int np = 0;
         for (int v = 0; v < ACID_PERC_SLOTS; v++) {

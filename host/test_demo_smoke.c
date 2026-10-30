@@ -15,6 +15,7 @@ static acid_perc_t perc_defaults;
 
 typedef struct {
     int wave[2], models[ACID_TYPES], drum[128], hat_knob, pump, djf[3], drive, pan;
+    int howl_303, drive_plaits, whistle; // перегруз синта с воем на 303, на Plaits, свист резонанса 303
     int motion[3], times[5], sends, crush, stutter[5], tonal_step, scale_chrom, scale_mode, cym_knob, perc_models[ACID_PERC_MODELS], perc_knob;
     long silent_windows, wide_windows;
     int finite;
@@ -65,6 +66,13 @@ static void play_cycle(seen_t *z, int c)
             z->wave[v->wave & 1] = 1;
         }
         z->models[s.slot[1].type] = 1;
+        if (v->type == 0 && v->amp.value > 0.01f) {
+            z->howl_303 |= acid_drive_on(&v->drv) && v->drv.howl > 64;
+            z->whistle |= v->res > 1.0f;
+        }
+        for (int k = 0; k < 2; k++) {
+            z->drive_plaits |= s.slot[k].type != 0 && acid_drive_on(&s.slot[k].drv);
+        }
         z->hat_knob |= s.hat_tone != ACID_HAT_HZ;
         for (int k = 0; k < ACID_PERC_SLOTS; k++) {
             const acid_perc_voice_t *pv = &s.perc.v[k];
@@ -135,6 +143,7 @@ TEST(test_demo_coverage)
         CHECK(z.pump);
         CHECK(z.djf[1] && z.djf[2]);
         CHECK(z.drive);
+        CHECK(z.howl_303 && z.drive_plaits && z.whistle);
         CHECK(z.pan);
         CHECK(z.motion[0] && z.motion[1] && z.motion[2]);
         CHECK(count(z.times, 5, 0) >= 2);
