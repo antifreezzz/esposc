@@ -32,11 +32,59 @@ static uint32_t rnd_next(acid_demo_t *d)
     return d->rnd;
 }
 
+static int clamp127(int v)
+{
+    return v < 0 ? 0 : (v > 127 ? 127 : v);
+}
+
+// Перевернуть акцент или слайд в 1-3 нотах (ноты и шаги прежние).
+static void vary_syn1(acid_demo_t *d)
+{
+    int flips = 1 + (int)(rnd_next(d) % 3);
+    for (int f = 0; f < flips; f++) {
+        int st = (int)(rnd_next(d) % 16);
+        for (int k = 0; k < 16 && !d->syn1[st].len; k++) {
+            st = (st + 1) % 16; // ближайшая нота
+        }
+        acid_demo_note_t *n = &d->syn1[st];
+        if (!n->len) {
+            return;
+        }
+        if ((rnd_next(d) & 1) && d->syn1[(st + 1) % 16].len) {
+            n->len = n->len == 1 ? 2 : 1; // слайд в следующую ноту или без него
+        } else {
+            n->vel = n->vel > 100 ? 90 : 120; // акцент - velocity выше 100
+        }
+    }
+}
+
 static void part_enter(acid_demo_t *d)
 {
-    d->part_len = part_len(&d->song->parts[d->part]);
+    const acid_demo_part_t *p = &d->song->parts[d->part];
+    d->part_len = part_len(p);
     d->k = 0;
     memset(d->last, NO_VALUE, sizeof d->last);
+    for (int i = 0; i < p->nknobs && i < ACID_DEMO_KNOBS; i++) {
+        const acid_demo_knob_t *kn = &p->knobs[i];
+        int a = kn->from, b = kn->to;
+        if (d->cycle && kn->vary == ACID_DEMO_PICK) {
+            int lo = a < b ? a : b, hi = a < b ? b : a; // круг 0 - from, рамки в любом порядке
+            a = b = lo + (int)(rnd_next(d) % (uint32_t)(hi - lo + 1));
+        } else if (kn->vary == ACID_DEMO_PICK) {
+            b = a;
+        } else if (d->cycle && kn->vary) {
+            a = clamp127(a + (int)(rnd_next(d) % (2u * kn->vary + 1)) - kn->vary);
+            b = clamp127(b + (int)(rnd_next(d) % (2u * kn->vary + 1)) - kn->vary);
+        }
+        d->from[i] = (uint8_t)a;
+        d->to[i] = (uint8_t)b;
+    }
+    if (p->syn1) {
+        memcpy(d->syn1, p->syn1, sizeof d->syn1);
+        if (d->cycle && p->vary_syn1) {
+            vary_syn1(d);
+        }
+    }
 }
 
 void acid_demo_init(acid_demo_t *d, const acid_demo_song_t *song)
@@ -81,13 +129,13 @@ static void knob(acid_demo_t *d, sink_t *o, int page, int enc, int v)
 }
 
 // Значение плавной ручки на куске k из len: from в начале, to в конце, округление к ближайшему.
-static int ramp(const acid_demo_knob_t *kn, int32_t k, int32_t len)
+static int ramp(int from, int to, int32_t k, int32_t len)
 {
-    if (kn->from == kn->to || len <= 1) {
-        return kn->from;
+    if (from == to || len <= 1) {
+        return from;
     }
-    int32_t num = ((int32_t)kn->to - kn->from) * k, den = len - 1;
-    return kn->from + (int)(num >= 0 ? (num + den / 2) / den : -((-num + den / 2) / den));
+    int32_t num = (int32_t)(to - from) * k, den = len - 1;
+    return from + (int)(num >= 0 ? (num + den / 2) / den : -((-num + den / 2) / den));
 }
 
 static void note_on(acid_demo_t *d, sink_t *o, uint8_t ch, uint8_t note, uint8_t vel, int32_t off)
@@ -124,8 +172,8 @@ int acid_demo_events(acid_demo_t *d, acid_midi_event_t *out, int cap)
         uint8_t m = d->cycle ? p->syn2_pool[rnd_next(d) % p->npool] : p->syn2_pool[0];
         knob(d, &o, PAGE_SYN2, ENC_TYPE, m);
     }
-    for (int i = 0; i < p->nknobs && i < (int)sizeof d->last; i++) {
-        int v = ramp(&p->knobs[i], d->k, d->part_len);
+    for (int i = 0; i < p->nknobs && i < ACID_DEMO_KNOBS; i++) {
+        int v = ramp(d->from[i], d->to[i], d->k, d->part_len);
         if (v != d->last[i]) {
             knob(d, &o, p->knobs[i].page, p->knobs[i].enc, v);
             d->last[i] = (uint8_t)v;
@@ -143,7 +191,7 @@ int acid_demo_events(acid_demo_t *d, acid_midi_event_t *out, int cap)
 
     if (d->k % ACID_DEMO_STEP == 0 && !last) {
         int step = (int)(d->k / ACID_DEMO_STEP) % 16;
-        synth_step(d, &o, p->syn1, CH_SYN1, step);
+        synth_step(d, &o, p->syn1 ? d->syn1 : NULL, CH_SYN1, step);
         synth_step(d, &o, p->syn2, CH_SYN2, step);
         uint8_t bits = p->drums ? p->drums[step] : 0;
         for (int b = 0; b < 5; b++) {

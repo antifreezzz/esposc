@@ -11,14 +11,20 @@ static const acid_demo_note_t syn1[16] = {
     {45, 100, 1}, {0, 0, 0}, {48, 110, 2}, {50, 90, 1}, // шаг 2 - слайд в шаг 3
 };
 static const uint8_t drums[16] = {ACID_DEMO_KICK, 0, 0, 0, ACID_DEMO_KICK | ACID_DEMO_SNARE};
-static const acid_demo_knob_t knobs1[] = {{2, 3, 0, 127}}; // синт 1 cutoff 0 -> 127 за часть
+static const acid_demo_knob_t knobs1[] = {{2, 3, 0, 127, 0}}; // синт 1 cutoff 0 -> 127 за часть
+// Часть 3: вариации ручек и нот синта 1.
+static const acid_demo_knob_t knobs3[] = {
+    {0, 14, 30, 100, ACID_DEMO_PICK}, // панорама синта 1: круг 0 - 30, дальше случайно 30..100
+    {2, 4, 40, 80, 10},               // резонанс 40 -> 80, концы с круга 1 плавают на +-10
+};
 static const uint8_t pool[] = {11, 3, 21};
 static const acid_demo_part_t parts[] = {
     {.bars = 1, .syn1 = syn1, .drums = drums, .knobs = knobs1, .nknobs = 1},
     {.bars = 1, .syn1 = syn1, .syn2_pool = pool, .npool = 3},
+    {.bars = 1, .syn1 = syn1, .knobs = knobs3, .nknobs = 2, .vary_syn1 = 1},
 };
-static const acid_demo_song_t song = {parts, 2};
-#define LOOP (2 * BAR)
+static const acid_demo_song_t song = {parts, 3};
+#define LOOP (3 * BAR)
 
 static acid_demo_t d;
 static acid_midi_event_t ev[64];
@@ -202,6 +208,69 @@ TEST(test_demo_deterministic)
     CHECK(same);
 }
 
+// События части 3 круга (плеер уже в начале круга): первое значение каждой ручки и ноты синта 1.
+static void part3(int *pan, int *res_first, int *res_last, acid_demo_note_t *notes, int *nn)
+{
+    *pan = *res_first = *res_last = -1;
+    *nn = 0;
+    for (int k = 0; k < LOOP; k++) {
+        int n = chunk();
+        if (k < 2 * BAR) {
+            continue;
+        }
+        for (int i = 0; i < n; i++) {
+            if (ev[i].type == ACID_MIDI_CC && ev[i].d1 == 91 && *pan < 0) {
+                *pan = ev[i].d2;
+            }
+            if (ev[i].type == ACID_MIDI_CC && ev[i].d1 == 76) {
+                *res_first = *res_first < 0 ? ev[i].d2 : *res_first;
+                *res_last = ev[i].d2;
+            }
+            if (ev[i].type == ACID_MIDI_NOTE_ON && ev[i].ch == 4 && k < 2 * BAR + BAR && *nn < 16) {
+                notes[(*nn)++] = (acid_demo_note_t){ev[i].d1, ev[i].d2, (uint8_t)((k - 2 * BAR) / STEP)};
+            }
+        }
+    }
+}
+
+TEST(test_demo_vary_knobs)
+{
+    acid_demo_init(&d, &song);
+    int pan, rf, rl, nn;
+    acid_demo_note_t notes[16];
+    part3(&pan, &rf, &rl, notes, &nn);
+    CHECK(pan == 30 && rf == 40 && rl == 80); // круг 0 канонический
+    int ok = 1, pan_diff = 0, res_diff = 0;
+    for (int c = 1; c <= 20; c++) {
+        part3(&pan, &rf, &rl, notes, &nn);
+        ok &= pan >= 30 && pan <= 100 && rf >= 30 && rf <= 50 && rl >= 70 && rl <= 90;
+        pan_diff |= pan != 30;
+        res_diff |= rf != 40 || rl != 80;
+    }
+    CHECK(ok);
+    CHECK(pan_diff && res_diff);
+}
+
+TEST(test_demo_vary_syn1)
+{
+    acid_demo_init(&d, &song);
+    int pan, rf, rl, n0, n1;
+    acid_demo_note_t a[16], b[16];
+    part3(&pan, &rf, &rl, a, &n0);
+    int ok = 1, diff = 0;
+    for (int c = 1; c <= 10; c++) {
+        part3(&pan, &rf, &rl, b, &n1);
+        ok &= n1 == n0;
+        for (int i = 0; i < n0 && i < n1; i++) {
+            ok &= b[i].note == a[i].note && b[i].len == a[i].len; // ноты и шаги те же
+            diff |= b[i].vel != a[i].vel;
+        }
+    }
+    CHECK(n0 == 3);
+    CHECK(ok);
+    CHECK(diff); // акценты меняются
+}
+
 int main(void)
 {
     RUN(test_demo_clock_every_960);
@@ -213,5 +282,7 @@ int main(void)
     RUN(test_demo_loop_seam);
     RUN(test_demo_vary_bounds);
     RUN(test_demo_deterministic);
+    RUN(test_demo_vary_knobs);
+    RUN(test_demo_vary_syn1);
     TEST_MAIN_END();
 }
