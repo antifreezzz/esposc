@@ -22,7 +22,7 @@ float acid_ladder_coef(float cutoff_hz, float sr)
 
 float acid_ladder_run(acid_ladder_t *f, float in, float g, float res)
 {
-    res = res < 0.0f ? 0.0f : (res > 1.0f ? 1.0f : res);
+    res = res < 0.0f ? 0.0f : (res > ACID_LADDER_RES_MAX ? ACID_LADDER_RES_MAX : res);
     float G = g / (1.0f + g);
     float k = 4.0f * res;
 

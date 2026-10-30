@@ -56,6 +56,9 @@ static const uint8_t PAN_DEFAULT[ACID_PANS] = {64, 64, 80, 48, 64};
 #define SEQ2_TYPE 11     // синт 2 по умолчанию: FM 2-op (модель Plaits 10)
 #define PLAITS_ACCENT 0.4f // обычная нота Plaits тише акцентной на столько
 #define KNOB_NONE 0xFF
+#define RES_KNEE 112   // резонанс 303 выше - свист: самовозбуждение до ACID_LADDER_RES_MAX
+#define DRIVE_ENC 13   // энкодеры 14-16 страницы синта: перегруз, тон, вой (у 303 и Plaits одни)
+#define DRIVE_TONE 64  // тон и вой, пока их не трогали
 #define TYPE_ENC 1       // энкодер 2 на странице синта
 static const uint8_t BLOB_MAGIC[4] = {'A', 'S', '5', 2}; // 2: + ручки слоя тональности
 
@@ -76,6 +79,7 @@ static void slot_init(acid_slot_t *v, float sr, int type)
     v->idle = IDLE_BLOCKS;
     v->osc = (acid_osc_t){0};
     acid_ladder_reset(&v->flt);
+    acid_drive_init(&v->drv, sr);
     acid_decay_init(&v->fenv, FENV_NORMAL_S, sr);
     acid_amp_init(&v->amp, 0.003f, 0.01f, sr);
     v->glide_coef = expf(-1.0f / (GLIDE_S * sr));
@@ -420,12 +424,34 @@ static void transpose_set(acid_slot_t *sl, int v)
     }
 }
 
+// Резонанс 303: до RES_KNEE прежняя шкала (0.97 на 127), выше - до самовозбуждения.
+static float res_knob(int v)
+{
+    if (v <= RES_KNEE) {
+        return lin(v, 0.0f, 0.97f);
+    }
+    float k = lin(RES_KNEE, 0.0f, 0.97f);
+    return k + (ACID_LADDER_RES_MAX - k) * (float)(v - RES_KNEE) / (float)(127 - RES_KNEE);
+}
+
+// Перегруз слота: общие энкодеры 303 и Plaits. Ручки перегруза помнятся по типу, как остальные.
+static int drive_knob(acid_slot_t *sl, int slot, int v)
+{
+    acid_drive_t *d = &sl->drv;
+    switch (slot) {
+    case DRIVE_ENC: acid_drive_set(d, v, d->tone, d->howl); return 1;
+    case DRIVE_ENC + 1: acid_drive_set(d, d->drive, v, d->howl); return 1;
+    case DRIVE_ENC + 2: acid_drive_set(d, d->drive, d->tone, v); return 1;
+    default: return 0;
+    }
+}
+
 // Ручки 303, slot - индекс энкодера с 0.
 static void knob_303(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
 {
     switch (slot) {
     case 2: sl->cut_base = expo(v, 60.0f, 3000.0f); break;
-    case 3: sl->res = lin(v, 0.0f, 0.97f); break;
+    case 3: sl->res = res_knob(v); break;
     case 4: sl->env_hz = lin(v, 0.0f, 6000.0f); break;
     case 5: sl->decay_s = expo(v, 0.05f, 1.5f); break;
     case 6: sl->accent_amt = lin(v, 1.0f, 2.0f); break;
@@ -457,6 +483,9 @@ static void knob_plaits(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
 
 static void knob_apply(acid_synth_t *s, acid_slot_t *v, int slot, int val)
 {
+    if (drive_knob(v, slot, val)) {
+        return;
+    }
     if (v->type == 0) {
         knob_303(s, v, slot, val);
     } else {
@@ -469,6 +498,7 @@ static void type_defaults(acid_synth_t *s, acid_slot_t *v)
 {
     v->glide_coef = expf(-1.0f / (GLIDE_S * s->sr));
     v->transpose = 0;
+    acid_drive_set(&v->drv, 0, DRIVE_TONE, 0);
     if (v->type == 0) {
         v->cut_base = CUTOFF_HZ;
         v->env_hz = FENV_NORMAL_HZ;
@@ -657,7 +687,11 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
 // Пересчёт дорогих величин раз в CTRL_BLOCK сэмплов.
 static float control_update(acid_synth_t *s, acid_slot_t *v)
 {
-    acid_osc_set_freq(&v->osc, exp2f(v->pitch_log2), s->sr);
+    float hz = exp2f(v->pitch_log2);
+    acid_osc_set_freq(&v->osc, hz, s->sr);
+    if (acid_drive_on(&v->drv)) {
+        acid_drive_pitch(&v->drv, hz);
+    }
 
     float cutoff = v->cut_base + v->fenv_amount * v->fenv.value;
     return acid_ladder_coef(cutoff, s->sr);
@@ -681,6 +715,9 @@ static float plaits_next(acid_slot_t *v, int gate)
     }
     if (v->ppos == ACID_PLAITS_BLOCK) {
         v->ppos = 0;
+        if (acid_drive_on(&v->drv)) {
+            acid_drive_pitch(&v->drv, acid_exp2(v->pitch_log2));
+        }
         if (!gate && v->idle >= IDLE_BLOCKS) {
             memset(v->pbuf, 0, sizeof v->pbuf);
         } else {
@@ -697,7 +734,11 @@ static float plaits_next(acid_slot_t *v, int gate)
             v->idle = quiet ? v->idle + 1 : 0;
         }
     }
-    return v->pbuf[v->ppos++] * (PLAITS_GAIN * v->gain);
+    float y = v->pbuf[v->ppos++];
+    if (acid_drive_on(&v->drv)) {
+        return acid_drive_run(&v->drv, y * PLAITS_GAIN) * v->gain; // громкость слота после: не меняет характер
+    }
+    return y * (PLAITS_GAIN * v->gain);
 }
 
 // Сэмпл голоса 303 с громкостью слота.
@@ -716,7 +757,11 @@ static float voice_next(acid_synth_t *s, acid_slot_t *v, int gate)
     float x = v->wave ? acid_osc_square(&v->osc) : acid_osc_saw(&v->osc);
     acid_decay_next(&v->fenv);
     float y = acid_ladder_run(&v->flt, x, v->g, v->res);
-    return y * (acid_amp_next(&v->amp) * v->accent_gain * v->gain);
+    float amp = acid_amp_next(&v->amp) * v->accent_gain;
+    if (acid_drive_on(&v->drv)) {
+        return acid_drive_run(&v->drv, y * amp) * v->gain; // акцент бьёт в перегруз сильнее, громкость слота после
+    }
+    return y * (amp * v->gain);
 }
 
 // Громкость смены типа: уход, переключение, приход.

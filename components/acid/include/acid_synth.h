@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "acid_drive.h"
 #include "acid_drums.h"
 #include "acid_env.h"
 #include "acid_clock.h"
@@ -29,6 +30,7 @@ typedef struct {
 
     acid_osc_t osc;
     acid_ladder_t flt;
+    acid_drive_t drv;  // перегруз слота: энкодеры 14-16 у 303 и Plaits
     acid_decay_t fenv;
     acid_amp_t amp;
     float pitch_log2;  // текущая высота, log2(Гц)

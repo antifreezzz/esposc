@@ -11,7 +11,9 @@ void acid_ladder_reset(acid_ladder_t *f);
 // на управляющей частоте, а не на каждом сэмпле.
 float acid_ladder_coef(float cutoff_hz, float sr);
 
-// Один сэмпл с готовым коэффициентом. res в [0, 1], около 0.95+ самовозбуждается.
+// Один сэмпл с готовым коэффициентом. res в [0, ACID_LADDER_RES_MAX]: до 1 звенит и затухает, выше
+// заводится сам (свист), амплитуду держит tanh на входе.
+#define ACID_LADDER_RES_MAX 1.15f
 float acid_ladder_run(acid_ladder_t *f, float in, float g, float res);
 
 // То же с расчётом коэффициента на месте (удобно в тестах).

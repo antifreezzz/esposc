@@ -43,6 +43,29 @@ TEST(test_ladder_resonance_peak)
     CHECK(peak > 2.0f * flat);
 }
 
+// Верх ручки резонанса: фильтр заводится сам и свистит после удара, но не разносит.
+static float tail_after_ping(float res)
+{
+    acid_ladder_t f;
+    acid_ladder_reset(&f);
+    float g = acid_ladder_coef(1000.0f, SR), pk = 0.0f;
+    for (int i = 0; i < (int)SR; i++) {
+        float y = acid_ladder_run(&f, i == 0 ? 0.5f : 0.0f, g, res);
+        if (i > (int)(0.8f * SR)) {
+            pk = fabsf(y) > pk ? fabsf(y) : pk;
+        }
+    }
+    return pk;
+}
+
+TEST(test_ladder_self_oscillates_above_1)
+{
+    CHECK(tail_after_ping(0.97f) < 1e-6f);
+    float pk = tail_after_ping(ACID_LADDER_RES_MAX);
+    CHECK(pk > 0.1f);
+    CHECK(pk < 2.0f);
+}
+
 TEST(test_ladder_stable_max_res)
 {
     acid_ladder_t f;
@@ -70,6 +93,7 @@ int main(void)
     RUN(test_ladder_passes_low);
     RUN(test_ladder_cuts_high);
     RUN(test_ladder_resonance_peak);
+    RUN(test_ladder_self_oscillates_above_1);
     RUN(test_ladder_stable_max_res);
     TEST_MAIN_END();
 }

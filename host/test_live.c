@@ -491,7 +491,7 @@ TEST(test_live_bass_page)
     cc(ENC[4], 0);
     CHECK_NEAR(s.slot[0].res, 0.0f, 1e-6f);
     cc(ENC[4], 127);
-    CHECK_NEAR(s.slot[0].res, 0.97f, 1e-4f);
+    CHECK_NEAR(s.slot[0].res, ACID_LADDER_RES_MAX, 1e-4f); // верх ручки - свист, шкала в test_slot_drive
     cc(ENC[8], 0);
     CHECK(s.slot[0].wave == 0);
     cc(ENC[8], 1);
