@@ -27,6 +27,10 @@
 cmake -S host -B host/build && cmake --build host/build && ctest --test-dir host/build
 # прошивка
 . ~/esp/esp-idf-v6.1/export.sh && idf.py -p /dev/ttyACM0 flash
+# образ тарелок (раздел samples, idf.py flash его не трогает; сборка - в README)
+esptool.py --chip esp32s3 -p /dev/ttyACM0 write_flash 0x210000 cymbals.bin
+# тесты сборщика образа
+python3 -m unittest discover -s tools/samples
 ```
 
 Лог без `idf.py monitor` (ему нужен tty): pyserial, `serial.Serial('/dev/ttyACM0', 115200)`,
@@ -43,7 +47,9 @@ cmake -S host -B host/build && cmake --build host/build && ctest --test-dir host
   ```
   Демо (`acid_demo_song.c`) - смоук-тест: шлёт MIDI как BSP. Меняешь ручки или поведение - проверь, что
   `host/test_demo_smoke` по-прежнему видит каждую фичу; новая фича - добавь её в песню и в тест охвата.
-- Бюджет: блок 2000 мкс, синт 2 666 мкс на кусок. Худший случай - оба синта на modal (тип 21).
+- Бюджет: блок 2000 мкс, синт 2 666 мкс на кусок. Худший случай - оба синта на modal (тип 21), все эффекты,
+  тарелки на строе +12. Перегруз блока лавинный (underrun -> USB грузит ядро 0 -> стопор в десятки мс):
+  новое в рендере мерить на плате, не только на ПК (тарелки на ПК стоили копейки, на плате - нет).
 - Blob памяти ручек версионирован магией `BLOB_MAGIC` в `acid_synth.c`: меняешь раскладку
   `knob[][]` или число типов - подними версию, иначе старый blob из NVS применится криво.
 
