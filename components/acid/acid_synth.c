@@ -405,9 +405,6 @@ static float expo(int v, float a, float b)
     return a * exp2f((float)v / 127.0f * log2f(b / a));
 }
 
-// CC энкодеров BSP по порядку на панели (стандартная раскладка Arturia): 0 - энкодер 1.
-static const uint8_t ENC_CC[16] = {10, 74, 71, 76, 77, 93, 73, 75, 114, 18, 19, 16, 17, 91, 79, 72};
-
 static void page_mix(acid_synth_t *s, int slot, int v)
 {
     switch (slot) {
@@ -608,7 +605,7 @@ static void control_change(acid_synth_t *s, int num, int v)
 {
     int slot = -1;
     for (int i = 0; i < 16; i++) {
-        if (ENC_CC[i] == num) {
+        if (acid_bsp_enc_cc[i] == num) {
             slot = i;
         }
     }

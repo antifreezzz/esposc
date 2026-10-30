@@ -1,5 +1,7 @@
 #include "acid_midi.h"
 
+const uint8_t acid_bsp_enc_cc[16] = {10, 74, 71, 76, 77, 93, 73, 75, 114, 18, 19, 16, 17, 91, 79, 72};
+
 int acid_midi_parse(const uint8_t *buf, size_t len, acid_midi_event_t *out, int max)
 {
     int n = 0;
