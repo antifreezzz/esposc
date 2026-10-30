@@ -68,6 +68,9 @@ typedef struct {
 
 #define ACID_SLOTS 2
 
+// Источники с ручкой панорамы. Бочка всегда в центре.
+enum { ACID_PAN_SYNTH1, ACID_PAN_SYNTH2, ACID_PAN_HAT, ACID_PAN_CLAP, ACID_PAN_SNARE, ACID_PANS };
+
 // Acid-трек: бас-голос, ударные и аранжировка на 64 такта, либо live-режим от MIDI.
 // Поля публичные ради тестов, снаружи трогать только slot[0].res, slot[0].wave и kick_on
 // (в режиме фиксированного паттерна).
@@ -110,6 +113,7 @@ typedef struct {
     acid_stutter_t stutter;
     int16_t *fx_mem;   // буферы дилэя и статтера, выделяются один раз (s обнулён до первого init)
     float send1, send2, send_drums; // посылы в дилэй 0..1
+    float pan_l[ACID_PANS], pan_r[ACID_PANS]; // усиления каналов по источникам (live)
     int dl_time, dl_fb, dl_tone;    // сырые ручки дилэя
     acid_tonal_t tonal; // страница 5: круг транспозиций синтов по тактам
     int page;          // страница ручек: 0 микс, 1 ударка, 2 синт 1, 3 синт 2, 4 эффекты, 5 тональность

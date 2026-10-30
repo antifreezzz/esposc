@@ -765,8 +765,23 @@ TEST(test_djf_settles_after_knob_move)
     CHECK(f.k == f.k_target);
 }
 
+TEST(test_pan_law)
+{
+    float l, r;
+    acid_pan(0.0f, &l, &r);
+    CHECK(l == 1.0f && r == 0.0f);
+    acid_pan(64.0f, &l, &r);
+    CHECK(l == 1.0f && r == 1.0f);
+    acid_pan(127.0f, &l, &r);
+    CHECK(l == 0.0f && r == 1.0f);
+    acid_pan(32.0f, &l, &r);
+    CHECK(l == 1.0f);
+    CHECK_NEAR(r, 0.5f, 1e-6f);
+}
+
 int main(void)
 {
+    RUN(test_pan_law);
     RUN(test_pump_neutral);
     RUN(test_pump_dips_and_recovers);
     RUN(test_pump_attack_not_instant);

@@ -429,3 +429,14 @@ int acid_stutter_active(const acid_stutter_t *st)
 {
     return st->on || st->wet > 0.0f;
 }
+
+void acid_pan(float pos, float *gl, float *gr)
+{
+    if (pos <= 64.0f) {
+        *gl = 1.0f;
+        *gr = pos > 0.0f ? pos * (1.0f / 64.0f) : 0.0f;
+    } else {
+        *gr = 1.0f;
+        *gl = pos < 127.0f ? (127.0f - pos) * (1.0f / 63.0f) : 0.0f;
+    }
+}

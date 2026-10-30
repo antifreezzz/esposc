@@ -895,8 +895,101 @@ TEST(test_live_tonal_off_bitexact)
     CHECK(same);
 }
 
+static float buf_l[48000], buf_r[48000];
+
+static void render_lr(int n)
+{
+    acid_synth_render_lr(&s, buf_l, buf_r, (size_t)n);
+}
+
+static float chan_peak(const float *x, int n)
+{
+    float p = 0.0f;
+    for (int i = 0; i < n; i++) {
+        p = fabsf(x[i]) > p ? fabsf(x[i]) : p;
+    }
+    return p;
+}
+
+static float chan_rms(const float *x, int n)
+{
+    double sq = 0.0;
+    for (int i = 0; i < n; i++) {
+        sq += (double)x[i] * x[i];
+    }
+    return (float)sqrt(sq / n);
+}
+
+TEST(test_live_hat_pan_left)
+{
+    live();
+    cc(10, 1);  // страница ударки
+    cc(91, 0);  // энкодер 14: хэты влево до края
+    on(DRUMS, 42, 127);
+    render_lr(2400);
+    CHECK(chan_peak(buf_l, 2400) > 0.01f);
+    CHECK(chan_peak(buf_r, 2400) < 1e-6f);
+}
+
+TEST(test_live_synth_center_equal)
+{
+    live();
+    on(BASS, 45, 100);
+    render_lr(4800);
+    int diff = 0;
+    for (int i = 0; i < 4800; i++) {
+        diff += buf_l[i] != buf_r[i];
+    }
+    CHECK(chan_peak(buf_l, 4800) > 0.01f);
+    CHECK(diff == 0);
+}
+
+TEST(test_live_synth_pan_right)
+{
+    live();
+    cc(10, 0);   // страница микса
+    cc(91, 127); // энкодер 14: синт 1 вправо до края
+    on(BASS, 45, 100);
+    render_lr(4800);
+    CHECK(chan_peak(buf_r, 4800) > 0.01f);
+    CHECK(chan_peak(buf_l, 4800) < 1e-6f);
+}
+
+TEST(test_live_synth2_pan_left)
+{
+    live();
+    cc(10, 0);
+    cc(79, 0); // энкодер 15: синт 2 влево до края
+    on(SEQ2, 57, 100);
+    render_lr(9600);
+    CHECK(chan_peak(buf_l, 9600) > 0.001f);
+    CHECK(chan_peak(buf_r, 9600) < 1e-6f);
+}
+
+TEST(test_live_drum_pan_defaults)
+{
+    live();
+    on(DRUMS, 42, 127); // хэты по умолчанию 80: правее
+    render_lr(2400);
+    CHECK(chan_rms(buf_r, 2400) > 1.1f * chan_rms(buf_l, 2400));
+    live();
+    on(DRUMS, 38, 127); // малый 64: центр
+    render_lr(4800);
+    int diff = 0;
+    for (int i = 0; i < 4800; i++) {
+        diff += buf_l[i] != buf_r[i];
+    }
+    CHECK(chan_peak(buf_l, 4800) > 0.01f);
+    CHECK(diff == 0);
+}
+
 int main(void)
 {
+    RUN(test_live_hat_pan_left);
+    RUN(test_live_synth_center_equal);
+    RUN(test_live_synth_pan_right);
+    RUN(test_live_synth2_pan_left);
+    RUN(test_live_drum_pan_defaults);
     RUN(test_live_silent_until_note);
     RUN(test_live_note_pitch);
     RUN(test_live_overlap_slides);

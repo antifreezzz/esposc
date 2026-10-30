@@ -99,3 +99,6 @@ void acid_stutter_set(acid_stutter_t *st, int knob); // 0 выкл, 1..127 - 4 �
 void acid_stutter_set_spb(acid_stutter_t *st, float spb);
 float acid_stutter_next(acid_stutter_t *st, float in);
 int acid_stutter_active(const acid_stutter_t *st);
+
+// Панорама 0 слева, 64 центр, 127 справа: в центре оба канала 1, к краю дальний канал уходит в 0.
+void acid_pan(float pos, float *gl, float *gr);
