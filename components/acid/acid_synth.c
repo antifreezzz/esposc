@@ -31,7 +31,8 @@
 #define DRUM_VEL_FLOOR 0.3f // громкость самого слабого удара пэда
 #define SNARE_GAIN 0.8f
 #define CYM_GAIN_MAX 1.5f
-#define CYM_KNOB 64 // громкость тарелок после включения (подбирается по демо)
+// Громкость тарелок после включения (крэш, райд, купол): пик удара ~0.8 пика закрытого хэта на Naked Drums.
+static const uint8_t CYM_KNOB[ACID_CYM_N] = {28, 35, 40};
 #define SYNTH_GAIN 0.9f // общая громкость синтов: на 10% тише прежнего (просьба пользователя)
 // Панорамы после включения: синты в центре, ударка немного разведена.
 static const uint8_t PAN_DEFAULT[ACID_PANS] = {64, 64, 80, 48, 64};
@@ -154,7 +155,7 @@ void acid_synth_init(acid_synth_t *s, float sr)
         s->cym_pan[k] = 64;
     }
     for (int w = 0; w < ACID_CYM_N; w++) {
-        s->cym.gain[w] = CYM_GAIN_MAX * (float)CYM_KNOB / 127.0f;
+        s->cym.gain[w] = CYM_GAIN_MAX * (float)CYM_KNOB[w] / 127.0f;
     }
     s->page = PAGE_SYNTH1;
 }
