@@ -28,3 +28,6 @@ void acid_link_init(acid_link_t *l);
 int acid_link_midi(acid_link_t *l, acid_synth_t *s, const acid_midi_event_t *ev, int src, acid_link_ev_t *out);
 // Правка с панели, enc с 0 (энкодер 1 не трогает). Возвращает 0 или 1 событие в out.
 int acid_link_panel_set(acid_link_t *l, acid_synth_t *s, int page, int enc, int v, acid_link_ev_t *out);
+// На панели открыта страница: энкодеры 2-16 BSP крутят её, пока не тронут энкодер 1. В демо не звать
+// (демо само листает страницы). Возвращает 0 или 1 событие (смена страницы) в out.
+int acid_link_panel_page(acid_link_t *l, acid_synth_t *s, int page, acid_link_ev_t *out);

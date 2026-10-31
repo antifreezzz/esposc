@@ -87,3 +87,14 @@ int acid_link_panel_set(acid_link_t *l, acid_synth_t *s, int page, int enc, int 
     type_check(l, page, enc);
     return report(l, s, page, enc, ACID_SRC_PANEL, out);
 }
+
+int acid_link_panel_page(acid_link_t *l, acid_synth_t *s, int page, acid_link_ev_t *out)
+{
+    (void)l;
+    if (page < 0 || page >= ACID_PAGES) {
+        return 0;
+    }
+    s->page = page;
+    *out = (acid_link_ev_t){.page = (uint8_t)page, .enc = 0, .value = (uint8_t)page, .src = ACID_SRC_PANEL};
+    return 1;
+}

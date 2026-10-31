@@ -37,6 +37,7 @@ static int payload_len(uint8_t type)
     case PL_KNOB: return (int)sizeof(pl_knob_t);
     case PL_SET: return (int)sizeof(pl_set_t);
     case PL_HELLO: return 0;
+    case PL_PAGE: return 1;
     default: return -1;
     }
 }

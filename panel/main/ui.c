@@ -332,6 +332,10 @@ static int tile_at(int x, int y)
 
 static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
 {
+    if (m->goto_page >= 0 && u.grab < 0) {
+        open_page(m->goto_page); // листают на BSP: экран за ним (держишь ручку - после отпускания)
+        m->goto_page = -1;
+    }
     int ev = pl_press_step(&u.press, down, x, y, ms);
     int x0, y0;
     pl_press_where(&u.press, &x0, &y0);
@@ -340,6 +344,7 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
     if (u.screen == MENU) {
         if (tap && tile_at(x0, y0) >= 0) {
             open_page(tile_at(x0, y0));
+            link_page(u.page); // энкодеры BSP крутят открытую страницу
         }
         return;
     }
@@ -382,9 +387,9 @@ void ui_start(void)
 void ui_step(pl_model_t *m, int down, int x, int y, uint32_t ms)
 {
     // Жест и отправка в синт - каждый шаг, экран - когда LVGL свободен (палец не ждёт отрисовку).
-    int was = u.screen;
+    int was = u.screen, was_page = u.page;
     input(m, down, x, y, ms);
-    u.dirty |= u.screen != was;
+    u.dirty |= u.screen != was || (u.screen == PAGE && u.page != was_page);
     if (!lvgl_port_lock(1)) {
         return;
     }

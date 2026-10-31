@@ -99,6 +99,13 @@ static void render_block(float *l, float *r)
                 panel_uart_send_knob(&lev);
             }
         }
+        int page;
+        while (panel_uart_receive_page(&page)) {
+            // В демо страницы листает само демо: экран их не трогает, иначе ручки демо ушли бы не туда.
+            if (!s_demo_on && acid_link_panel_page(&s_link, &s_synth, page, &lev)) {
+                panel_uart_send_knob(&lev);
+            }
+        }
         if (s_link.snapshot_due) {
             s_link.snapshot_due = 0; // сменился тип синта: у типа своя память, страница новая целиком
             panel_uart_snapshot_due();

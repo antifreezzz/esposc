@@ -22,7 +22,7 @@
 
 static const char *TAG = "panel";
 
-static QueueHandle_t s_set_q, s_knob_q;
+static QueueHandle_t s_set_q, s_knob_q, s_page_q;
 static const acid_synth_t *s_synth;
 static const acid_link_t *s_link;
 static const volatile int *s_demo_on;
@@ -31,6 +31,16 @@ static volatile int s_snapshot_due;
 int panel_uart_receive(pl_set_t *out)
 {
     return s_set_q && xQueueReceive(s_set_q, out, 0) == pdTRUE;
+}
+
+int panel_uart_receive_page(int *page)
+{
+    uint8_t p;
+    if (!s_page_q || xQueueReceive(s_page_q, &p, 0) != pdTRUE) {
+        return 0;
+    }
+    *page = p;
+    return 1;
 }
 
 void panel_uart_send_knob(const acid_link_ev_t *ev)
@@ -87,6 +97,8 @@ static void link_task(void *arg)
                     pl_set_t set;
                     memcpy(&set, p, sizeof set);
                     xQueueSend(s_set_q, &set, 0);
+                } else if (type == PL_PAGE && len == 1) {
+                    xQueueSend(s_page_q, p, 0);
                 } else if (type == PL_HELLO) {
                     s_snapshot_due = 1;
                 }
@@ -124,7 +136,8 @@ esp_err_t panel_uart_start(const acid_synth_t *s, const acid_link_t *l, const vo
     gpio_pullup_en(PIN_RX); // панель без питания: вход в покое единица, меньше мусора
     s_set_q = xQueueCreate(SET_QUEUE, sizeof(pl_set_t));
     s_knob_q = xQueueCreate(KNOB_QUEUE, sizeof(acid_link_ev_t));
-    if (!s_set_q || !s_knob_q) {
+    s_page_q = xQueueCreate(4, 1);
+    if (!s_set_q || !s_knob_q || !s_page_q) {
         return ESP_ERR_NO_MEM;
     }
     // Ниже slot1 и USB: связь с экраном подождёт, звук нет.

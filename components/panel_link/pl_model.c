@@ -8,6 +8,7 @@ void pl_model_init(pl_model_t *m)
 {
     memset(m, 0, sizeof *m);
     memset(m->bsp_pos, 0xFF, sizeof m->bsp_pos);
+    m->goto_page = -1;
 }
 
 static void apply_snapshot(pl_model_t *m, const pl_snapshot_t *s)
@@ -26,6 +27,9 @@ static void apply_knob(pl_model_t *m, const pl_knob_t *k, uint32_t ms)
 {
     if (k->enc == 0) {
         m->bsp_page = k->value;
+        if (k->src == SRC_BSP && k->value < PL_PAGES) {
+            m->goto_page = k->value; // листают на BSP - экран за ним; демо и своё эхо - нет
+        }
         return;
     }
     if (k->page >= PL_PAGES || k->enc >= PL_KNOBS) {

@@ -48,13 +48,15 @@ TEST(test_roundtrip)
     snap.held[19] = 0x80;
     pl_knob_t k = {.page = 6, .enc = 2, .value = 30, .src = 2, .bsp_pos = 87, .held = 1};
     pl_set_t st = {.page = 8, .enc = 5, .value = 100};
+    uint8_t page = 3;
     struct {
         uint8_t type;
         const void *p;
         size_t n;
-    } cases[] = {{PL_SNAPSHOT, &snap, sizeof snap}, {PL_KNOB, &k, sizeof k}, {PL_SET, &st, sizeof st}, {PL_HELLO, NULL, 0}};
+    } cases[] = {{PL_SNAPSHOT, &snap, sizeof snap}, {PL_KNOB, &k, sizeof k}, {PL_SET, &st, sizeof st}, {PL_HELLO, NULL, 0},
+                 {PL_PAGE, &page, 1}};
     CHECK(sizeof snap <= 255);
-    for (size_t c = 0; c < 4; c++) {
+    for (size_t c = 0; c < 5; c++) {
         uint8_t buf[PL_FRAME_MAX];
         size_t n = pl_encode(cases[c].type, cases[c].p, cases[c].n, buf);
         CHECK(n == cases[c].n + 4);

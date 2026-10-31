@@ -144,6 +144,21 @@ TEST(test_page_event)
     CHECK(s.page == 3);
 }
 
+TEST(test_panel_page)
+{
+    reset();
+    bsp(1, 6);
+    CHECK(acid_link_panel_page(&l, &s, 8, &ev) == 1);
+    CHECK(s.page == 8);
+    CHECK(ev.enc == 0 && ev.value == 8 && ev.src == ACID_SRC_PANEL);
+    bsp(3, 90); // энкодеры BSP крутят страницу с экрана
+    CHECK(knob(8, 3) == 90);
+    bsp(1, 2); // энкодер 1 - снова страница с BSP
+    CHECK(s.page == 2);
+    CHECK(acid_link_panel_page(&l, &s, 10, &ev) == 0); // не страница
+    CHECK(s.page == 2);
+}
+
 int main(void)
 {
     RUN(test_pickup_blocks_until_cross);
@@ -154,5 +169,6 @@ int main(void)
     RUN(test_demo_muted_after_panel);
     RUN(test_type_change_sends_snapshot);
     RUN(test_page_event);
+    RUN(test_panel_page);
     TEST_MAIN_END();
 }

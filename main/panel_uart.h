@@ -11,6 +11,8 @@
 esp_err_t panel_uart_start(const acid_synth_t *s, const acid_link_t *l, const volatile int *demo_on);
 // Правка с панели: 1 если есть (без ожидания).
 int panel_uart_receive(pl_set_t *out);
+// На панели открыли страницу: 1 если есть (без ожидания).
+int panel_uart_receive_page(int *page);
 // Событие для панели (без ожидания; очередь полна - теряется, следующий снимок поправит).
 void panel_uart_send_knob(const acid_link_ev_t *ev);
 // Отправить панели снимок при первой возможности.

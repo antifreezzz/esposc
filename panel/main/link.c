@@ -64,3 +64,9 @@ void link_set(int page, int enc, int v)
     pl_set_t s = {(uint8_t)page, (uint8_t)enc, (uint8_t)v};
     send(PL_SET, &s, sizeof s);
 }
+
+void link_page(int page)
+{
+    uint8_t p = (uint8_t)page;
+    send(PL_PAGE, &p, 1);
+}

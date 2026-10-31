@@ -87,6 +87,18 @@ TEST(test_local_set)
     CHECK(m.raw[6][3] == 30 && m.held[6][3] == 1);
 }
 
+TEST(test_follow_bsp_page)
+{
+    pl_model_init(&m);
+    CHECK(m.goto_page == -1);
+    knob(0, 0, 7, 1, 0xFF, 0, 5); // демо листает - экран не трогаем
+    CHECK(m.goto_page == -1);
+    knob(0, 0, 7, 2, 0xFF, 0, 5); // эхо своей страницы
+    CHECK(m.goto_page == -1);
+    knob(0, 0, 3, 0, 0xFF, 0, 6); // BSP
+    CHECK(m.goto_page == 3);
+}
+
 int main(void)
 {
     RUN(test_model_snapshot_replaces_all);
@@ -95,5 +107,6 @@ int main(void)
     RUN(test_page_event);
     RUN(test_need_hello);
     RUN(test_local_set);
+    RUN(test_follow_bsp_page);
     TEST_MAIN_END();
 }

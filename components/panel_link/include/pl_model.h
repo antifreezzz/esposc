@@ -18,6 +18,7 @@ typedef struct {
     int hello_sent;
     int toast_page, toast_enc;
     uint32_t toast_until_ms;
+    int goto_page; // BSP сменил страницу: экрану открыть её (-1 нет), интерфейс сбрасывает сам
 } pl_model_t;
 
 void pl_model_init(pl_model_t *m);
