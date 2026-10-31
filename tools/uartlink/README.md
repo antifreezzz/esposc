@@ -24,6 +24,9 @@ idf.py -B build-panel -DLINK_ROLE=panel -DSDKCONFIG=build-panel/sdkconfig -p /de
 cmake -S host -B host/build && cmake --build host/build && ctest --test-dir host/build
 ```
 
+Замер 2026-10-31 на паяных проводах, 30 с: 115200, 1 и 2 Мбод - ни одной ошибки после старта
+(bad 1 и lost 3 в первые 5 с - платы перезагружаются при открытии портов). Туда-обратно: 3.4 мс, 0.53 мс и 0.33 мс.
+
 Перезаписывает прошивку обеих плат. Синт потом вернуть: `idf.py -p /dev/ttyACM0 flash` из корня
 (раздел тарелок не трогается). Панель: бэкап `~/Documents/projects/esp/panel-backup/panel_full_16MB.bin`,
 `esptool.py -p /dev/ttyUSB0 -b 460800 write_flash 0 panel_full_16MB.bin`.

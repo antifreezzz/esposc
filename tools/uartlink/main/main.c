@@ -72,19 +72,6 @@ static int read_some(uint8_t *buf, size_t size) {
 #endif
 #endif
 
-// LINK_DIAG=2: обратная прозвонка, RX держим в 1, TX читаем
-#if LINK_DIAG == 2
-#undef PIN_TX
-#undef PIN_RX
-#if LINK_PANEL
-#define PIN_TX 40
-#define PIN_RX 2
-#else
-#define PIN_TX 18
-#define PIN_RX 17
-#endif
-#endif
-
 // Прозвонка: TX держим в 1, RX читаем с подтяжкой к земле. 1 на RX - провод от TX другой платы дошёл.
 void app_main(void) {
     gpio_reset_pin(PIN_TX);
