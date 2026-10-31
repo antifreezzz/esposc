@@ -62,7 +62,7 @@
   <div class="row"><span>Начинка</span>
     <div class="seg" id="segVar"><button data-v="dac">I2S ЦАП, без хаба</button><button data-v="hub">Мини-хаб + свисток</button></div></div>
   <div class="row" id="insRow"><span>Вставка справа</span>
-    <div class="seg" id="segIns"><button data-v="blank">глухая</button><button data-v="touch">тач</button><button data-v="buttons">кнопки 2x4</button><button data-v="matrix">матрица</button></div></div>
+    <div class="seg" id="segIns"><button data-v="blank">глухая</button><button data-v="touch">тач</button><button data-v="buttons">кнопки 2x4</button><button data-v="matrix">матрица</button><button data-v="combo">матрица + тач</button></div></div>
   <div class="row"><span>Крышка</span>
     <div class="seg" id="segLid"><button data-v="0">закрыта</button><button data-v="1">открыта</button><button data-v="2">снята</button></div></div>
   <div class="row"><span>Разнести детали</span><input type="range" id="explode" min="0" max="1" step="0.01" value="0"></div>
@@ -310,8 +310,14 @@ const BOXV = {
 const GP = { S: 86, R: 5, ACT: 71.8, PD: 12, H1: 15 }, CUBE_FR = 3;
 // съёмная вставка справа (плита и клин): проём в крышке, x и y внутри корпуса
 const INS = { X0: 94, X1: 152, Y0: 8, Y1: 106, P: 14, CX: [102, 116, 130, 144],
-  // колонки J3 под сигналы вставки: IO21, IO35, IO36, IO37, IO39, IO40, IO41, IO42; IO47 - данные WS2812
-  J3: [18, 13, 12, 11, 9, 8, 7, 6], LED: 17 };
+  TY: 97 };
+// сигналы вставки на пятаки J3 (колонка, подпись). Матрица через TCA8418 по I2C: 3 пина вместо 8, сканирует и гасит дребезг сама
+const INS_SIG = {
+  touch: [[18, 'T1'], [13, 'T2'], [12, 'T3'], [11, 'T4']],
+  buttons: [[18, 'K1'], [13, 'K2'], [12, 'K3'], [11, 'K4'], [9, 'K5'], [8, 'K6'], [7, 'K7'], [6, 'K8']],
+  matrix: [[7, 'SDA'], [6, 'SCL'], [8, 'INT'], [17, 'LED']],
+};
+INS_SIG.combo = [...INS_SIG.matrix, ...INS_SIG.touch];
 // HW-040: EC11 на платке 26 x 18.5 x 1.3 (продавцы), ось в 8.5 мм от заднего края платки; шаг ручек 21.5 под экраном
 const ENC = { X: [10.75, 32.25, 53.75, 75.25], Y: 95, PCB: [18.5, 26, 1.3], AX: 8.5, BODY: 6.2, BUSH: 4, SHAFT: 9.5,
   // CLK (A), DT (B), SW: колонки J1 спереди или J3 сзади ('r')
@@ -324,7 +330,8 @@ function buildScene(form, vk, ins = 'blank') {
   const fc0 = form === 'box' ? BOXV[vk] : FORMS[form];
   if (!fc0.enc) ins = null;
   // матрица кнопок над платой: поднимаем крышку на 5.5 мм (кнопка 3.5 + платка 1.6 над стеком платы)
-  const fc = ins === 'matrix' ? { ...fc0, zf: fc0.zf + 5.5 } : fc0;
+  const hasM = ins === 'matrix' || ins === 'combo', hasT = ins === 'touch' || ins === 'combo';
+  const fc = hasM ? { ...fc0, zf: fc0.zf + 5.5 } : fc0;
   const { X, Y } = fc, by = fc.by, bx = X - L - 0.95, SL = !!fc.sloped;
   [ZC0, ZC1, ZB0, ZB1] = fc.low ? [2, 3.6, 6.1, 7.7] : [5, 6.6, 15.1, 16.7];
   const wz = z => fc.low ? ZC1 + (z - 6.6) * .55 : z;          // высота проводов в низком стеке
@@ -416,9 +423,7 @@ function buildScene(form, vk, ins = 'blank') {
       tr([[pinX(22), yJ1], [pinX(22) + 1.3, yJ1 + 1.4], [pinX(22) + 1.3, frontY + 4.2], [pinX(14), frontY + 4.2], [pinX(14), frontY]], '#202020', .55);
       [[4, 'SW3'], [5, 'SW4']].forEach(([i, t]) => { tr([[pinX(i), yJ3], [pinX(i), rearY]]); pad(pinX(i), rearY); silk(pinX(i), rearY - 1.9, t, .9); });
       if (ins && ins !== 'blank') {
-        const names = ins === 'touch' ? ['T1', 'T2', 'T3', 'T4'] : ins === 'buttons' ? ['K1', 'K2', 'K3', 'K4', 'K5', 'K6', 'K7', 'K8'] : ['R1', 'R2', 'R3', 'R4', 'C1', 'C2', 'C3', 'C4'];
-        names.forEach((t, i) => { const c = INS.J3[i]; tr([[pinX(c), yJ3], [pinX(c), rearY]]); pad(pinX(c), rearY); silk(pinX(c), rearY - 1.9, t, .9); });
-        if (ins === 'matrix') { const c = INS.LED; tr([[pinX(c), yJ3], [pinX(c), rearY]]); pad(pinX(c), rearY); silk(pinX(c), rearY - 1.9, 'LED', .9); }
+        INS_SIG[ins].forEach(([c, t]) => { tr([[pinX(c), yJ3], [pinX(c), rearY]]); pad(pinX(c), rearY); silk(pinX(c), rearY - 1.9, t, .9); });
       }
       silk((pinX(7) + pinX(12)) / 2, frontY + 4.4 + .9, 'ENC + PANEL', 1.1);
     } else if (panelOn) {
@@ -714,73 +719,80 @@ function buildScene(form, vk, ins = 'blank') {
     buildPanel(pan, { o: add(p0, add(scl(AX, pU), add(scl(v, pV), scl(w, T + .6)))), u: AX, v, w }, fc.rot180);
     cableOnLid = true;
     function buildInsert() {
-      const names = { blank: 'Вставка: глухая', touch: 'Вставка: тач-кнопки TTP223', buttons: 'Вставка: кнопки 2x4', matrix: 'Вставка: матрица 4x4' };
+      const names = { blank: 'Вставка: глухая', touch: 'Вставка: тач-кнопки TTP223', buttons: 'Вставка: кнопки 2x4', matrix: 'Вставка: матрица 4x4', combo: 'Вставка: матрица 4x4 + тач' };
+      const pins = sig => sig.map(([c, t]) => `<code>${t} J3-${c} IO${J3[c - 1]}</code>`).join(' ');
+      const mInfo = `Матрица 4x4 с подсветкой SK6812 на каждой кнопке: коммутация модуляции. Строки - источники (LFO1, LFO2, огибающая, случай),
+          столбцы - цели, свои у каждого движка: у 303 срез, резонанс, огибающая, перегруз; у Plaits частота, HARMONICS, TIMBRE, MORPH.
+          Нажал узел - связь есть, держишь и крутишь энкодер - глубина. Подписи строк и столбцов показывает панель.<br>
+          Кнопки сканирует <b>TCA8418</b> (I2C, свой антидребезг и очередь событий, прерывание): 3 пина вместо 8, на шину потом можно повесить ещё.
+          ${pins(INS_SIG.matrix)}, подсветка 5 В. Диоды 1N4148 на каждую кнопку.<br><b>Корпус выше на 5.5 мм:</b> кнопки стоят над платой.`;
+      const tInfo = `4 модуля TTP223 под пластиной, над площадками пластина утонена до 1 мм. Смена режима энкодеров: задержка 60 мс тут не мешает.
+          ${pins(INS_SIG.touch)}, питание 3V3. Встроенный тач S3 живёт только на GPIO1-14, а они заняты энкодерами и ЦАП.`;
       const infos = {
         blank: `Съёмная пластина ${INS.X1 - INS.X0} x ${INS.Y1 - INS.Y0}, 4 винта M2 в полку крышки. Под ней плата и порты, поэтому
           высоты почти нет: свободный объём только спереди, ~68 x 40 перед носителем. Сюда потом встаёт любой вариант без перепечатки корпуса.`,
-        touch: `4 модуля TTP223 под пластиной, над площадками пластина утонена до 1 мм. Для смены режима энкодеров задержка 60 мс не мешает.
-          Выходы: <code>J3-18 IO21</code>, <code>J3-13 IO35</code>, <code>J3-12 IO36</code>, <code>J3-11 IO37</code>. Питание 3V3.
-          Ёмкостные GPIO1-14 у S3 уже заняты энкодерами и ЦАП, поэтому модули, а не встроенный тач.`,
-        buttons: `8 тактовых кнопок 12x12 на макетке, колпачки 10x10, шаг 14. Прямо на пины, без матрицы, подтяжки внутренние:
-          <code>IO21 IO35 IO36 IO37</code> верхний ряд, <code>IO39 IO40 IO41 IO42</code> нижний (J3-18, 13, 12, 11, 9, 8, 7, 6).
+        touch: tInfo,
+        buttons: `8 тактовых кнопок 12x12 на макетке, колпачки 10x10, шаг 14. Прямо на пины, без матрицы, подтяжки внутренние: ${pins(INS_SIG.buttons)}.
           Например: SHIFT удваивает энкодеры, PLAY, TAP, страница; снизу мьюты групп ударки.`,
-        matrix: `Матрица 4x4 с подсветкой SK6812 на каждой кнопке: коммутация модуляции. Строки - источники (LFO1, LFO2, огибающая, случай),
-          столбцы - цели, свои у каждого движка: у 303 срез, резонанс, огибающая, перегруз; у Plaits частота, HARMONICS, TIMBRE, MORPH.
-          Нажал узел - связь есть, держишь и крутишь энкодер - глубина. Подписи строк и столбцов показывает панель.<br>
-          Строки <code>IO21 IO35 IO36 IO37</code>, столбцы <code>IO39 IO40 IO41 IO42</code> (диоды 1N4148 на каждую кнопку), подсветка <code>J3-17 IO47</code>, 5 В.
-          <b>Корпус выше на 5.5 мм:</b> кнопки стоят над платой.`,
+        matrix: mInfo,
+        combo: mInfo + '<br><br>' + tInfo + `<br><br>Свободными остаются IO39 и один из IO38/IO48 (тот, что не под RGB платы).`,
       };
       const ip = P(names[ins], infos[ins], [0, 0, 135], 'lid');
       const [u0, v1] = toUV(INS.X0 + .3, INS.Y0 + .3), [u1, v0] = toUV(INS.X1 - .3, INS.Y1 - .3);
       const capHoles = [];
-      const keyY = ins === 'matrix' ? [40, 54, 68, 82] : ins === 'buttons' ? [84, 99] : [];
+      const keyY = hasM ? [40, 54, 68, 82] : ins === 'buttons' ? [84, 99] : [];
       for (const y of keyY) for (const x of INS.CX) capHoles.push(rrect(...(([a, b]) => [a - 5.8, b - 5.8, a + 5.8, b + 5.8])(toUV(x, y)), 1.5, 3));
       extrude(ip.g(MAT.lid), { o: p0, u: AX, v, w }, rrect(u0, v0, u1, v1, 2.7, 5), capHoles, T);
       for (const [x, y] of [[INS.X0 + 4, INS.Y0 + 4], [INS.X1 - 4, INS.Y0 + 4], [INS.X0 + 4, INS.Y1 - 4], [INS.X1 - 4, INS.Y1 - 4]])
         extrude(ip.g(MAT.screw), fr(x, y, T - .01), circ(0, 0, 2, 16), [], .4);
       const tex = (wmm, hmm, draw) => canvasTex(wmm, hmm, 16, draw);
       const decal = (x0, y0, wmm, hmm, t) => ip.decals.push({ tex: t, build: g => quad(g, LF(x0, y0, T + .01), AX, v, wmm, hmm) });
+      const pads = [];
       if (ins === 'blank') {
         decal(INS.X0 + 9, 62, 40, 9, logoTex());
-        decal(INS.X0 + 6, 46, 46, 6, tex(46, 6, (c, ww, hh) => { c.fillStyle = 'rgba(200,204,212,.5)'; c.font = '600 2.2px ui-monospace, monospace'; c.textAlign = 'center'; c.fillText('OUT · BSP · 5V  сзади   COM справа', ww / 2, 3.6); }));
+        decal(INS.X0 + 6, 46, 46, 6, tex(46, 6, (c, ww) => { c.fillStyle = 'rgba(200,204,212,.5)'; c.font = '600 2.2px ui-monospace, monospace'; c.textAlign = 'center'; c.fillText('OUT · BSP · 5V  сзади   COM справа', ww / 2, 3.6); }));
       }
-      if (ins === 'touch') {
-        const lbl = ['SYN1', 'SYN2', 'DRUM', 'FX'];
-        decal(INS.X0 + 1, 100, 56, 16, tex(56, 16, (c) => {
-          INS.CX.forEach((x, i) => {
-            const cx = x - INS.X0 - 1; c.strokeStyle = 'rgba(255,181,71,.85)'; c.lineWidth = .5; c.beginPath(); c.arc(cx, 6, 4.6, 0, 7); c.stroke();
-            c.fillStyle = 'rgba(255,181,71,.18)'; c.beginPath(); c.arc(cx, 6, 4.6, 0, 7); c.fill();
-            c.fillStyle = 'rgba(220,224,232,.8)'; c.font = '600 2.2px ui-monospace, monospace'; c.textAlign = 'center'; c.fillText(lbl[i], cx, 13.8);
-          });
-        }));
-        for (const x of INS.CX) {
-          extrude(ip.g(MAT.greenPcb), fr(x, 94, -1.6), rect2(0, 0, 11, 15), [], 1.6);
-          extrude(ip.g(MAT.chip), fr(x, 94 + 4, -2.6), rect2(0, 0, 3, 3), [], 1);
-        }
-      }
-      if (ins === 'buttons' || ins === 'matrix') {
-        const pcbY = ins === 'matrix' ? [33, 89] : [77, 106];
+      if (hasM || ins === 'buttons') {
+        const pcbY = hasM ? [33, 89] : [77, 106];
         const [pu0, pv1] = toUV(INS.X0 + 1, pcbY[0]), [pu1, pv0] = toUV(INS.X1 - 1, pcbY[1]);
         extrude(ip.g(MAT.perf), { o: LF(-T, Y + T, -5.1), u: AX, v, w }, rrect(pu0, pv0, pu1, pv1, .5, 2), [], 1.6);
         const lit = [[1, 0, 0, 1], [0, 1, 0, 0], [0, 0, 1, 0], [1, 0, 0, 0]];
         const hues = [[1, .55, .2], [.35, .75, 1], [.45, .95, .45], [.85, .5, 1]];
         keyY.forEach((y, r) => INS.CX.forEach((x, cI) => {
           extrude(ip.g(MAT.chip), fr(x, y, -3.5), rect2(0, 0, 6, 6), [], 3.5);
-          const on = ins === 'matrix' && lit[r][cI];
+          const on = hasM && lit[r][cI];
           const m = on ? (MAT['keyOn' + r] || (mat('keyOn' + r, '#' + hues[r].map(q => Math.round(q * 255).toString(16).padStart(2, '0')).join(''), { r: .3, e: hues[r].map(q => q * .9) }), MAT['keyOn' + r])) : MAT.keyCap;
           extrude(ip.g(m), fr(x, y, -.8), rrect(-5, -5, 5, 5, 1.4, 3), [], T + .8 + 2);
         }));
-        if (ins === 'buttons') {
+        if (hasM) {
+          // TCA8418 на обороте платы матрицы, перед носителем
+          extrude(ip.g(MAT.hubPcb), fr(143, 82, -5.1 - 1.6), rect2(0, 0, 13, 13), [], 1.6);
+          extrude(ip.g(MAT.chip), fr(143, 82, -5.1 - 1.6 - .9), rect2(0, 0, 4, 4), [], .89);
+          decal(INS.X0 + 1, 33, 56, 4, tex(56, 4, (c) => { c.fillStyle = 'rgba(200,204,212,.55)'; c.font = '600 2px ui-monospace, monospace'; c.textAlign = 'center'; c.fillText('MOD MATRIX · источники × цели', 28, 2.8); }));
+          INS_SIG.matrix.forEach(([col], i) => pads.push([LF(INS.X1 - 2, 79 + i * 2.2, -6.8), col]));
+        } else {
           const lbl = ['SHIFT', 'PLAY', 'TAP', 'PAGE', 'KICK', 'SN/CL', 'HATS', 'PERC'];
           decal(INS.X0 + 1, 78.5, 56, 4, tex(56, 4, (c) => { c.fillStyle = 'rgba(220,224,232,.7)'; c.font = '600 2px ui-monospace, monospace'; c.textAlign = 'center'; INS.CX.forEach((x, i) => c.fillText(lbl[i + 4], x - INS.X0 - 1, 2.8)); }));
           decal(INS.X0 + 1, 93.5, 56, 4, tex(56, 4, (c) => { c.fillStyle = 'rgba(220,224,232,.7)'; c.font = '600 2px ui-monospace, monospace'; c.textAlign = 'center'; INS.CX.forEach((x, i) => c.fillText(lbl[i], x - INS.X0 - 1, 2.8)); }));
-        } else {
-          decal(INS.X0 + 1, 33, 56, 4, tex(56, 4, (c) => { c.fillStyle = 'rgba(200,204,212,.55)'; c.font = '600 2px ui-monospace, monospace'; c.textAlign = 'center'; c.fillText('MOD MATRIX · источники × цели', 28, 2.8); }));
+          INS_SIG.buttons.forEach(([col], i) => pads.push([LF(INS.CX[i % 4] + (i < 4 ? 0 : 2), 77.5, -5.2), col]));
         }
       }
-      insPads = ins === 'blank' ? null : (ins === 'touch' ? INS.CX.map(x => LF(x, 94 - 7.5, -1.7))
-        : (ins === 'buttons' ? [...INS.CX.map(x => LF(x, 77.5, -5.2)), ...INS.CX.map(x => LF(x + 2, 77.5, -5.2))]
-          : [...[40, 54, 68, 82].map(y => LF(INS.X1 - 1.5, y, -5.2)), ...INS.CX.map(x => LF(x, 33.5, -5.2)), LF(INS.X1 - 1.5, 36, -5.2)]));
+      if (hasT) {
+        const ty = hasM ? INS.TY : 94, lbl = ['SYN1', 'SYN2', 'DRUM', 'FX'];
+        decal(INS.X0 + 1, ty + 6, 56, 16, tex(56, 16, (c) => {
+          INS.CX.forEach((x, i) => {
+            const cx = x - INS.X0 - 1; c.strokeStyle = 'rgba(255,181,71,.85)'; c.lineWidth = .5; c.beginPath(); c.arc(cx, 6, 4.2, 0, 7); c.stroke();
+            c.fillStyle = 'rgba(255,181,71,.18)'; c.beginPath(); c.arc(cx, 6, 4.2, 0, 7); c.fill();
+            c.fillStyle = 'rgba(220,224,232,.8)'; c.font = '600 2.2px ui-monospace, monospace'; c.textAlign = 'center'; c.fillText(lbl[i], cx, 13.4);
+          });
+        }));
+        INS.CX.forEach((x, i) => {
+          extrude(ip.g(MAT.greenPcb), fr(x, ty, -1.6), rect2(0, 0, 11, 15), [], 1.6);
+          extrude(ip.g(MAT.chip), fr(x, ty + 4, -2.6), rect2(0, 0, 3, 3), [], 1);
+          pads.push([LF(x, ty - 7, -1.7), INS_SIG.touch[i][0]]);
+        });
+      }
+      insPads = pads.length ? pads : null;
       labels.push({ t: names[ins].replace('Вставка: ', ''), p: LF((INS.X0 + INS.X1) / 2, INS.Y0 + 2, T + 4), part: ip, c2: 1 });
     }
     if (fc.enc) {
@@ -904,8 +916,8 @@ function buildScene(form, vk, ins = 'blank') {
       if (insPads) {
         // сигналы вставки: вдоль правой стенки назад, к пятакам J3 за носителем
         const cols = ['orange', 'violet', 'grey', 'brown', 'orange', 'violet', 'grey', 'brown', 'green'];
-        insPads.forEach((p, i) => {
-          const a = add(p, off), c = i < 8 ? INS.J3[i] : INS.LED, b = rp(c), lane = 1 + i * .25;
+        insPads.forEach(([p, c], i) => {
+          const a = add(p, off), b = rp(c), lane = 1 + i * .25;
           const xr = X - 1.8 - i * .25, zr = Math.min(a[2] - 1.5, 9);
           const pts = [a, add(a, [0, 0, -1.2]), [(a[0] + xr) / 2, a[1] - .5, zr], [xr - 1, a[1] - 1.5, zr], [xr, a[1] - 4, zr], [xr, (a[1] + carY0) / 2, lane + 1.5], [xr, carY0 - 2 - i * .2, lane + 1.5],
             [b[0], carY0 - 2 - i * .2, b[2] + 1], b];
@@ -953,7 +965,7 @@ function buildScene(form, vk, ins = 'blank') {
   if (fc.enc) {
     table.push(['Энкодеры HW-040', '⌀7.4 x 4', `центры ${ENC.X.map(x => outerX(x)).join(', ')} от левого края, ${f1(ENC.Y + T)} от задней грани, шаг 21.5`]);
     if (ins) table.push(['Вставка, проём', `${INS.X1 - INS.X0} x ${INS.Y1 - INS.Y0} R3`, `левый край ${outerX(INS.X0)}, от задней грани ${f1(INS.Y0 + T)}; полка 3 мм снизу, 4 винта M2`]);
-    if (ins === 'buttons' || ins === 'matrix') table.push(['Окна под колпачки', '10.6 x 10.6', `шаг ${INS.P}, центры x ${INS.CX.map(outerX).join(', ')}`]);
+    if (ins === 'buttons' || hasM) table.push(['Окна под колпачки', '10.6 x 10.6', `шаг ${INS.P}, центры x ${INS.CX.map(outerX).join(', ')}`]);
     table.push(['Ручки', '⌀15 x 13', `над крышкой ~${f1(1.7 + 13)} мм, вал EC11 ${ENC.SHAFT} мм`]);
   }
   if (fc.low) table.push(['Стек платы', `${f1(ZB1 + 3.26)}`, 'от дна до верха USB-C: плата впаяна в носитель на штырях, без гнёзд. С цанговыми панельками +4 мм к высоте корпуса']);
@@ -1136,7 +1148,7 @@ function loadScene(form, vk, ins = curIns) {
 }
 
 // ---------- состояние UI ----------
-let lidState = 0, lidAnim = 0, explode = 0, explodeAnim = 0, xray = false, showLbl = true, showDims = true, curForm = 'pult', curVk = 'dac', curIns = 'blank';
+let lidState = 0, lidAnim = 0, explode = 0, explodeAnim = 0, xray = false, showLbl = true, showDims = true, curForm = 'pult', curVk = 'dac', curIns = 'combo';
 let hover = 0, selected = 0, listHover = 0, lastRibbon = null;
 const cam = { yaw: .95, pitch: .6, dist: 260, target: [55, 36, 12] };
 let camGoal = null;
@@ -1431,7 +1443,7 @@ let screenDirty = true, screenUploaded = -1;
 
 // старт
 const [hf, hv, hi] = location.hash.slice(1).split('/');
-if (['blank', 'touch', 'buttons', 'matrix'].includes(hi)) curIns = hi;
+if (['blank', 'touch', 'buttons', 'matrix', 'combo'].includes(hi)) curIns = hi;
 curForm = hf in FORMS ? hf : 'plate'; curVk = hv in BOXV ? hv : 'dac';
 document.querySelector(`#segForm button[data-v="${curForm}"]`).classList.add('on');
 document.querySelector('#segLid button[data-v="0"]').classList.add('on');
