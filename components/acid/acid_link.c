@@ -56,6 +56,9 @@ int acid_link_midi(acid_link_t *l, acid_synth_t *s, const acid_midi_event_t *ev,
     }
     if (enc == 0) {
         acid_synth_midi(s, ev);
+        if (ev->d2 >= ACID_PAGES) {
+            return 0; // не страница: синт её проигнорировал, экран не дёргаем
+        }
         *out = (acid_link_ev_t){.page = (uint8_t)s->page, .enc = 0, .value = (uint8_t)s->page, .src = (uint8_t)src};
         return 1;
     }

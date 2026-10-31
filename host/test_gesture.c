@@ -126,8 +126,8 @@ TEST(test_press_moved_is_not_hold)
     pl_press_t p = {0};
     pl_press_step(&p, 1, 100, 100, 1000);
     pl_press_step(&p, 1, 120, 100, 1020); // мазок: сдвиг раньше, чем истекло удержание
-    CHECK(pl_press_step(&p, 1, 120, 100, 1400) == PL_PRESS_NONE);
-    CHECK(pl_press_step(&p, 0, 0, 0, 1500) == PL_PRESS_NONE);
+    CHECK(pl_press_step(&p, 1, 120, 100, 1400) == PL_PRESS_NONE); // мазок не захват
+    CHECK(pl_press_step(&p, 0, 0, 0, 1500) == PL_PRESS_END);
 }
 
 TEST(test_press_tap)
@@ -136,6 +136,21 @@ TEST(test_press_tap)
     pl_press_step(&p, 1, 100, 100, 1000);
     CHECK(pl_press_step(&p, 0, 0, 0, 1030) == PL_PRESS_TAP);
     int x, y;
+    pl_press_where(&p, &x, &y);
+    CHECK(x == 100 && y == 100);
+}
+
+TEST(test_press_smear_ends)
+{
+    // Палец поплыл на 20 px (пятно касания GT911): захвата нет, но отпускание - событие, с точкой конца.
+    pl_press_t p = {0};
+    pl_press_step(&p, 1, 100, 100, 1000);
+    pl_press_step(&p, 1, 120, 104, 1020);
+    CHECK(pl_press_step(&p, 1, 121, 104, 1100) == PL_PRESS_NONE);
+    CHECK(pl_press_step(&p, 0, 0, 0, 1150) == PL_PRESS_END);
+    int x, y;
+    pl_press_last(&p, &x, &y);
+    CHECK(x == 121 && y == 104);
     pl_press_where(&p, &x, &y);
     CHECK(x == 100 && y == 100);
 }
@@ -151,5 +166,6 @@ int main(void)
     RUN(test_press_hold);
     RUN(test_press_moved_is_not_hold);
     RUN(test_press_tap);
+    RUN(test_press_smear_ends);
     TEST_MAIN_END();
 }

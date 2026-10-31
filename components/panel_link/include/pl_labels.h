@@ -11,3 +11,5 @@ const char *pl_knob_label(int page, int enc, const uint8_t page_raw[16]);
 void pl_knob_range(int page, int enc, const uint8_t page_raw[16], int *lo, int *hi);
 // Слово для списков, сдвиг со знаком для транспозиций, иначе число. Возвращает buf или константу.
 const char *pl_value_text(int page, int enc, int v, const uint8_t page_raw[16], char buf[12]);
+// 1 - подписи страницы зависят от энкодера 2 (тип синта, модель перкуссии): при его смене перестроить круг.
+int pl_labels_depend(int page);

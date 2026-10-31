@@ -118,11 +118,21 @@ TEST(test_label_follows_model)
     CHECK(strcmp(pl_page_name(6), "SYNTH 1") == 0);
 }
 
+TEST(test_labels_depend)
+{
+    // Подписи зависят от энкодера 2 только у перкуссии и синтов: на MIX это MASTER, перестраивать круг не надо.
+    int want[10] = {0, 0, 0, 1, 1, 1, 1, 1, 0, 0};
+    for (int p = 0; p < 10; p++) {
+        CHECK(pl_labels_depend(p) == want[p]);
+    }
+}
+
 int main(void)
 {
     RUN(test_labels_cover_synth);
     RUN(test_ranges);
     RUN(test_value_text);
     RUN(test_label_follows_model);
+    RUN(test_labels_depend);
     TEST_MAIN_END();
 }

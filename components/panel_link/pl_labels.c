@@ -139,3 +139,8 @@ const char *pl_value_text(int page, int enc, int v, const uint8_t page_raw[16], 
     snprintf(buf, 12, "%d", v);
     return buf;
 }
+
+int pl_labels_depend(int page)
+{
+    return page >= 3 && page <= 7;
+}

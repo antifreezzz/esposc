@@ -140,6 +140,8 @@ TEST(test_page_event)
     CHECK(bsp(1, 3) == 1);
     CHECK(ev.enc == 0 && ev.value == 3 && ev.src == ACID_SRC_BSP);
     CHECK(s.page == 3);
+    CHECK(bsp(1, 20) == 0); // не страница: синт игнорирует, панели сообщать нечего
+    CHECK(s.page == 3);
     CHECK(panel(0, 1, 5) == 0); // энкодер 1 с панели не трогаем
     CHECK(s.page == 3);
 }

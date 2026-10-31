@@ -46,7 +46,7 @@ static struct {
     knob_t knob[KNOBS];
     lv_obj_t *big, *big_val, *big_name, *bsp_mark;
     lv_obj_t *toast, *toast_name, *toast_val;
-    int drawn_mode, drawn_have, drawn_type, drawn_grab;
+    int drawn_type, drawn_grab;
 } u;
 
 static lv_obj_t *label(lv_obj_t *parent, const lv_font_t *font, uint32_t color)
@@ -170,7 +170,7 @@ static void build(void)
 
     u.screen = MENU;
     u.grab = -1;
-    u.drawn_mode = u.drawn_have = u.drawn_type = u.drawn_grab = -1;
+    u.drawn_type = u.drawn_grab = -1;
 }
 
 static void show(lv_obj_t *o, int on)
@@ -229,7 +229,6 @@ static void open_menu(void)
     u.screen = MENU;
     u.grab = -1;
     lv_label_set_text(u.bar_left, "ESPOSC");
-    u.drawn_mode = -1;
 }
 
 // Голубое кольцо на большой дуге: где стоит энкодер BSP.
@@ -246,7 +245,7 @@ static void place_mark(int pos, int lo, int hi)
 static void draw_page(const pl_model_t *m, uint32_t ms)
 {
     const uint8_t *raw = m->raw[u.page];
-    if (raw[1] != u.drawn_type) {
+    if (pl_labels_depend(u.page) && raw[1] != u.drawn_type) {
         page_labels(m);
     }
     char buf[12];
@@ -291,15 +290,13 @@ static void draw_page(const pl_model_t *m, uint32_t ms)
     (void)ms;
 }
 
-static void draw_status(const pl_model_t *m)
+static void draw_status(const pl_model_t *m, uint32_t ms)
 {
-    int mode = m->have ? m->mode : -1;
+    int linked = pl_model_linked(m, ms);
     if (u.screen == PAGE) {
-        text(u.bar_right, m->have ? "" : "NO LINK");
-    } else if (mode != u.drawn_mode || m->have != u.drawn_have) {
-        lv_label_set_text(u.bar_right, !m->have ? "NO LINK" : mode ? "LIVE" : "DEMO");
-        u.drawn_mode = mode;
-        u.drawn_have = m->have;
+        text(u.bar_right, linked ? "" : "NO LINK");
+    } else {
+        text(u.bar_right, !linked ? "NO LINK" : m->mode ? "LIVE" : "DEMO");
     }
 }
 
@@ -330,29 +327,39 @@ static int tile_at(int x, int y)
     return -1;
 }
 
+static void knob_input(pl_model_t *m, int ev, int down, int x, int y, int x0, int y0);
+
 static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
 {
-    if (m->goto_page >= 0 && u.grab < 0) {
-        open_page(m->goto_page); // листают на BSP: экран за ним (держишь ручку - после отпускания)
-        m->goto_page = -1;
-    }
     int ev = pl_press_step(&u.press, down, x, y, ms);
-    int x0, y0;
+    int x0, y0, x1, y1;
     pl_press_where(&u.press, &x0, &y0);
-    // Удержание всего 50 мс: обычный тап длиннее и приходит как захват и отпускание. Вне круга это тап.
-    int tap = ev == PL_PRESS_TAP || (ev == PL_PRESS_RELEASE && u.grab < 0);
+    pl_press_last(&u.press, &x1, &y1);
+    // Тап вне круга: любое отпускание без захвата ручки. Удержание всего 50 мс, обычный тап приходит как захват
+    // и отпускание; палец, поплывший на пару мм (END), тоже тап, если начался и кончился на той же плитке.
+    int tap = ev == PL_PRESS_TAP || ev == PL_PRESS_END || (ev == PL_PRESS_RELEASE && u.grab < 0);
     if (u.screen == MENU) {
-        if (tap && tile_at(x0, y0) >= 0) {
-            open_page(tile_at(x0, y0));
+        int t = tile_at(x0, y0);
+        if (tap && t >= 0 && t == tile_at(x1, y1)) {
+            open_page(t);
             link_page(u.page); // энкодеры BSP крутят открытую страницу
+            pl_model_page_sent(m, ms);
         }
-        return;
-    }
-    if (tap && y0 < TOP_H) {
+    } else if (tap && y0 < TOP_H) {
         u.screen = MENU;
         u.grab = -1;
-        return;
+    } else {
+        knob_input(m, ev, down, x, y, x0, y0);
     }
+    // Листают на BSP - экран за ним, но не под пальцем: иначе тап разобрался бы уже на новой странице.
+    if (m->goto_page >= 0 && !down && u.grab < 0) {
+        open_page(m->goto_page);
+        m->goto_page = -1;
+    }
+}
+
+static void knob_input(pl_model_t *m, int ev, int down, int x, int y, int x0, int y0)
+{
     if (ev == PL_PRESS_HOLD && y0 >= TOP_H) {
         int i = pl_sector(x0, y0);
         if (i >= 0 && u.knob[i].label && m->have) {
@@ -389,6 +396,10 @@ void ui_step(pl_model_t *m, int down, int x, int y, uint32_t ms)
     // Жест и отправка в синт - каждый шаг, экран - когда LVGL свободен (палец не ждёт отрисовку).
     int was = u.screen, was_page = u.page;
     input(m, down, x, y, ms);
+    if (u.screen == PAGE && pl_model_page_resend(m, u.page, ms)) {
+        link_page(u.page); // кадр страницы потерялся: синт на другой, а BSP не листал
+        pl_model_page_sent(m, ms);
+    }
     u.dirty |= u.screen != was || (u.screen == PAGE && u.page != was_page);
     if (!lvgl_port_lock(1)) {
         return;
@@ -406,7 +417,7 @@ void ui_step(pl_model_t *m, int down, int x, int y, uint32_t ms)
     if (u.screen == PAGE) {
         draw_page(m, ms);
     }
-    draw_status(m);
+    draw_status(m, ms);
     draw_toast(m, ms);
     lvgl_port_unlock();
 }

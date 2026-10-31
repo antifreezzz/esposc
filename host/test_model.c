@@ -99,6 +99,47 @@ TEST(test_follow_bsp_page)
     CHECK(m.goto_page == 3);
 }
 
+static void live_snapshot(int bsp_page, uint32_t ms)
+{
+    static pl_snapshot_t s;
+    memset(&s, 0, sizeof s);
+    s.mode = 1;
+    s.bsp_page = (uint8_t)bsp_page;
+    pl_model_apply(&m, PL_SNAPSHOT, (const uint8_t *)&s, sizeof s, ms);
+}
+
+TEST(test_page_resend)
+{
+    pl_model_init(&m);
+    CHECK(!pl_model_page_resend(&m, 6, 0)); // нет связи
+    live_snapshot(5, 0);
+    CHECK(pl_model_page_resend(&m, 5, 100) == 0); // синт уже там
+    CHECK(pl_model_page_resend(&m, 6, 100) == 1); // экран на 6, синт на 5
+    pl_model_page_sent(&m, 100);
+    CHECK(pl_model_page_resend(&m, 6, 200) == 0); // ответ ещё в пути
+    CHECK(pl_model_page_resend(&m, 6, 450) == 1); // кадр потерялся - ещё раз
+    knob(0, 0, 3, 0, 0xFF, 0, 460);               // BSP листает: экран идёт за ним, не перебиваем
+    CHECK(pl_model_page_resend(&m, 6, 900) == 0);
+    m.goto_page = -1;
+    static pl_snapshot_t s;
+    memset(&s, 0, sizeof s);
+    s.bsp_page = 2; // демо
+    pl_model_apply(&m, PL_SNAPSHOT, (const uint8_t *)&s, sizeof s, 1000);
+    CHECK(pl_model_page_resend(&m, 6, 2000) == 0); // в демо страницу экрана синт не берёт
+}
+
+TEST(test_link_lost)
+{
+    pl_model_init(&m);
+    CHECK(!pl_model_linked(&m, 0));
+    live_snapshot(6, 1000);
+    CHECK(pl_model_linked(&m, 5000));
+    CHECK(!pl_model_linked(&m, 8000)); // 7 с тишины при HELLO раз в 2 с - синта нет
+    CHECK(m.raw[6][0] == 0 && m.have); // значения не стираем
+    live_snapshot(6, 9000);
+    CHECK(pl_model_linked(&m, 9000));
+}
+
 int main(void)
 {
     RUN(test_model_snapshot_replaces_all);
@@ -108,5 +149,7 @@ int main(void)
     RUN(test_need_hello);
     RUN(test_local_set);
     RUN(test_follow_bsp_page);
+    RUN(test_page_resend);
+    RUN(test_link_lost);
     TEST_MAIN_END();
 }

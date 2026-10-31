@@ -9,6 +9,8 @@
 #define PL_TOAST_MS 1500 // всплывашка от BSP
 #define PL_QUIET_MS 2000 // тишина дольше - просим снимок заново
 #define PL_HELLO_MS 500  // не чаще: ответ может быть в пути
+#define PL_PAGE_MS 300   // повтор страницы экрана, если синт её не взял
+#define PL_LOST_MS 6000  // тишина дольше при HELLO раз в 2 с - связи нет
 
 typedef struct {
     int have; // снимок пришёл
@@ -18,6 +20,8 @@ typedef struct {
     int hello_sent;
     int toast_page, toast_enc;
     uint32_t toast_until_ms;
+    uint32_t page_sent_ms;
+    int page_sent;
     int goto_page; // BSP сменил страницу: экрану открыть её (-1 нет), интерфейс сбрасывает сам
 } pl_model_t;
 
@@ -27,4 +31,9 @@ void pl_model_apply(pl_model_t *m, uint8_t type, const uint8_t *payload, size_t 
 int pl_model_need_hello(const pl_model_t *m, uint32_t ms);
 void pl_model_hello_sent(pl_model_t *m, uint32_t ms);
 // Своя правка: показать сразу, не дожидаясь эха; синт пометит её «ждёт BSP».
+// Связь жива: снимок был и синт отвечал недавно (значения при обрыве не стираются, только индикатор).
+int pl_model_linked(const pl_model_t *m, uint32_t ms);
+// Экран на странице screen_page, а синт (live) на другой и BSP не листал: пора повторить PL_PAGE.
+int pl_model_page_resend(const pl_model_t *m, int screen_page, uint32_t ms);
+void pl_model_page_sent(pl_model_t *m, uint32_t ms);
 void pl_model_local_set(pl_model_t *m, int page, int enc, int v);

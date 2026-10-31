@@ -82,3 +82,20 @@ void pl_model_local_set(pl_model_t *m, int page, int enc, int v)
         m->held[page][enc] = 1;
     }
 }
+
+int pl_model_linked(const pl_model_t *m, uint32_t ms)
+{
+    return m->have && ms - m->last_rx_ms <= PL_LOST_MS;
+}
+
+int pl_model_page_resend(const pl_model_t *m, int screen_page, uint32_t ms)
+{
+    return m->have && m->mode == 1 && m->goto_page < 0 && m->bsp_page != screen_page &&
+           (!m->page_sent || ms - m->page_sent_ms >= PL_PAGE_MS);
+}
+
+void pl_model_page_sent(pl_model_t *m, uint32_t ms)
+{
+    m->page_sent = 1;
+    m->page_sent_ms = ms;
+}

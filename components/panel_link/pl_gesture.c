@@ -77,8 +77,10 @@ int pl_press_step(pl_press_t *p, int down, int x, int y, uint32_t ms)
     if (!down) {
         int was = p->state;
         p->state = IDLE;
-        return was == PRESSED ? PL_PRESS_TAP : was == HELD ? PL_PRESS_RELEASE : PL_PRESS_NONE;
+        return was == PRESSED ? PL_PRESS_TAP : was == HELD ? PL_PRESS_RELEASE : was == SMEAR ? PL_PRESS_END : PL_PRESS_NONE;
     }
+    p->x1 = x;
+    p->y1 = y;
     if (p->state == IDLE) {
         p->state = PRESSED;
         p->x0 = x;
@@ -101,4 +103,10 @@ void pl_press_where(const pl_press_t *p, int *x, int *y)
 {
     *x = p->x0;
     *y = p->y0;
+}
+
+void pl_press_last(const pl_press_t *p, int *x, int *y)
+{
+    *x = p->x1;
+    *y = p->y1;
 }

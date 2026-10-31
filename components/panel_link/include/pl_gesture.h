@@ -22,16 +22,19 @@ typedef struct {
 void pl_turn_begin(pl_turn_t *t, int x, int y, int v, int lo, int hi);
 int pl_turn_move(pl_turn_t *t, int x, int y); // новое значение
 
-enum { PL_PRESS_NONE, PL_PRESS_TAP, PL_PRESS_HOLD, PL_PRESS_RELEASE };
+enum { PL_PRESS_NONE, PL_PRESS_TAP, PL_PRESS_HOLD, PL_PRESS_RELEASE, PL_PRESS_END };
 
 typedef struct {
     int state; // 0 нет касания, 1 нажато, 2 мазок, 3 захват
     int x0, y0;
+    int x1, y1; // последняя точка пальца
     uint32_t t0;
 } pl_press_t; // начальное состояние - нули
 
 // Каждый опрос тача: down 1 - палец на экране. TAP - отпущен быстро и без сдвига, HOLD - захват (один раз),
-// RELEASE - отпущен после захвата.
+// RELEASE - отпущен после захвата, END - отпущен после мазка (палец поплыл до захвата: для плиток это тоже тап).
 int pl_press_step(pl_press_t *p, int down, int x, int y, uint32_t ms);
 // Где начиналось касание.
 void pl_press_where(const pl_press_t *p, int *x, int *y);
+// Где палец был последним перед отпусканием.
+void pl_press_last(const pl_press_t *p, int *x, int *y);
