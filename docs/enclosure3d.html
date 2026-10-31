@@ -348,6 +348,7 @@ function buildScene(form, vk, ins = 'blank') {
   const bossR = fc.bossR || 3.75;
   const bosses = fc.bosses ? fc.bosses : form === 'cube' ? [[4, 4], [X - 4, 4], [4, Y - 4], [X - 4, 27]] : [[4, 4], [X - 4, 4], [4, Y - 4], [X - 4, Y - 4]];
   const parts = [], labels = [], dimL = [], table = [];
+  const H1_NEED = 2; // мм под гнездом H1: отогнутые хвосты с проводом
   const P = (name, info, ex = [0, 0, 0], group = 'body') => {
     const p = { name, info, ex, group, geos: new Map(), decals: [], id: parts.length + 1 };
     p.g = m => { if (!p.geos.has(m)) p.geos.set(m, new Geo()); return p.geos.get(m); };
@@ -371,7 +372,8 @@ function buildScene(form, vk, ins = 'blank') {
   // ===== дно, ножки, стойки =====
   const floor = P('Дно', shellInfo, [0, 0, -40]);
   const floorPoly = SL ? rrect(-T, -T, X + T, Y + T, 1.2, 3) : form === 'cube' ? rrectRear(-T, -T, X + T, Y, RC) : rrect(-T, -T, X + T, Y + T, RC, 8);
-  extrude(floor.g(MAT.shell), FZ(-T), floorPoly, [], T);
+  // дно строится в конце: под гнездом на H1 в плите может понадобиться карман
+  let floorPocket = null;
   const feet = P('Ножки', 'Резиновые ножки ⌀10 x 2, клеятся в углубления дна.', [0, 0, -46]);
   const fy1 = form === 'cube' ? Y - 6 : Y - 8;
   for (const [x, y] of [[8, 8], [X - 8, 8], [8, fy1], [X - 8, fy1]]) cylZ(feet.g(MAT.rubber), x, y, -T - 2, -T, 5, 32);
@@ -454,7 +456,7 @@ function buildScene(form, vk, ins = 'blank') {
   const brd = P('ESP32-S3-DevKitC-1 N8R2', `Плата ${L} x ${W}, стоит в гребёнках носителя.<br>
     <b>USB (OTG)</b> упирается в глухую правую стенку: в него физически нечего воткнуть. D+/D- для ${vk === 'dac' ? 'BSP' : 'хаба'} взяты с пинов
     <code>J3-19 IO20</code> и <code>J3-20 IO19</code> через носитель.<br><b>COM</b> выходит в правую стенку ступенчатым вырезом: прошивка и лог.
-    ${panelOn ? '<br>Панель Guition: UART1, <code>TX J1-10 IO17</code>, <code>RX J1-11 IO18</code>. RST и RGB наружу не выведены: состояние показывает панель, сброс по COM.'
+    ${panelOn ? '<br>Панель Guition: UART1, <code>TX J1-10 IO17</code> → H1 RXD IO40, <code>RX J1-11 IO18</code> ← H1 TXD IO2. RST и RGB наружу не выведены: состояние показывает панель, сброс по COM.'
       : '<br>RGB на IO48 (клоны, v1.0) или IO38 (v1.1), выведен световодом на крышку. RST - толкателем через крышку, BOOT не нужен (CH343 сам вводит в загрузку).'}`, [0, 0, 34], 'in');
   box(brd.g(MAT.pcbBlack), bx, by, ZB0, bx + L, by + W, ZB1);
   for (let i = 1; i <= 22; i++) for (const yr of [yJ3, yJ1]) cylZ(brd.g(MAT.steel), pinX(i), yr, ZB1, ZB1 + .55, .55, 10);
@@ -632,11 +634,13 @@ function buildScene(form, vk, ins = 'blank') {
 
   // ===== крышка, экран, панель =====
   const screen = document.createElement('canvas');
-  let hdrPin = null, p1Pin = null, p1Dir = null, cableOnLid = false, encPads = null, insPads = null;
+  let hdrPin = null, h1Pin = null, h1Tip = 0, cableOnLid = false, encPads = null, insPads = null;
   const panelInfo = `<b>Guition ESP32-S3-4848S040</b>, 4" 480x480 ST7701 по RGB, тач GT911, N16R8. Блок 220 В снят.
-    Глубина корпуса ${GP.PD} мм, с гребёнкой H1 ${GP.H1} мм (замер).${fc.rot180 ? ' Стоит повёрнутой на 180°, чтобы P1 смотрел на плату; картинку разворачиваем в прошивке.' : ''}<br>
-    Связь с синтом по <b>P1</b> (4 пина: <code>GND RX TX +5V</code>): <code>RX</code> ← J1-10 IO17, <code>TX</code> → J1-11 IO18, питание с шины 5 В.
-    Последовательно по 1к на обе линии сигнала. P1, скорее всего, делит UART0 с CH340C: проверь, нет ли прямого соединения с выводом 2 CH340C.
+    Глубина корпуса ${GP.PD} мм, с гребёнкой H1 ${GP.H1} мм (замер).${fc.rot180 ? ' Стоит повёрнутой на 180°, чтобы H1 смотрел на плату; картинку разворачиваем в прошивке.' : ''}<br>
+    Связь с синтом по <b>левому столбцу H1</b> (<code>GND RXD TXD 5V</code>, бывшие линии реле): <code>RXD</code> = IO40 ← J1-10 IO17,
+    <code>TXD</code> = IO2 → J1-11 IO18, UART1 панели, питание с шины 5 В. Последовательно по 1к на обе линии сигнала.<br>
+    P1 и правый столбец H1 не трогать: это UART0 (IO43/IO44), RX там держит выход CH340C (проверено пинискателем).<br>
+    На H1 садится гнездо 1x4 высотой 8.5 мм, провода припаяны к его хвостам и отогнуты вбок: прямой Dupont под панелью не помещается.
     ${SL ? '<br>USB-C панели спрятан под крышкой: прошивка по воздуху или снять 4 винта.' : '<br>USB-C панели на её правом боку, доступен снаружи.'}`;
   // модель панели в кадре F: o - левый нижний угол лицевой плоскости, u вправо, v вверх, w наружу
   const buildPanel = (part, Fs, rot) => {
@@ -657,8 +661,12 @@ function buildScene(form, vk, ins = 'blank') {
     extrude(part.g(MAT.steel), { o: add(F.o, scl(F.u, 78.7)), u: F.v, v: F.w, w: F.u }, stad(43, -10.6, 8.94, 3.26), [stad(43, -10.6, 8.1, 2.5)], 7.35);
     const scr = add(add(Fs.o, scl(Fs.u, (S0 - GP.ACT) / 2)), add(scl(Fs.v, (S0 - GP.ACT) / 2 + 1), scl(Fs.w, .02)));
     part.decals.push({ tex: screen, unlit: true, dynamic: 'screen', build: g => quad(g, scr, Fs.u, Fs.v, GP.ACT, GP.ACT) });
-    p1Pin = k => add(add(F.o, scl(F.w, -10.7)), add(scl(F.u, 6.5), scl(F.v, 51.9 + k * 1.25)));
-    p1Dir = scl(F.u, -1);
+    // ответное гнездо 1x4 на левый столбец H1: пины торчат на 5.4 мм, гнездо 8.5 сидит на 2.5 мм пластика гребёнки
+    const H1U = 19 - 1.27, H1W = -(9.6 + 2.5 + 8.5);
+    extrude(part.g(MAT.header), Fw(H1W), rect2(H1U, 27, 2.5, 10.2), [], 8.5);
+    // H1 сверху вниз: GND, RXD, TXD, 5V -> k = 0..3; провод выходит из хвоста гнезда
+    h1Pin = k => add(add(F.o, scl(F.w, H1W - .6)), add(scl(F.u, H1U), scl(F.v, 27 + (1.5 - k) * 2.54)));
+    h1Tip = H1W;
   };
 
   if (form === 'box') {
@@ -718,6 +726,13 @@ function buildScene(form, vk, ins = 'blank') {
     const pan = P('Панель Guition 4848S040', panelInfo, [0, 0, 150], 'lid');
     buildPanel(pan, { o: add(p0, add(scl(AX, pU), add(scl(v, pV), scl(w, T + .6)))), u: AX, v, w }, fc.rot180);
     cableOnLid = true;
+    if (fc.low) {
+      // низ гнезда на H1 над дном; если места под хвосты мало, карман в дне под гнездом и выходом проводов
+      const pts = [0, 1, 2, 3].map(h1Pin), gap = Math.min(...pts.map(q => q[2])) + .6;
+      const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
+      const d = gap >= H1_NEED ? 0 : 1.5;
+      floorPocket = [Math.min(...xs) - 2.5, Math.min(...ys) - 2.5, Math.max(...xs) + 9, Math.max(...ys) + 2.5, d, gap];
+    }
     function buildInsert() {
       const names = { blank: 'Вставка: глухая', touch: 'Вставка: тач-кнопки TTP223', buttons: 'Вставка: кнопки 2x4', matrix: 'Вставка: матрица 4x4', combo: 'Вставка: матрица 4x4 + тач' };
       const pins = sig => sig.map(([c, t]) => `<code>${t} J3-${c} IO${J3[c - 1]}</code>`).join(' ');
@@ -862,23 +877,23 @@ function buildScene(form, vk, ins = 'blank') {
     const a = [x, 12.4, ZC1 + .3], b = rp(c), z = wz(8.5 + j * .9);
     route(WIRE[col], [a, [x, 14, z], [(x + b[0]) / 2, (14 + b[1]) / 2 - 1, z + 1.5], [b[0], b[1] - 2, z], b]);
   });
-  // шлейф: экран 1.9" или кабель UART на P1 панели; пересобирается за крышкой
+  // шлейф: экран 1.9" или кабель UART на H1 панели; пересобирается за крышкой
   const ribbon = P(panelOn ? 'Кабель UART к панели' : 'Шлейф экрана', panelOn
-    ? `4 жилы в разъём P1 панели (шаг 1.25, оценка). <code>TX</code> носителя → <code>RX</code> P1, <code>RX</code> ← <code>TX</code> P1, 5V, G. Длина с запасом на открытую крышку.`
+    ? `4 жилы на левый столбец H1 панели через гнездо 1x4. <code>TX</code> носителя (IO17) → <code>RXD</code> H1 (IO40), <code>RX</code> (IO18) ← <code>TXD</code> H1 (IO2), 5V, G. Длина с запасом на открытую крышку.`
     : `8 жил, 15 см с запасом на открытую крышку. С носителя <code>DISP</code> на угловую гребёнку модуля.`, [0, 0, 0], 'ribbon');
   ribbon.onLid = panelOn ? cableOnLid : true;
   if (fc.enc) ribbon.name = 'Кабели панели, энкодеров и вставки';
   if (panelOn) {
-    // P1 сверху вниз: GND, RX, TX, +5V -> k = 3, 2, 1, 0
-    const CAB = fc.enc ? [[22, 3, 'black'], [10, 2, 'yellow'], [11, 1, 'green'], [21, 0, 'red']] : [[13, 3, 'black'], [10, 2, 'yellow'], [11, 1, 'green'], [12, 0, 'red']];
+    // H1 левый столбец: GND, RXD, TXD, 5V -> k = 0..3
+    const CAB = fc.enc ? [[22, 0, 'black'], [10, 1, 'yellow'], [11, 2, 'green'], [21, 3, 'red']] : [[13, 0, 'black'], [10, 1, 'yellow'], [11, 2, 'green'], [12, 3, 'red']];
     ribbon.rebuild = off => {
       ribbon.geos = new Map();
       CAB.forEach(([c, k, col], j) => {
-        const a = fp(c), b = add(p1Pin(k), ribbon.onLid ? off : [0, 0, 0]);
-        // P1 принимает кабель сбоку, со стороны ближнего края панели
-        const back = add(b, scl(p1Dir, 8));
+        const a = fp(c), b = add(h1Pin(k), ribbon.onLid ? off : [0, 0, 0]);
+        // хвост гнезда отогнут к носителю: провод уходит вбок, а не вниз
+        const back = add(b, [6 + j * .4, 0, -.4]);
         if (fc.low) {
-          // плита: под рамку панели в зазор у дна, потом вверх к P1
+          // плита: по дну к гнезду на H1
           const gap = [back[0] + 3, back[1], 1.4 + j * .1];
           tube(ribbon.g(WIRE[col]), catmull([a, [a[0], a[1] + 1.5, a[2] + 1.2], [a[0] - 6, a[1] + 3 + j * .5, a[2] + .6], [gap[0] + 6, (a[1] + b[1]) / 2 + 4, 1.6], gap, back, b], 10), .45, 7);
         } else {
@@ -951,6 +966,11 @@ function buildScene(form, vk, ins = 'blank') {
   if (form === 'cube') dimLine([-T, -T, outH - T], [-T, Y, outH - T], [-12, 0, 8], `корпус ${f1(T + Y)}`);
   // таблица
   const outerX = x => f1(x + T), outerZ = z => f1(z + T);
+  if (floorPocket && floorPocket[4]) {
+    const [x0, y0, x1, y1, d] = floorPocket;
+    extrude(floor.g(MAT.shell), FZ(-T), floorPoly, [rect2((x0 + x1) / 2, (y0 + y1) / 2, x1 - x0, y1 - y0)], T);
+    extrude(floor.g(MAT.shell), FZ(-T), rect2((x0 + x1) / 2, (y0 + y1) / 2, x1 - x0, y1 - y0), [], T - d);
+  } else extrude(floor.g(MAT.shell), FZ(-T), floorPoly, [], T);
   table.push(['Габарит', `${f1(outW)} x ${f1(outD)} x ${f1(outH)}`, 'Ш x Г x В, без ножек 2']);
   table.push(['Стенка, дно, крышка', `${T}`, 'PETG']);
   if (SL && fc.slope) {
@@ -960,6 +980,13 @@ function buildScene(form, vk, ins = 'blank') {
   if (panelOn) {
     table.push([SL ? 'Окно под панель' : 'Панель на рамке', SL ? `${GP.S + .4} x ${GP.S + .4} R${GP.R}` : `${GP.S} x ${GP.S}`, `панель 86 x 86, глубина ${GP.PD}, с H1 ${GP.H1}`]);
     table.push(['Экран', `${GP.ACT} x ${GP.ACT}`, '4", 480x480']);
+    if (floorPocket) {
+      const [x0, y0, x1, y1, d, gap] = floorPocket;
+      table.push(['Гнездо на H1', `${f1(gap)} над дном`, !d ? 'хвосты с проводами отогнуты вбок, влезает без кармана'
+        : gap + d >= H1_NEED - .05
+        ? `впритык: карман в дне ${f1(x1 - x0)} x ${f1(y1 - y0)} глубиной ${d}, от левого края ${f1(outerX(x0))}, от задней грани ${f1(y0 + T)}; дно под ним ${T - d}`
+        : `не влезает даже с карманом ${d}: нужен корпус с матрицей (23) или выше`]);
+    }
   }
   table.push(['Внутри', `${X} x ${Y} x ${f1(SL ? zIn(Y) : fc.H)}${SL && fc.slope ? '…' + f1(zIn(-T)) : ''}`, 'Ш x Г x В']);
   if (fc.enc) {
