@@ -4,7 +4,7 @@
 по USB-MIDI, звук в USB-аудиосвисток. Без BSP играет встроенный демо-трек: на слух проверяет, что всё работает.
 
 Наглядная инструкция по ручкам: [docs/controls.html](docs/controls.html) (открыть в браузере).
-Корпус, компоновка внутри и распиновка под экран: [docs/enclosure.html](docs/enclosure.html), в 3D (крутить мышью; коробка с экраном 1.9", пульт и куб с панелью Guition 4848S040; все размеры): [docs/enclosure3d.html](docs/enclosure3d.html).
+Корпус, компоновка внутри и распиновка под экран: [docs/enclosure.html](docs/enclosure.html), в 3D (крутить мышью; плита и клин 6° под BSP, пульт и куб с панелью Guition 4848S040, коробка с экраном 1.9"; все размеры): [docs/enclosure3d.html](docs/enclosure3d.html).
 
 ## Железо
 
