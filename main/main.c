@@ -2,6 +2,7 @@
 
 #include "acid.h"
 #include "acid_demo.h"
+#include "acid_link.h"
 #include "acid_prof.h"
 #include "audio_out.h"
 #include "esp_heap_caps.h"
@@ -10,6 +11,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "midi_in.h"
+#include "panel_uart.h"
 #include "samples_part.h"
 #include "store.h"
 #include "usb_host_task.h"
@@ -28,7 +30,8 @@ static const char *TAG = "main";
 
 static acid_synth_t s_synth;
 static acid_demo_t s_demo;
-static int s_demo_on; // играет демо: события от него, MIDI от BSP не слушаем
+static volatile int s_demo_on; // играет демо: события от него, MIDI от BSP не слушаем
+static acid_link_t s_link;      // панель: подхват BSP, глушение ручек демо
 static const acid_bank_t *s_bank; // тарелки из флэша, NULL - молчат
 
 // Ядро 0 на каждый кусок c: тарелки и перкуссия куска c (ядро 1 тем временем считает синт 1 и ударку c),
@@ -76,16 +79,29 @@ static void render_block(float *l, float *r)
     static acid_synth_src_t src;
     for (int off = 0; off < BLOCK; off += CHUNK) {
         acid_midi_event_t ev;
+        acid_link_ev_t lev;
         while (midi_in_receive(&ev)) {
-            if (!s_demo_on) {
-                acid_synth_midi(&s_synth, &ev);
+            if (!s_demo_on && acid_link_midi(&s_link, &s_synth, &ev, ACID_SRC_BSP, &lev)) {
+                panel_uart_send_knob(&lev);
             }
         }
         if (s_demo_on) {
             int n = acid_demo_events(&s_demo, demo_ev, DEMO_EVENTS);
             for (int i = 0; i < n; i++) {
-                acid_synth_midi(&s_synth, &demo_ev[i]);
+                if (acid_link_midi(&s_link, &s_synth, &demo_ev[i], ACID_SRC_DEMO, &lev)) {
+                    panel_uart_send_knob(&lev);
+                }
             }
+        }
+        pl_set_t set;
+        while (panel_uart_receive(&set)) {
+            if (acid_link_panel_set(&s_link, &s_synth, set.page, set.enc, set.value, &lev)) {
+                panel_uart_send_knob(&lev);
+            }
+        }
+        if (s_link.snapshot_due) {
+            s_link.snapshot_due = 0; // сменился тип синта: у типа своя память, страница новая целиком
+            panel_uart_snapshot_due();
         }
         int ready = s_slot1_next;
         s_slot1_next ^= 1;
@@ -131,6 +147,8 @@ static void enter_mode(int live, const uint8_t *blob, int blob_ok)
         acid_demo_init(&s_demo, &DEMO_SONG);
         s_demo_on = 1;
     }
+    acid_link_init(&s_link);
+    panel_uart_snapshot_due(); // синт с нуля: панели всё заново
 }
 
 static void synth_task(void *arg)
@@ -257,5 +275,6 @@ void app_main(void)
     usb_host_start();
     ESP_ERROR_CHECK(midi_in_start());
     ESP_ERROR_CHECK(audio_out_start());
+    ESP_ERROR_CHECK(panel_uart_start(&s_synth, &s_link, &s_demo_on));
     xTaskCreatePinnedToCore(synth_task, "synth", 4096, NULL, 6, &s_synth_task, 1);
 }
