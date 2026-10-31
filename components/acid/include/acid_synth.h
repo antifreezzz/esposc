@@ -18,6 +18,7 @@
 
 #define ACID_TYPES (1 + ACID_PLAITS_MODELS) // 0 - наш 303, 1..24 - модели Plaits
 #define ACID_KNOBS 16
+#define ACID_PAGES 10
 
 // Синт-слот: тип синтеза, голоса 303 и Plaits, ручки по типам, стек нот.
 // Слот 0 - синт 1 (SEQ1), слот 1 - синт 2 (SEQ2).
@@ -112,6 +113,8 @@ typedef struct {
     acid_perc_t perc; // страницы 3-5: томы, рим, ковбелл
     int tight, calm;  // защита от перегруза: перкуссия и тарелки на одном голосе; спокойных блоков подряд
     float load_avg;   // сглаженная нагрузка блоков
+    // Зеркало для панели: сырые значения страниц 0-2 и 8 (у синтов, перкуссии и тональности - свои knob[]).
+    uint8_t raw[ACID_PAGES][ACID_KNOBS];
     int page; // 0 микс, 1 ударка, 2 ударка 2, 3 томы, 4 рим, 5 ковбелл, 6 синт 1, 7 синт 2, 8 эффекты, 9 тональность
 
     int save;          // сменили тип или ручку слоя тональности: память ручек пора записать
@@ -165,3 +168,7 @@ int acid_synth_import(acid_synth_t *s, const void *buf, size_t len);
 void acid_synth_notes_off(acid_synth_t *s);
 // Событие MIDI (от BSP или демо): синт 1 канал 5, синт 2 канал 6, барабаны канал 2, CC с любого.
 void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev);
+// Ручка любой страницы как CC энкодера на ней, страницу BSP не меняет. enc с 0 (0 - энкодер 1, страница; игнор).
+void acid_synth_set_knob(acid_synth_t *s, int page, int enc, int v);
+// Действующее значение ручки 0..127 (как на экране BSP); нетронутая - умолчание. Вне диапазона - 0.
+int acid_synth_knob(const acid_synth_t *s, int page, int enc);
