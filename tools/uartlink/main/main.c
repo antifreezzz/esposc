@@ -45,6 +45,18 @@ static void link_uart_init(void) {
     gpio_pullup_en(PIN_RX);
 }
 
+// Ждём первый байт до 20 мс, потом забираем то, что уже пришло. Чтение сразу на весь буфер
+// ждёт, пока он наполнится или выйдет таймаут, и добавляет эту паузу к задержке.
+static int read_some(uint8_t *buf, size_t size) {
+    int n = uart_read_bytes(PORT, buf, 1, pdMS_TO_TICKS(20));
+    if (n <= 0) return 0;
+    size_t avail = 0;
+    uart_get_buffered_data_len(PORT, &avail);
+    if (avail > size - 1) avail = size - 1;
+    if (avail) n += uart_read_bytes(PORT, buf + 1, avail, 0);
+    return n;
+}
+
 #if LINK_PANEL
 
 void app_main(void) {
@@ -54,7 +66,7 @@ void app_main(void) {
     uint32_t total = 0;
     int64_t t_report = esp_timer_get_time() + REPORT_US;
     for (;;) {
-        int n = uart_read_bytes(PORT, buf, sizeof buf, pdMS_TO_TICKS(20));
+        int n = read_some(buf, sizeof buf);
         if (n > 0) {
             uart_write_bytes(PORT, buf, n);
             total += n;
@@ -79,7 +91,7 @@ static void rx_task(void *arg) {
     int64_t rtt_sum = 0, rtt_max = 0;
     uint32_t rtt_n = 0;
     for (;;) {
-        int n = uart_read_bytes(PORT, buf, sizeof buf, pdMS_TO_TICKS(20));
+        int n = read_some(buf, sizeof buf);
         int64_t now = esp_timer_get_time();
         for (int i = 0; i < n; i++) {
             uint32_t ok = s_check.ok;
