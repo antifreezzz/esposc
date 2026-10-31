@@ -114,8 +114,8 @@ TEST(test_press_hold)
 {
     pl_press_t p = {0};
     CHECK(pl_press_step(&p, 1, 100, 100, 1000) == PL_PRESS_NONE);
-    CHECK(pl_press_step(&p, 1, 104, 103, 1200) == PL_PRESS_NONE);
-    CHECK(pl_press_step(&p, 1, 105, 103, 1300) == PL_PRESS_HOLD);
+    CHECK(pl_press_step(&p, 1, 104, 103, 1030) == PL_PRESS_NONE);
+    CHECK(pl_press_step(&p, 1, 105, 103, 1050) == PL_PRESS_HOLD); // 50 мс: мазок отсекает сдвиг, не время
     CHECK(pl_press_step(&p, 1, 200, 103, 1400) == PL_PRESS_NONE); // после захвата двигать можно
     CHECK(pl_press_step(&p, 0, 0, 0, 1500) == PL_PRESS_RELEASE);
     CHECK(pl_press_step(&p, 0, 0, 0, 1600) == PL_PRESS_NONE);
@@ -125,7 +125,7 @@ TEST(test_press_moved_is_not_hold)
 {
     pl_press_t p = {0};
     pl_press_step(&p, 1, 100, 100, 1000);
-    pl_press_step(&p, 1, 120, 100, 1100); // мазок
+    pl_press_step(&p, 1, 120, 100, 1020); // мазок: сдвиг раньше, чем истекло удержание
     CHECK(pl_press_step(&p, 1, 120, 100, 1400) == PL_PRESS_NONE);
     CHECK(pl_press_step(&p, 0, 0, 0, 1500) == PL_PRESS_NONE);
 }
@@ -134,7 +134,7 @@ TEST(test_press_tap)
 {
     pl_press_t p = {0};
     pl_press_step(&p, 1, 100, 100, 1000);
-    CHECK(pl_press_step(&p, 0, 0, 0, 1100) == PL_PRESS_TAP);
+    CHECK(pl_press_step(&p, 0, 0, 0, 1030) == PL_PRESS_TAP);
     int x, y;
     pl_press_where(&p, &x, &y);
     CHECK(x == 100 && y == 100);

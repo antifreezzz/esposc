@@ -11,6 +11,7 @@
 #include "esp_lcd_st7701.h"
 #include "esp_lcd_touch_gt911.h"
 #include "esp_lvgl_port.h"
+#include "esp_timer.h"
 
 // Пины и тайминги Guition ESP32-4848S040 (проверены в minimaxdumbtest).
 #define LCD_W 480
@@ -26,10 +27,36 @@
 #define PIN_BL 38
 #define PIN_TP_SDA 19
 #define PIN_TP_SCL 45
+#define DRAW_LINES 48   // буфер отрисовки LVGL во внутренней памяти
 #define BOUNCE_LINES 10 // строки буфера во внутренней памяти: экран не рвётся при работе флэша
 
 static const char *TAG = "display";
 static esp_lcd_touch_handle_t s_touch;
+static int64_t s_refr_t0, s_refr_us, s_refr_max;
+static int s_frames;
+
+// Замер: сколько кадров LVGL перерисовал и сколько это стоило.
+static void refr_cb(lv_event_t *e)
+{
+    int64_t now = esp_timer_get_time();
+    if (lv_event_get_code(e) == LV_EVENT_REFR_START) {
+        s_refr_t0 = now;
+    } else {
+        int64_t dt = now - s_refr_t0;
+        s_refr_us += dt;
+        s_refr_max = dt > s_refr_max ? dt : s_refr_max;
+        s_frames++;
+    }
+}
+
+void display_stats(int *frames, int *mean_us, int *max_us)
+{
+    *frames = s_frames;
+    *mean_us = s_frames ? (int)(s_refr_us / s_frames) : 0;
+    *max_us = (int)s_refr_max;
+    s_frames = 0;
+    s_refr_us = s_refr_max = 0;
+}
 
 // Инициализация ST7701 дословно из reference-прошивки панели.
 static const st7701_lcd_init_cmd_t INIT[] = {
@@ -153,14 +180,20 @@ esp_err_t display_start(void)
     port.task_affinity = 1; // ядро 0 - связь и тач
     ESP_RETURN_ON_ERROR(lvgl_port_init(&port), TAG, "lvgl port");
     lvgl_port_display_cfg_t disp = {
-        .io_handle = io, .panel_handle = panel, .buffer_size = LCD_W * LCD_H, .double_buffer = 1,
+        // Рисуем кусками во внутренней памяти: программная отрисовка прямо в кадр в PSRAM стоила ~100 мс на экран.
+        .io_handle = io, .panel_handle = panel, .buffer_size = LCD_W * DRAW_LINES, .double_buffer = 1,
         .hres = LCD_W, .vres = LCD_H, .color_format = LV_COLOR_FORMAT_RGB565,
-        .flags = {.buff_spiram = 1, .direct_mode = 1},
+        .flags = {.buff_dma = 1},
     };
-    lvgl_port_display_rgb_cfg_t rgb_cfg = {.flags = {.bb_mode = 1, .avoid_tearing = 1}};
-    if (!lvgl_port_add_disp_rgb(&disp, &rgb_cfg)) {
+    lvgl_port_display_rgb_cfg_t rgb_cfg = {.flags = {.bb_mode = 1}};
+    lv_display_t *d = lvgl_port_add_disp_rgb(&disp, &rgb_cfg);
+    if (!d) {
         return ESP_FAIL;
     }
+    lvgl_port_lock(0);
+    lv_display_add_event_cb(d, refr_cb, LV_EVENT_REFR_START, NULL);
+    lv_display_add_event_cb(d, refr_cb, LV_EVENT_REFR_READY, NULL);
+    lvgl_port_unlock();
     ESP_RETURN_ON_ERROR(touch_start(), TAG, "touch");
     backlight(200);
     return ESP_OK;
