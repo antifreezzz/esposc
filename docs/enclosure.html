@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>esposc: корпус и распиновка</title>
+<style>
+  :root {
+    --bg: #15161a; --panel: #1f2127; --panel2: #262931; --line: #353945;
+    --text: #e6e6e6; --dim: #9096a3; --acc: #ffb547;
+    --pwr: #ff6f7d; --gnd: #6b7080; --usb: #6fc3ff; --uart: #5fd3e6; --strap: #ffb547;
+    --disp: #8be38b; --i2s: #c79bff; --free: #3a3f4b; --int: #e0679b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 1180px; margin: 0 auto; padding: 28px 20px 60px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 18px; margin: 36px 0 12px; color: var(--acc); }
+  h3 { font-size: 15px; margin: 18px 0 8px; }
+  p.lead, .dim { color: var(--dim); }
+  p.lead { margin: 0 0 20px; }
+  code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+  svg { width: 100%; height: auto; display: block; }
+  svg text { font-family: ui-monospace, "JetBrains Mono", monospace; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--dim); font-weight: 600; }
+  .sw { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--dim); margin: 8px 0 4px; }
+  .warn { border-left: 3px solid var(--pwr); padding: 8px 12px; background: #2a1f23; border-radius: 6px; margin: 10px 0; }
+  .note { border-left: 3px solid var(--acc); padding: 8px 12px; background: #2a261d; border-radius: 6px; margin: 10px 0; }
+  .params { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px 16px; }
+  .params label { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--dim); }
+  .params input { width: 70px; background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 4px; padding: 2px 6px; font: 13px ui-monospace, monospace; }
+  .params input.est { border-color: #7a5b25; }
+  .rec { color: var(--disp); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+<h1>esposc: корпус, внутренняя компоновка, пины</h1>
+<p class="lead">Чертёж в миллиметрах, всё рисуется из параметров внизу страницы. Размеры платы взяты из чертежа
+Espressif (62.74 x 25.40), размеры хаба и свистка - оценка (поля с жёлтой рамкой): сними штангенциркулем, впиши,
+чертёж перестроится.</p>
+
+<div class="warn"><b>Главное правило корпуса.</b> Разъём <b>USB</b> (OTG) платы наружу не выходит вообще: он
+внутри, коротким угловым кабелем в хаб. Наружу выведен только <b>COM</b>. Так «никогда не втыкать USB в ПК»
+обеспечено механикой, а не памятью.</div>
+
+<h2>1. Вид сверху, крышка снята</h2>
+<div class="card"><svg id="top"></svg>
+<div class="legend">
+  <span><span class="sw" style="background:#2b3a52"></span>плата и носитель</span>
+  <span><span class="sw" style="background:#3a3350"></span>хаб</span>
+  <span><span class="sw" style="background:#2f4a3a"></span>свисток</span>
+  <span><span class="sw" style="border:1px dashed var(--disp)"></span>на крышке (экран, световод)</span>
+  <span><span class="sw" style="background:var(--usb)"></span>USB-кабели внутри</span>
+  <span><span class="sw" style="background:var(--i2s)"></span>аудио</span>
+  <span><span class="sw" style="background:var(--disp)"></span>шлейф экрана</span>
+</div></div>
+
+<div class="grid2" style="margin-top:14px">
+  <div class="card"><h3>2. Задняя стенка (снаружи)</h3><svg id="rear"></svg></div>
+  <div class="card"><h3>3. Правая стенка (снаружи)</h3><svg id="right"></svg></div>
+</div>
+<div class="card" style="margin-top:14px"><h3>4. Разрез по высоте (через плату и экран)</h3><svg id="section"></svg></div>
+
+<h2>5. Плата ESP32-S3-DevKitC-1 N8R2: все 44 пина</h2>
+<div class="card"><svg id="pins"></svg>
+<div class="legend">
+  <span><span class="sw" style="background:var(--pwr)"></span>питание</span>
+  <span><span class="sw" style="background:var(--gnd)"></span>земля</span>
+  <span><span class="sw" style="background:var(--usb)"></span>USB OTG, занято (хаб)</span>
+  <span><span class="sw" style="background:var(--uart)"></span>UART0, занято (COM, лог)</span>
+  <span><span class="sw" style="background:var(--strap)"></span>strapping, не трогать</span>
+  <span><span class="sw" style="background:var(--int)"></span>занято на плате (RGB)</span>
+  <span><span class="sw" style="background:var(--disp)"></span>экран (план)</span>
+  <span><span class="sw" style="background:var(--i2s)"></span>резерв I2S ЦАП</span>
+  <span><span class="sw" style="background:var(--free)"></span>свободен</span>
+</div>
+<p class="dim" style="font-size:13px">Вид со стороны компонентов, антенна сверху. Порядок пинов по документации Espressif
+v1.1. У N8R2 PSRAM quad, поэтому GPIO35-37 свободны (на N8R8 они заняты octal PSRAM). Какой из двух
+разъёмов COM, а какой USB - сверь по шелкографии своей платы, на чертеже COM справа.</p>
+</div>
+
+<h2>6. Подключения</h2>
+<div class="card"><table id="wires"></table></div>
+
+<h2>7. Экран: кандидаты</h2>
+<div class="card">
+<table>
+<tr><th>Модуль</th><th>Шина, пины</th><th>Кадр</th><th>Цена по ядру 0</th><th>Под задачу</th></tr>
+<tr><td>OLED 1.3" SH1106 / 0.96" SSD1306, 128x64</td><td>I2C, 2 пина (SDA 8, SCL 18)</td><td>1 КБ</td>
+  <td>копейки, но I2C 400 кГц: кадр ~25 мс на шине</td><td>страница, тип синта, BPM, тональность. Текст, без графики</td></tr>
+<tr><td class="rec">IPS 1.9" ST7789, 170x320</td><td>SPI 40-80 МГц, 6 пинов</td><td>106 КБ</td>
+  <td>малая, если рисовать частично строками через DMA</td><td class="rec">рекомендую: узкая полоса как «строка
+  состояния» на всю длину крышки, читается издалека, влезает в 30 мм высоты</td></tr>
+<tr><td>IPS 2.0" ST7789, 240x320</td><td>SPI, 6 пинов</td><td>150 КБ</td>
+  <td>то же; полный кадр в SRAM не держать</td><td>если хочется осциллограф/спектр. Чертёж выше нарисован под него</td></tr>
+<tr><td>TFT 2.4-2.8" ILI9341, 240x320</td><td>SPI, 6 пинов (+ тач ещё 4)</td><td>150 КБ</td>
+  <td>то же, тач тянет ещё SPI-устройство</td><td>большой, корпус растёт до ~170 мм. Тач тут лишний: управление на BSP</td></tr>
+</table>
+<div class="note"><b>Бюджет.</b> Ядро 0 на стресс-песне занято ~440 из 666 мкс на кусок, ядро 1 ~1630 из 2000.
+Экран отдавать задаче низкого приоритета на ядре 0, рисовать только изменившиеся области, SPI через DMA из
+буфера строк во внутренней SRAM (не PSRAM: там дилэй и статтер, шина общая). LVGL не брать: дорого и не нужно для
+пары цифр. Новое в этой задаче мерить стендом <code>build-stress</code>, как всё остальное.</div>
+<p class="dim" style="font-size:13px">Пины под SPI выбраны на J1 подряд (GPIO9-14): это родные пины FSPI через IOMUX, 80 МГц
+без матрицы, и весь шлейф уходит с одной гребёнки. Под OLED - GPIO8 и GPIO18, тоже J1.</p>
+</div>
+
+<h2>8. Параметры чертежа</h2>
+<div class="card">
+<p class="dim" style="margin-top:0;font-size:13px">Жёлтая рамка - оценка, надо снять с реальной детали. Остальное - выбор конструкции.</p>
+<div class="params" id="params"></div>
+</div>
+
+<h2>9. Комплектация</h2>
+<div class="card"><table>
+<tr><th>Деталь</th><th>Зачем</th></tr>
+<tr><td>Корпус: печать PETG, 2 части (дно + крышка), стенка 2.5 мм, крышка на 4 винта M3 в латунные вставки</td><td>PETG не ведёт от тепла хаба, вставки держат многократную разборку</td></tr>
+<tr><td>Носитель: макетка 70x30, две гребёнки 1x22 «мама», штырьки 2x4 под шлейф экрана</td><td>плата снимается без пайки, к экрану один разъём</td></tr>
+<tr><td>Стойки M2.5 x 5 мм, 4 шт</td><td>у DevKitC-1 нет крепёжных отверстий, крепим носитель</td></tr>
+<tr><td>USB-C - USB-C угловой 90°, 10-15 см (USB 2.0 хватает)</td><td>OTG платы в вход хаба, без петли кабеля</td></tr>
+<tr><td>Панельный удлинитель USB-C «мама» под винты, 2 шт</td><td>PD-вход питания и COM на стенки</td></tr>
+<tr><td>Панельный удлинитель USB-A «мама» под винты</td><td>порт BSP на заднюю стенку</td></tr>
+<tr><td>Удлинитель 3.5 мм, панельное гнездо с гайкой M6</td><td>выход свистка на заднюю стенку, кабель наушников не тянет свисток</td></tr>
+<tr><td>Световод 3 мм, толкатель 2 мм</td><td>RGB-светодиод платы на крышку, RST через отверстие</td></tr>
+<tr><td>Ложементы TPU под хаб и свисток, вентиляционные щели в дне под хабом</td><td>ничего не болтается, хаб под нагрузкой греется</td></tr>
+</table></div>
+</main>
+
+<script>
+// Параметры в мм. est: оценка, сверить с деталью.
+const P = {
+  wall:   { v: 2.5,  t: 'стенка' },
+  inX:    { v: 160,  t: 'внутри, ширина X' },
+  inY:    { v: 92,   t: 'внутри, глубина Y' },
+  inZ:    { v: 32,   t: 'внутри, высота Z' },
+  boardL: { v: 62.74, t: 'плата, длина' },
+  boardW: { v: 25.4, t: 'плата, ширина' },
+  boardX: { v: 72,   t: 'плата, X левого края' },
+  boardY: { v: 54,   t: 'плата, Y края J3' },
+  hubL:   { v: 100,  t: 'хаб, длина', est: 1 },
+  hubW:   { v: 30,   t: 'хаб, ширина', est: 1 },
+  hubH:   { v: 12,   t: 'хаб, толщина', est: 1 },
+  dngL:   { v: 40,   t: 'свисток, длина без штекера', est: 1 },
+  dngW:   { v: 16,   t: 'свисток, ширина', est: 1 },
+  dngH:   { v: 9,    t: 'свисток, толщина', est: 1 },
+  dispW:  { v: 58,   t: 'экран, плата модуля W', est: 1 },
+  dispH:  { v: 36,   t: 'экран, плата модуля H', est: 1 },
+  actW:   { v: 40.8, t: 'экран, активная зона W' },
+  actH:   { v: 30.6, t: 'экран, активная зона H' },
+  cutC:   { v: 13,   t: 'вырез USB-C, ширина', est: 1 },
+  cutA:   { v: 15,   t: 'вырез USB-A, ширина', est: 1 },
+};
+const v = k => P[k].v;
+const NS = 'http://www.w3.org/2000/svg';
+const C = getComputedStyle(document.documentElement);
+const col = n => C.getPropertyValue('--' + n).trim();
+
+function el(svg, tag, attrs, text) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text !== undefined) e.textContent = text;
+  svg.appendChild(e);
+  return e;
+}
+function rect(s, x, y, w, h, fill, stroke = '#5b6070', extra = {}) {
+  return el(s, 'rect', { x, y, width: w, height: h, fill, stroke, 'stroke-width': .35, ...extra });
+}
+function txt(s, x, y, t, size = 2.6, fill = '#e6e6e6', anchor = 'start', extra = {}) {
+  return el(s, 'text', { x, y, 'font-size': size, fill, 'text-anchor': anchor, ...extra }, t);
+}
+function line(s, x1, y1, x2, y2, stroke, w = .35, extra = {}) {
+  return el(s, 'line', { x1, y1, x2, y2, stroke, 'stroke-width': w, ...extra });
+}
+function path(s, d, stroke, w = 1, extra = {}) {
+  return el(s, 'path', { d, stroke, 'stroke-width': w, fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', ...extra });
+}
+// Размерная линия с подписью
+function dim(s, x1, y1, x2, y2, label, off = 0) {
+  const c = '#7d8496';
+  const horiz = Math.abs(y1 - y2) < 1e-6;
+  if (horiz) {
+    const y = y1 + off;
+    line(s, x1, y1, x1, y, c, .2); line(s, x2, y1, x2, y, c, .2);
+    line(s, x1, y, x2, y, c, .25, { 'marker-start': 'url(#ar)', 'marker-end': 'url(#ar)' });
+    txt(s, (x1 + x2) / 2, y - .8, label, 2.4, c, 'middle');
+  } else {
+    const x = x1 + off;
+    line(s, x1, y1, x, y1, c, .2); line(s, x1, y2, x, y2, c, .2);
+    line(s, x, y1, x, y2, c, .25, { 'marker-start': 'url(#ar)', 'marker-end': 'url(#ar)' });
+    txt(s, x - .8, (y1 + y2) / 2, label, 2.4, c, 'middle', { transform: `rotate(-90 ${x - .8} ${(y1 + y2) / 2})` });
+  }
+}
+function setup(id, x, y, w, h) {
+  const s = document.getElementById(id);
+  s.innerHTML = '';
+  s.setAttribute('viewBox', `${x} ${y} ${w} ${h}`);
+  el(el(s, 'defs', {}), 'marker', { id: 'ar', viewBox: '0 0 6 6', refX: 3, refY: 3, markerWidth: 4, markerHeight: 4, orient: 'auto-start-reverse' })
+    .appendChild(Object.assign(document.createElementNS(NS, 'path'), {})).setAttribute('d', 'M0,0 L6,3 L0,6 z');
+  s.querySelector('marker path').setAttribute('fill', '#7d8496');
+  return s;
+}
+
+// Положения портов на стенках (X по задней, Y по правой), от внутреннего угла
+const ports = () => ({
+  out:  { x: 22,  w: 6,        h: 6,   name: 'OUT 3.5', round: 1 },
+  bsp:  { x: 58,  w: v('cutA'), h: 7.5, name: 'BSP (USB-A)' },
+  pwr:  { x: 96,  w: v('cutC'), h: 6.5, name: 'PWR 5V (USB-C PD)' },
+  com:  { y: v('boardY') + v('boardW') / 2, w: v('cutC'), h: 6.5, name: 'COM (USB-C)' },
+  rst:  { y: v('boardY') + v('boardW') / 2 + 14, d: 2, name: 'RST' },
+});
+
+// Пины платы: [номер, имя, роль, примечание]
+const J1 = [
+  [1, '3V3', 'pwr', 'питание экрана'], [2, '3V3', 'pwr', ''], [3, 'RST', 'strap', 'EN, толкатель'],
+  [4, '4', 'i2s', 'I2S BCK'], [5, '5', 'i2s', 'I2S WS'], [6, '6', 'i2s', 'I2S DOUT'], [7, '7', 'free', ''],
+  [8, '15', 'free', ''], [9, '16', 'free', ''], [10, '17', 'free', ''], [11, '18', 'disp', 'OLED SCL'],
+  [12, '8', 'disp', 'OLED SDA'], [13, '3', 'strap', 'strapping JTAG'], [14, '46', 'strap', 'strapping ROM log'],
+  [15, '9', 'disp', 'TFT BL (PWM)'], [16, '10', 'disp', 'TFT CS'], [17, '11', 'disp', 'TFT MOSI'],
+  [18, '12', 'disp', 'TFT SCK'], [19, '13', 'disp', 'TFT DC'], [20, '14', 'disp', 'TFT RST'],
+  [21, '5V', 'pwr', 'VBUS'], [22, 'G', 'gnd', ''],
+];
+const J3 = [
+  [1, 'G', 'gnd', ''], [2, 'TX', 'uart', 'GPIO43, лог'], [3, 'RX', 'uart', 'GPIO44, консоль'], [4, '1', 'free', ''],
+  [5, '2', 'free', ''], [6, '42', 'free', 'JTAG MTMS'], [7, '41', 'free', 'JTAG MTDI'], [8, '40', 'free', 'JTAG MTDO'],
+  [9, '39', 'free', 'JTAG MTCK'], [10, '38', 'int', 'RGB у v1.1'], [11, '37', 'free', 'свободен у R2'],
+  [12, '36', 'free', 'свободен у R2'], [13, '35', 'free', 'свободен у R2'], [14, '0', 'strap', 'BOOT'],
+  [15, '45', 'strap', 'strapping VDD_SPI'], [16, '48', 'int', 'RGB у v1.0 и клонов'], [17, '47', 'free', ''],
+  [18, '21', 'free', ''], [19, '20', 'usb', 'USB D+ (хаб)'], [20, '19', 'usb', 'USB D- (хаб)'],
+  [21, 'G', 'gnd', ''], [22, 'G', 'gnd', ''],
+];
+// Шаг 2.54, ряды 22.86 мм друг от друга, первый пин от края антенны
+const PITCH = 2.54, ROWS = 22.86, PIN1 = 5.0;
+
+function drawBoard(s, bx, by, scale = 1, labels = false) {
+  // плата лежит вдоль X: антенна слева (x=bx), разъёмы USB справа; J3 сверху (меньший Y), J1 снизу
+  const L = v('boardL'), W = v('boardW');
+  rect(s, bx, by, L, W, '#203049', '#6fa0d8', { rx: .8 });
+  rect(s, bx + 1.5, by + 4.5, 18, 16.4, '#2b3442', '#8a93a3', { rx: .4 }); // модуль WROOM-1
+  rect(s, bx + 1.5, by + 4.5, 6, 16.4, '#33302a', 'none');                 // антенна
+  txt(s, bx + 4.5, by + W / 2, 'ANT', 1.8, '#a89b7c', 'middle', { transform: `rotate(-90 ${bx + 4.5} ${by + W / 2})` });
+  txt(s, bx + 14, by + W / 2 + .7, 'WROOM-1', 1.8, '#c3c9d3', 'middle');
+  txt(s, bx + 14, by + W / 2 + 3, 'N8R2', 1.6, '#8a93a3', 'middle');
+  rect(s, bx + 36, by + 9, 5, 5, '#111', '#555');                           // CH343
+  txt(s, bx + 38.5, by + 16.5, 'CH343', 1.4, '#8a93a3', 'middle');
+  // разъёмы USB-C на торце
+  rect(s, bx + L - 7, by + 3, 8, 8.9, '#9aa3b2', '#ccc', { rx: 1 });
+  rect(s, bx + L - 7, by + W - 11.9, 8, 8.9, '#9aa3b2', '#ccc', { rx: 1 });
+  txt(s, bx + L - 8.2, by + 8, 'USB', 1.9, col('usb'), 'end');
+  txt(s, bx + L - 8.2, by + W - 6.6, 'COM', 1.9, col('uart'), 'end');
+  // кнопки и RGB
+  rect(s, bx + L - 16, by + 3, 4, 3, '#444', '#888'); txt(s, bx + L - 14, by + 8.2, 'BOOT', 1.3, '#aaa', 'middle');
+  rect(s, bx + L - 16, by + W - 6, 4, 3, '#444', '#888'); txt(s, bx + L - 14, by + W - 6.8, 'RST', 1.3, '#aaa', 'middle');
+  el(s, 'circle', { cx: bx + 30, cy: by + W / 2, r: 1, fill: '#fff', stroke: col('int'), 'stroke-width': .5 });
+  // пины
+  const rowY = [by + (W - ROWS) / 2, by + (W + ROWS) / 2];
+  [J3, J1].forEach((J, r) => J.forEach(([n, name, role], i) => {
+    const x = bx + PIN1 + i * PITCH;
+    el(s, 'circle', { cx: x, cy: rowY[r], r: .75, fill: col(role), stroke: '#000', 'stroke-width': .2 });
+  }));
+}
+
+function drawTop() {
+  const w = v('wall'), X = v('inX'), Y = v('inY');
+  const s = setup('top', -22, -24, X + 2 * w + 44, Y + 2 * w + 40);
+  const p = ports();
+  rect(s, -w, -w, X + 2 * w, Y + 2 * w, '#2a2c33', '#8a90a0', { rx: 3 });
+  rect(s, 0, 0, X, Y, '#17181c', '#4a4f5c', { rx: 1.5 });
+  // вырезы в задней стенке (Y=0) и правой (X=inX)
+  for (const k of ['out', 'bsp', 'pwr']) {
+    rect(s, p[k].x - p[k].w / 2, -w, p[k].w, w, '#000', col('acc'));
+    txt(s, p[k].x, -w - 2, p[k].name, 2.4, col('acc'), 'middle');
+  }
+  rect(s, X, p.com.y - p.com.w / 2, w, p.com.w, '#000', col('acc'));
+  txt(s, X + w + 1.5, p.com.y + .8, 'COM', 2.4, col('acc'));
+  rect(s, X, p.rst.y - 1, w, 2, '#000', col('acc'));
+  txt(s, X + w + 1.5, p.rst.y + .8, 'RST', 2.4, col('acc'));
+  // вент. щели под хабом
+  const hx = 8, hy = 8;
+  for (let i = 0; i < 9; i++) rect(s, hx + 10 + i * 9, hy + 6, 2, v('hubW') - 12, '#101114', '#2a2d35');
+  // хаб
+  rect(s, hx, hy, v('hubL'), v('hubW'), '#3a3350', '#a08bd8', { rx: 3, 'fill-opacity': .92 });
+  txt(s, hx + v('hubL') / 2, hy + 9, 'Canyon CNS-TDS04DG', 2.8, '#d9cff5', 'middle');
+  txt(s, hx + v('hubL') / 2, hy + 13, `хаб ≈${v('hubL')}x${v('hubW')}x${v('hubH')}, в ложементе TPU`, 2.2, '#a59bc4', 'middle');
+  // порты хаба (схематично)
+  const hp = [['PD in', hx + v('hubL') - 6, hy, col('pwr')], ['A1→BSP', hx + 50, hy, col('usb')],
+              ['A2→свисток', hx + 22, hy + v('hubW'), col('usb')], ['C in', hx + v('hubL'), hy + v('hubW') - 7, col('usb')]];
+  hp.forEach(([n, x, y, c]) => { rect(s, x - 3, y - 1, 6, 2, c, 'none'); });
+  txt(s, hx + v('hubL') - 6, hy + 4.5, 'PD in', 1.9, col('pwr'), 'middle');
+  txt(s, hx + 50, hy + 4.5, 'A1', 1.9, col('usb'), 'middle');
+  txt(s, hx + 22, hy + v('hubW') - 2.5, 'A2', 1.9, col('usb'), 'middle');
+  txt(s, hx + v('hubL') - 2, hy + v('hubW') - 9.5, 'C in', 1.9, col('usb'), 'end');
+  // свисток в A2, вниз к передней стенке, разворот кабеля к OUT 3.5
+  const dx = hx + 22 - v('dngW') / 2, dy = hy + v('hubW') + 1;
+  rect(s, dx, dy, v('dngW'), v('dngL'), '#2f4a3a', '#7fc79a', { rx: 2 });
+  txt(s, dx + v('dngW') / 2, dy + v('dngL') / 2, 'Hoco UAC1.0', 2, '#bfe6cc', 'middle', { transform: `rotate(-90 ${dx + v('dngW') / 2} ${dy + v('dngL') / 2})` });
+  // кабели USB
+  path(s, `M ${hx + 50} ${hy - 1} C ${hx + 50} ${-6} ${p.bsp.x} ${4} ${p.bsp.x} ${0}`, col('usb'), 1.4);
+  path(s, `M ${hx + v('hubL') - 6} ${hy - 1} L ${p.pwr.x} ${0}`, col('pwr'), 1.4);
+  path(s, `M ${dx + v('dngW') / 2} ${dy + v('dngL')} C ${dx + v('dngW') / 2} ${Y - 4} ${4} ${Y - 4} ${4} ${Y - 20} L 4 12 C 4 4 ${p.out.x} 6 ${p.out.x} 0`, col('i2s'), 1.2);
+  txt(s, 5.5, Y - 26, 'аудио 3.5', 2, col('i2s'), 'start', { transform: `rotate(-90 5.5 ${Y - 26})` });
+  // носитель и плата
+  const bx = v('boardX'), by = v('boardY');
+  rect(s, bx - 4, by - 2.5, v('boardL') + 6, v('boardW') + 5 + 8, '#1d2a1f', '#4f6b52', { rx: 1 });
+  [[bx - 2, by - 0.5], [bx + v('boardL'), by - .5], [bx - 2, by + v('boardW') + 8.5], [bx + v('boardL'), by + v('boardW') + 8.5]]
+    .forEach(([x, y]) => el(s, 'circle', { cx: x, cy: y, r: 1.3, fill: '#222', stroke: '#9a9', 'stroke-width': .3 }));
+  drawBoard(s, bx, by);
+  // разъём шлейфа экрана 2x4 на носителе под J1 (GPIO9-14)
+  const jx = bx + PIN1 + 14 * PITCH, jy = by + v('boardW') + 3.2;
+  rect(s, jx - 1.6, jy - 1.3, 4 * PITCH + .6, 2 * PITCH + .6, '#111', col('disp'));
+  for (let i = 0; i < 4; i++) for (let r = 0; r < 2; r++)
+    el(s, 'circle', { cx: jx + i * PITCH, cy: jy + r * PITCH, r: .55, fill: col('disp') });
+  txt(s, jx + 4 * PITCH + 1, jy + 2.5, 'DISP 2x4', 2, col('disp'));
+  // кабель OTG -> хаб C in: угловой
+  const usbY = by + 3 + 4.45;
+  path(s, `M ${bx + v('boardL') + 1} ${usbY} C ${bx + v('boardL') + 10} ${usbY} ${hx + v('hubL') + 12} ${hy + v('hubW') - 7} ${hx + v('hubL') + 1} ${hy + v('hubW') - 7}`, col('usb'), 1.4);
+  txt(s, hx + v('hubL') + 8, hy + v('hubW') + 4, 'C-C 90°', 2, col('usb'));
+  // COM -> панельный удлинитель
+  const comY = by + v('boardW') - 3 - 4.45;
+  path(s, `M ${bx + v('boardL') + 1} ${comY} C ${X - 6} ${comY} ${X - 8} ${p.com.y} ${X} ${p.com.y}`, col('uart'), 1.4);
+  // толкатель RST
+  line(s, bx + v('boardL') - 14, by + v('boardW') - 4.5, X, p.rst.y, '#888', .6, { 'stroke-dasharray': '1 .8' });
+  // на крышке: экран и световод, пунктиром
+  const ex = 10, ey = Y - v('dispH') - 6;
+  rect(s, ex, ey, v('dispW'), v('dispH'), 'none', col('disp'), { 'stroke-dasharray': '1.5 1', 'stroke-width': .5 });
+  rect(s, ex + (v('dispW') - v('actW')) / 2 + 3, ey + (v('dispH') - v('actH')) / 2, v('actW'), v('actH'), 'none', col('disp'), { 'stroke-width': .3, 'stroke-dasharray': '.6 .6' });
+  txt(s, ex + 2, ey + 3, 'экран на крышке', 2.2, col('disp'));
+  // шлейф экрана
+  path(s, `M ${ex + v('dispW')} ${ey + v('dispH') / 2} C ${ex + v('dispW') + 10} ${ey + v('dispH') / 2} ${jx + 4} ${Y - 2} ${jx + 4} ${jy + 4}`, col('disp'), 1, { 'stroke-dasharray': '2 1' });
+  el(s, 'circle', { cx: bx + 30, cy: by + v('boardW') / 2, r: 2.2, fill: 'none', stroke: col('int'), 'stroke-width': .4, 'stroke-dasharray': '1 .6' });
+  txt(s, bx + 33, by + v('boardW') / 2 - 3, 'световод', 1.8, col('int'));
+  // габариты
+  dim(s, -w, Y + w, X + w, Y + w, `${(X + 2 * w).toFixed(1)} снаружи`, 13);
+  dim(s, 0, Y, X, Y, `${X} внутри`, 7);
+  dim(s, -w, -w, -w, Y + w, `${(Y + 2 * w).toFixed(1)}`, -8);
+  dim(s, bx, by - 2.5, bx + v('boardL'), by - 2.5, `${v('boardL')}`, -3);
+  txt(s, X / 2, -w - 9, 'ЗАДНЯЯ СТЕНКА', 2.6, '#7d8496', 'middle');
+  txt(s, X / 2, Y + w + 15, 'ПЕРЕДНЯЯ СТЕНКА', 2.6, '#7d8496', 'middle');
+}
+
+function drawWall(id, len, holes, title) {
+  const w = v('wall'), Z = v('inZ'), H = Z + 2 * w;
+  const s = setup(id, -12, -10, len + 2 * w + 24, H + 26);
+  rect(s, -w, 0, len + 2 * w, H, '#2a2c33', '#8a90a0', { rx: 2 });
+  line(s, -w, w, len + w, w, '#4a4f5c', .3, { 'stroke-dasharray': '1 1' });
+  txt(s, len + w - 1, w - .6, 'шов крышки', 1.8, '#7d8496', 'end');
+  holes.forEach(hh => {
+    const cz = H - (hh.z ?? 10);
+    if (hh.round) el(s, 'circle', { cx: hh.x, cy: cz, r: hh.w / 2, fill: '#000', stroke: col('acc'), 'stroke-width': .4 });
+    else rect(s, hh.x - hh.w / 2, cz - hh.h / 2, hh.w, hh.h, '#000', col('acc'), { rx: hh.h / 2.2 });
+    if (hh.screw) [-1, 1].forEach(sg => el(s, 'circle', { cx: hh.x + sg * hh.screw / 2, cy: cz, r: 1.6, fill: '#000', stroke: '#888', 'stroke-width': .3 }));
+    txt(s, hh.x, cz + hh.h / 2 + 4, hh.name, 2.2, col('acc'), 'middle');
+    txt(s, hh.x, cz - hh.h / 2 - 1.5, hh.round ? `⌀${hh.w}` : `${hh.w}x${hh.h}`, 1.9, '#9096a3', 'middle');
+  });
+  dim(s, -w, H, len + w, H, `${(len + 2 * w).toFixed(1)}`, 8);
+  dim(s, len + w, 0, len + w, H, `${H.toFixed(1)}`, 6);
+  txt(s, -w, -4, title, 2.4, '#7d8496');
+}
+
+function drawSection() {
+  const w = v('wall'), Z = v('inZ'), X = v('inX');
+  const s = setup('section', -14, -12, X + 2 * w + 30, Z + 2 * w + 24);
+  const H = Z + 2 * w, fl = H - w; // y пола внутри (SVG вниз)
+  rect(s, -w, 0, X + 2 * w, H, 'none', '#8a90a0');
+  rect(s, -w, fl, X + 2 * w, w, '#2a2c33', 'none');
+  rect(s, -w, 0, X + 2 * w, w, '#2a2c33', 'none');
+  rect(s, -w, 0, w, H, '#2a2c33', 'none'); rect(s, X, 0, w, H, '#2a2c33', 'none');
+  // хаб и свисток на полу
+  rect(s, 8, fl - v('hubH'), v('hubL'), v('hubH'), 'none', '#a08bd8', { rx: 2, 'stroke-dasharray': '1.5 1' });
+  txt(s, 8 + 18, fl - v('hubH') / 2 + 1, `хаб за разрезом, ${v('hubH')}`, 2.2, '#a59bc4', 'middle');
+  // стек платы
+  const bx = v('boardX'), st = 5, pcb = 1.6, hdr = 8.5, mod = 3.2;
+  [[bx - 2], [bx + v('boardL')]].forEach(([x]) => rect(s, x - 1.5, fl - st, 3, st, '#555', '#888'));
+  rect(s, bx - 4, fl - st - pcb, v('boardL') + 6, pcb, '#1d2a1f', '#4f6b52');
+  rect(s, bx + 3, fl - st - pcb - hdr, 2.5, hdr, '#111', '#666');
+  rect(s, bx + v('boardL') - 8, fl - st - pcb - hdr, 2.5, hdr, '#111', '#666');
+  const by = fl - st - pcb - hdr - pcb;
+  rect(s, bx, by, v('boardL'), pcb, '#203049', '#6fa0d8');
+  rect(s, bx + 1.5, by - mod, 18, mod, '#2b3442', '#8a93a3');
+  rect(s, bx + v('boardL') - 7, by - 3.2, 8, 3.2, '#9aa3b2', '#ccc');
+  const top = by - mod;
+  // экран под крышкой
+  const ex = 10, dz = 4.5;
+  rect(s, ex, w, v('dispW'), dz, '#1f3a26', col('disp'));
+  rect(s, ex + 3, -0.01, v('actW'), w, '#0d1a12', col('disp'), { 'stroke-width': .3 });
+  txt(s, ex + v('dispW') / 2, w + dz + 3.5, 'экран, окно в крышке', 2.2, col('disp'), 'middle');
+  // световод
+  rect(s, bx + 29, 0, 3, top, 'none', col('int'), { 'stroke-dasharray': '1 .6' });
+  // размеры по высоте
+  dim(s, X + w, fl - st, X + w, fl, `${st}`, 4);
+  dim(s, X + w, top, X + w, fl, `${(fl - top).toFixed(1)}`, 10);
+  dim(s, X + w, 0, X + w, H, `${H.toFixed(1)}`, 16);
+  txt(s, bx + v('boardL') / 2, top - 2, `стек: стойка ${st} + носитель ${pcb} + гребёнка ${hdr} + плата ${pcb} + модуль ${mod}`, 2, '#9096a3', 'middle');
+  txt(s, X - 2, top - 2 - 0, `зазор до крышки ${(top - w).toFixed(1)}`, 2, '#9096a3', 'end', { dy: -3 });
+}
+
+function drawPins() {
+  const s = setup('pins', -2, -6, 250, 140);
+  const sc = 2.2, ox = 40, oy = 34;
+  const g = el(s, 'g', { transform: `translate(${ox} ${oy}) scale(${sc})` });
+  drawBoard(g, 0, 0);
+  const W = v('boardW');
+  const rowY = [(W - ROWS) / 2, (W + ROWS) / 2];
+  [J3, J1].forEach((J, r) => J.forEach(([n, name, role, note], i) => {
+    const x = ox + (PIN1 + i * PITCH) * sc, y = oy + rowY[r] * sc;
+    const up = r === 0, len = 6;
+    const y2 = up ? y - 3 - len : y + 3 + len;
+    line(s, x, y + (up ? -2 : 2), x, y2, col(role), .35);
+    const lbl = /^\d+$/.test(name) ? 'IO' + name : name;
+    txt(s, x + .9, y2 + (up ? -1 : 1), lbl, 2.5, col(role) === col('free') ? '#9096a3' : col(role), 'start',
+      { transform: `rotate(-90 ${x + .9} ${y2 + (up ? -1 : 1)})`, 'text-anchor': up ? 'start' : 'end', 'font-weight': 600 });
+    if (note) txt(s, x + .9, y2 + (up ? -13 : 13), note, 1.9, '#9096a3', up ? 'start' : 'end',
+      { transform: `rotate(-90 ${x + .9} ${y2 + (up ? -13 : 13)})` });
+  }));
+  txt(s, ox - 2, oy + rowY[0] * sc + .8, 'J3', 3, '#e6e6e6', 'end');
+  txt(s, ox - 2, oy + rowY[1] * sc + .8, 'J1', 3, '#e6e6e6', 'end');
+  txt(s, ox + (PIN1) * sc, oy + W * sc + 33, 'пин 1 у антенны, пин 22 у разъёмов USB', 2.2, '#9096a3');
+}
+
+function drawWires() {
+  const rows = [
+    ['Связь', 'Откуда', 'Куда', 'Чем'],
+    ['Питание', 'зарядка 5 В PD', 'стенка PWR -> PD in хаба', 'панельный USB-C, внутри 10 см; хаб питает свисток, BSP и плату (по VBUS в OTG)'],
+    ['Хост USB', 'плата USB (OTG, GPIO19/20)', 'C in хаба', 'угловой C-C 90°, 10-15 см'],
+    ['BSP', 'хаб A1', 'стенка BSP', 'панельный USB-A под 2 винта'],
+    ['Звук', 'хаб A2 -> свисток Hoco', 'стенка OUT 3.5', 'свисток в ложементе, удлинитель 3.5 на гайке M6'],
+    ['Сервис', 'плата COM (CH343, GPIO43/44)', 'стенка COM', 'панельный USB-C; только к ПК, прошивка и лог'],
+    ['Экран TFT', 'J1: 3V3, G, IO12 SCK, IO11 MOSI, IO10 CS, IO13 DC, IO14 RST, IO9 BL', 'модуль ST7789', 'шлейф 8 жил 15 см, через DISP 2x4 на носителе; MISO не нужен'],
+    ['Экран OLED', 'J1: 3V3, G, IO8 SDA, IO18 SCL', 'SH1106/SSD1306', '4 жилы; подтяжки 4.7к обычно уже на модуле'],
+    ['Резерв', 'J1: IO4 BCK, IO5 WS, IO6 DOUT, 5V, G', 'I2S ЦАП PCM5102A', 'на будущее, см. заметку ниже'],
+  ];
+  const t = document.getElementById('wires');
+  t.innerHTML = rows.map((r, i) => '<tr>' + r.map(c => i ? `<td>${c}</td>` : `<th>${c}</th>`).join('') + '</tr>').join('');
+  t.insertAdjacentHTML('afterend', `<div class="warn" style="margin-top:12px"><b>COM и питание вместе.</b> Когда COM воткнут в ПК
+    и хаб под зарядкой, 5 В приходят с двух сторон. На DevKitC-1 входы развязаны диодами, на клонах бывает перемычка
+    вместо диода: проверь до того, как зашивать в корпус.</div>
+    <div class="note"><b>Зачем резерв I2S.</b> ЦАП PCM5102A (модуль ~30x20 мм) на I2S заменяет свисток. Тогда OTG
+    свободен для одного BSP напрямую, хаб не нужен, питание 5 В на пин 5V. Корпус ужимается примерно до 110x70x30,
+    пропадают три кабеля и задержка USB-аудио, и USB-хост перестаёт грузить ядро 0 при каждом блоке звука.
+    Цена: вывод звука в прошивке переписать с UAC на I2S. Пины зарезервированы, чтобы экран их не занял.</div>`);
+}
+
+function drawParams() {
+  const box = document.getElementById('params');
+  box.innerHTML = '';
+  for (const k in P) {
+    const lab = document.createElement('label');
+    lab.innerHTML = `<span>${P[k].t}</span>`;
+    const inp = document.createElement('input');
+    inp.type = 'number'; inp.step = '0.1'; inp.value = P[k].v;
+    if (P[k].est) inp.className = 'est';
+    inp.oninput = () => { const n = parseFloat(inp.value); if (!isNaN(n)) { P[k].v = n; render(); } };
+    lab.appendChild(inp); box.appendChild(lab);
+  }
+}
+
+function render() {
+  const p = ports();
+  drawTop();
+  drawWall('rear', v('inX'), [
+    { ...p.out, x: v('inX') - p.out.x, z: 12 },
+    { ...p.bsp, x: v('inX') - p.bsp.x, z: 12, screw: 30 },
+    { ...p.pwr, x: v('inX') - p.pwr.x, z: 12, screw: 26 },
+  ], 'вид снаружи: слева направо зеркально виду сверху');
+  drawWall('right', v('inY'), [
+    { ...p.com, x: v('inY') - p.com.y, z: 22, screw: 26 },
+    { x: v('inY') - p.rst.y, w: 2, h: 2, round: 1, z: 22, name: 'RST' },
+  ], 'вид снаружи, задняя стенка справа');
+  drawSection();
+  drawPins();
+}
+drawParams();
+drawWires();
+render();
+</script>
+</body>
+</html>
