@@ -57,7 +57,62 @@ static int read_some(uint8_t *buf, size_t size) {
     return n;
 }
 
+#if LINK_DIAG
+
+// LINK_DIAG=2: обратная прозвонка, RX держим в 1, TX читаем
+#if LINK_DIAG == 2
+#undef PIN_TX
+#undef PIN_RX
 #if LINK_PANEL
+#define PIN_TX 40
+#define PIN_RX 2
+#else
+#define PIN_TX 18
+#define PIN_RX 17
+#endif
+#endif
+
+// LINK_DIAG=2: обратная прозвонка, RX держим в 1, TX читаем
+#if LINK_DIAG == 2
+#undef PIN_TX
+#undef PIN_RX
+#if LINK_PANEL
+#define PIN_TX 40
+#define PIN_RX 2
+#else
+#define PIN_TX 18
+#define PIN_RX 17
+#endif
+#endif
+
+// Прозвонка: TX держим в 1, RX читаем с подтяжкой к земле. 1 на RX - провод от TX другой платы дошёл.
+void app_main(void) {
+    gpio_reset_pin(PIN_TX);
+    gpio_set_direction(PIN_TX, GPIO_MODE_OUTPUT);
+    gpio_set_level(PIN_TX, 1);
+    gpio_reset_pin(PIN_RX);
+    gpio_set_direction(PIN_RX, GPIO_MODE_INPUT);
+    gpio_pulldown_en(PIN_RX);
+#if !LINK_PANEL
+    // соседи IO17 и IO18 на J1: провод мог сесть на пин мимо
+    static const int near[] = {7, 15, 16, 8, 3};
+    for (int i = 0; i < 5; i++) {
+        gpio_reset_pin(near[i]);
+        gpio_set_direction(near[i], GPIO_MODE_INPUT);
+        gpio_pulldown_en(near[i]);
+    }
+#endif
+    for (;;) {
+#if !LINK_PANEL
+        ESP_LOGI(TAG, "diag near: J1-7 IO7=%d J1-8 IO15=%d J1-9 IO16=%d J1-12 IO8=%d J1-13 IO3=%d", gpio_get_level(7),
+                 gpio_get_level(15), gpio_get_level(16), gpio_get_level(8), gpio_get_level(3));
+#endif
+        ESP_LOGI(TAG, "diag: TX IO%d = 1, RX IO%d = %d", PIN_TX, PIN_RX, gpio_get_level(PIN_RX));
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
+#elif LINK_PANEL
 
 void app_main(void) {
     link_uart_init();

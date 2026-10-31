@@ -18,6 +18,8 @@ idf.py -B build-synth -DLINK_ROLE=synth -DSDKCONFIG=build-synth/sdkconfig -p /de
 # панель (перед этим: systemctl --user stop esp32-display.service)
 idf.py -B build-panel -DLINK_ROLE=panel -DSDKCONFIG=build-panel/sdkconfig -p /dev/ttyUSB0 flash
 # скорость: -DLINK_BAUD=1000000 обеим сторонам
+# прозвонка без UART (свой -B, например build-synth-diag): -DLINK_DIAG=1 - TX держит 1, RX читает с подтяжкой
+# к земле; -DLINK_DIAG=2 - наоборот. 1 на RX - провод от другой платы дошёл. После прозвонки прошить эхо обратно.
 # хост-тест сверки
 cmake -S host -B host/build && cmake --build host/build && ctest --test-dir host/build
 ```
