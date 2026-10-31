@@ -4,7 +4,7 @@
 по USB-MIDI, звук в USB-аудиосвисток. Без BSP играет встроенный демо-трек: на слух проверяет, что всё работает.
 
 Наглядная инструкция по ручкам: [docs/controls.html](docs/controls.html) (открыть в браузере).
-Корпус, компоновка внутри и распиновка под экран: [docs/enclosure.html](docs/enclosure.html).
+Корпус, компоновка внутри и распиновка под экран: [docs/enclosure.html](docs/enclosure.html), в 3D (крутить мышью, два варианта начинки): [docs/enclosure3d.html](docs/enclosure3d.html).
 
 ## Железо
 
