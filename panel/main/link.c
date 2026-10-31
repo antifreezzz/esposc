@@ -1,7 +1,9 @@
 #include "link.h"
 
+#include "driver/gpio.h"
 #include "driver/uart.h"
 #include "esp_check.h"
+#include "esp_log.h"
 
 #define PORT UART_NUM_1
 #define PIN_TX 2
@@ -25,6 +27,7 @@ esp_err_t link_start(void)
     ESP_RETURN_ON_ERROR(uart_driver_install(PORT, 4096, 1024, 0, NULL, 0), TAG, "install");
     ESP_RETURN_ON_ERROR(uart_param_config(PORT, &cfg), TAG, "config");
     ESP_RETURN_ON_ERROR(uart_set_pin(PORT, PIN_TX, PIN_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE), TAG, "pins");
+    gpio_pullup_en(PIN_RX); // синт без питания: вход в покое единица
     pl_rx_init(&s_rx);
     return ESP_OK;
 }
@@ -45,6 +48,11 @@ void link_poll(pl_model_t *m, uint32_t ms)
             }
         }
     }
+    static int up;
+    if (m->have && !up) {
+        ESP_LOGI(TAG, "synth link up");
+    }
+    up = m->have;
     if (pl_model_need_hello(m, ms)) {
         send(PL_HELLO, NULL, 0);
         pl_model_hello_sent(m, ms);

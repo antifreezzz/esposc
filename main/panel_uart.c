@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "driver/gpio.h"
 #include "driver/uart.h"
 #include "esp_check.h"
 #include "esp_log.h"
@@ -120,6 +121,7 @@ esp_err_t panel_uart_start(const acid_synth_t *s, const acid_link_t *l, const vo
     ESP_RETURN_ON_ERROR(uart_driver_install(PORT, RX_BUF, TX_BUF, 0, NULL, 0), TAG, "uart install");
     ESP_RETURN_ON_ERROR(uart_param_config(PORT, &cfg), TAG, "uart config");
     ESP_RETURN_ON_ERROR(uart_set_pin(PORT, PIN_TX, PIN_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE), TAG, "uart pins");
+    gpio_pullup_en(PIN_RX); // панель без питания: вход в покое единица, меньше мусора
     s_set_q = xQueueCreate(SET_QUEUE, sizeof(pl_set_t));
     s_knob_q = xQueueCreate(KNOB_QUEUE, sizeof(acid_link_ev_t));
     if (!s_set_q || !s_knob_q) {

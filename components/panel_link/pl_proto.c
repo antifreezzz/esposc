@@ -28,6 +28,19 @@ size_t pl_encode(uint8_t type, const void *payload, size_t len, uint8_t *out)
     return len + 4;
 }
 
+// Длина нагрузки по типу; -1 - не наш тип. Ложный синхробайт в мусоре отбрасывается на заголовке,
+// иначе приёмник ждал бы до 255 байт «кадра» и глотал настоящие (мусор на линии, пока соседа нет).
+static int payload_len(uint8_t type)
+{
+    switch (type) {
+    case PL_SNAPSHOT: return (int)sizeof(pl_snapshot_t);
+    case PL_KNOB: return (int)sizeof(pl_knob_t);
+    case PL_SET: return (int)sizeof(pl_set_t);
+    case PL_HELLO: return 0;
+    default: return -1;
+    }
+}
+
 void pl_rx_init(pl_rx_t *r)
 {
     r->n = 0;
@@ -52,6 +65,14 @@ int pl_rx_next(pl_rx_t *r, uint8_t *type, const uint8_t **payload, size_t *len)
             s++;
         }
         drop(r, s);
+        if (r->n >= 2 && payload_len(r->buf[1]) < 0) {
+            drop(r, 1);
+            continue;
+        }
+        if (r->n >= 3 && payload_len(r->buf[1]) != r->buf[2]) {
+            drop(r, 1);
+            continue;
+        }
         if (r->n < 3 || r->n < (size_t)r->buf[2] + 4) {
             return 0; // кадр ещё не пришёл целиком
         }

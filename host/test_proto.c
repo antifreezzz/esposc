@@ -141,6 +141,22 @@ TEST(test_swallowed_two_frames)
     CHECK(got_pl[0] == 4);
 }
 
+TEST(test_bad_header_resyncs_now)
+{
+    // Мусор от отключённой панели: синхробайт с чужой длиной или неизвестным типом не должен ждать «кадр».
+    pl_set_t st = {6, 3, 77};
+    uint8_t frame[PL_FRAME_MAX];
+    size_t n = pl_encode(PL_SET, &st, sizeof st, frame);
+    uint8_t junk[][3] = {{PL_SYNC, PL_SNAPSHOT, 200}, {PL_SYNC, 0x37, 250}, {PL_SYNC, PL_HELLO, 9}, {PL_SYNC, PL_SET, 255}};
+    for (size_t j = 0; j < 4; j++) {
+        start();
+        feed(junk[j], 3);
+        feed(frame, n); // кадр сразу за мусором, больше байт не будет
+        CHECK(frames == 1);
+        CHECK(got_type == PL_SET && got_pl[2] == 77);
+    }
+}
+
 int main(void)
 {
     RUN(test_roundtrip);
@@ -149,5 +165,6 @@ int main(void)
     RUN(test_truncated_frame);
     RUN(test_back_to_back);
     RUN(test_swallowed_two_frames);
+    RUN(test_bad_header_resyncs_now);
     TEST_MAIN_END();
 }
