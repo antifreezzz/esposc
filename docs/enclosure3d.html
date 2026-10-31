@@ -12,7 +12,7 @@
   canvas.drag { cursor: grabbing; }
   .panel { position: fixed; background: rgba(24, 25, 30, .82); backdrop-filter: blur(8px);
     border: 1px solid #353945; border-radius: 12px; padding: 12px 14px; }
-  #ctl { top: 14px; left: 14px; width: 300px; }
+  #ctl { top: 14px; left: 14px; width: 330px; }
   #ctl h1 { font-size: 16px; margin: 0 0 2px; }
   #ctl .sub { color: #9096a3; font-size: 12px; margin-bottom: 10px; }
   .row { margin: 9px 0; }
@@ -24,6 +24,15 @@
   input[type=range] { width: 100%; accent-color: #ffb547; }
   label.chk { display: inline-flex; gap: 6px; align-items: center; margin-right: 14px; font-size: 13px; cursor: pointer; }
   #dims { font: 12px ui-monospace, monospace; color: #ffb547; margin-top: 8px; }
+  #ctl { max-height: calc(100% - 80px); overflow: auto; }
+  details { margin-top: 8px; font-size: 12px; } summary { cursor: pointer; color: #c9ccd3; }
+  #dimTable { border-collapse: collapse; margin-top: 6px; width: 100%; }
+  #dimTable td { border-top: 1px solid #353945; padding: 3px 4px; vertical-align: top; color: #b9bdc6; }
+  #dimTable td:nth-child(2) { color: #ffb547; font-family: ui-monospace, monospace; text-align: right; }
+  #dimTable .nt { color: #7d8496; font-size: 11px; }
+  .seg button:disabled { opacity: .35; cursor: not-allowed; }
+  .lbl.dim { background: #15161a; color: #ffb547; border: 1px solid #ffb547; transform: translate(-50%, -50%); }
+  .lbl.dim::after { display: none; }
   #info { top: 14px; right: 14px; width: 330px; max-height: calc(100% - 28px); overflow: auto; }
   #info h2 { font-size: 15px; margin: 0 0 6px; color: #ffb547; }
   #info .txt { font-size: 13px; color: #cfd2d8; }
@@ -48,6 +57,8 @@
 <div class="panel" id="ctl">
   <h1>esposc: корпус 3D</h1>
   <div class="sub">миллиметры, PETG, стенка 2.5</div>
+  <div class="row"><span>Форма</span>
+    <div class="seg" id="segForm"><button data-v="box">Коробка 1.9"</button><button data-v="pult">Пульт</button><button data-v="cube">Куб</button></div></div>
   <div class="row"><span>Начинка</span>
     <div class="seg" id="segVar"><button data-v="dac">I2S ЦАП, без хаба</button><button data-v="hub">Мини-хаб + свисток</button></div></div>
   <div class="row"><span>Крышка</span>
@@ -56,9 +67,11 @@
   <div class="row">
     <label class="chk"><input type="checkbox" id="xray"> рентген корпуса</label>
     <label class="chk"><input type="checkbox" id="lbls" checked> подписи</label>
+    <label class="chk"><input type="checkbox" id="dimsChk" checked> размеры</label>
   </div>
   <div class="row"><div class="seg" id="segView"><button data-v="iso">3/4</button><button data-v="top">сверху</button><button data-v="rear">сзади</button><button data-v="right">справа</button></div></div>
   <div id="dims"></div>
+  <details id="dimBox"><summary>Все размеры, мм</summary><table id="dimTable"></table></details>
 </div>
 
 <div class="panel" id="info">
@@ -256,6 +269,7 @@ mat('dongle', '#3c3f45', { r: .35 }); mat('glass', '#08090b', { r: .04 }); mat('
 mat('tpu', '#8c2f41', { r: .85 }); mat('white', '#e9e9e9', { r: .5 }); mat('cap', '#b78a52', { r: .5 });
 mat('pipe', '#e9f0ff', { r: .08, a: .5 }); mat('pusher', '#d9dbe0', { r: .4 });
 mat('led', '#ffffff', { r: .3 });
+mat('panelShell', '#1b1c20', { r: .45 }); mat('guiPcb', '#d9a21f', { r: .4 }); mat('dimc', '#ffb547', { r: .9, e: [.9, .55, .15] });
 const WIRE = {};
 for (const [k, c] of Object.entries({ red: '#d8343a', black: '#1a1a1c', white: '#e2e2e2', green: '#2ea05a', yellow: '#e4c331', blue: '#2f6fd1', orange: '#e8862e', violet: '#8a52d6', grey: '#8d9199', brown: '#7a4a2a' }))
   mat('w_' + k, c, { r: .55 }), WIRE[k] = MAT['w_' + k];
@@ -273,62 +287,84 @@ const ZC0 = 5, ZC1 = 6.6, ZB0 = 15.1, ZB1 = 16.7;
 const J1 = ['3V3', '3V3', 'RST', '4', '5', '6', '7', '15', '16', '17', '18', '8', '3', '46', '9', '10', '11', '12', '13', '14', '5V', 'G'];
 const J3 = ['G', 'TX', 'RX', '1', '2', '42', '41', '40', '39', '38', '37', '36', '35', '0', '45', '48', '47', '21', '20', '19', 'G', 'G'];
 
-// ---------- варианты ----------
-const VARIANTS = {
-  dac: { X: 110, Y: 72, H: 28, by: 28, disp: [10, 40] },
-  hub: { X: 122, Y: 82, H: 28, by: 40, disp: [10, 52] },
+// ---------- формы корпуса ----------
+// box: коробка с экраном 1.9" на крышке; pult и cube: интерфейс на панели Guition ESP32-S3-4848S040.
+// Координаты внутри: x вправо (вид спереди), y от задней стенки к передней, z вверх, 0 - верх дна.
+const FORMS = {
+  box:  { title: 'Коробка + 1.9"' },
+  pult: { title: 'Пульт + Guition', X: 110, Y: 86, by: 28, uaX: 42, pwrX: 69, slope: 20, zf: 29 },
+  cube: { title: 'Куб + Guition', X: 81, Y: 74, H: 81, by: 40, uaX: 40, pwrX: 62 },
 };
+const BOXV = {
+  dac: { X: 110, Y: 72, H: 28, by: 28, disp: [10, 40], uaX: 42, pwrX: 69 },
+  hub: { X: 122, Y: 82, H: 28, by: 40, disp: [10, 52], pwrX: 107 },
+};
+// панель Guition: 86 x 86, глубина с компонентами на обороте (оценка)
+const GP = { S: 86, R: 5, ACT: 71.8, PD: 15.5 };
 
 let S = null; // текущая сцена
 
-function buildScene(vk) {
-  const cfg = VARIANTS[vk], { X, Y, H } = cfg, by = cfg.by, bx = X - L - 0.95;
+function buildScene(form, vk) {
+  if (form !== 'box') vk = 'dac';
+  const fc = form === 'box' ? BOXV[vk] : FORMS[form];
+  const { X, Y } = fc, by = fc.by, bx = X - L - 0.95;
+  const slope = form === 'pult' ? fc.slope * Math.PI / 180 : 0, tanA = Math.tan(slope), cosA = Math.cos(slope), sinA = Math.sin(slope);
+  // высота верха (снаружи) и низа крышки (изнутри) над точкой y
+  const zTop = y => form === 'pult' ? fc.zf + (Y + T - y) * tanA : (form === 'cube' ? fc.H : fc.H) + T;
+  const zIn = y => zTop(y) - (form === 'pult' ? T / cosA : T);
+  const H = form === 'pult' ? zIn(-T) : fc.H;                 // для стоек и камеры
   const pinX = i => bx + PIN1 + (i - 1) * PITCH, yJ3 = by + (W - ROWS) / 2, yJ1 = by + (W + ROWS) / 2;
   const rearY = yJ3 - 2 * PITCH, frontY = yJ1 + 2 * PITCH;
-  const [dx, dy] = cfg.disp, DW = 56, DH = 27;
-  const actC = [dx + 25.25, dy + 13.5], ACT = [42.72, 22.7];
   const led = [bx + 33, by + W / 2 - 5], rstB = [bx + L - 14, by + W - 3.2], bootB = [bx + L - 14, by + 3.2];
   const comY = by + W - 6.8, usbY = by + 6.8, usbZ = ZB1 + 1.63;
-  const bosses = [[4, 4], [X - 4, 4], [4, Y - 4], [X - 4, Y - 4]];
-  const parts = [], labels = [];
+  const uaX = fc.uaX, pwrX = fc.pwrX;
+  const bosses = form === 'cube' ? [[4, 4], [X - 4, 4], [4, Y - 4], [X - 4, 27]] : [[4, 4], [X - 4, 4], [4, Y - 4], [X - 4, Y - 4]];
+  const parts = [], labels = [], dimL = [], table = [];
   const P = (name, info, ex = [0, 0, 0], group = 'body') => {
     const p = { name, info, ex, group, geos: new Map(), decals: [], id: parts.length + 1 };
     p.g = m => { if (!p.geos.has(m)) p.geos.set(m, new Geo()); return p.geos.get(m); };
     parts.push(p); return p;
   };
-  const dims = `снаружи ${X + 2 * T} x ${Y + 2 * T} x ${H + 2 * T} мм (+ ножки 2)`;
+  const panelOn = form !== 'box';
+  const f1 = v => (Math.round(v * 10) / 10).toString();
 
-  // ----- порты по стенкам: a, b - центр в координатах стенки; inner/outer - ступенчатый вырез
+  // ----- габариты
+  let outW = X + 2 * T, outD, outH, dimsTxt;
+  if (form === 'pult') { outD = Y + 2 * T; outH = zTop(-T) + T; }
+  else if (form === 'cube') { outD = T + Y + GP.PD; outH = fc.H + 2 * T; }
+  else { outD = Y + 2 * T; outH = fc.H + 2 * T; }
+  dimsTxt = `снаружи ${f1(outW)} x ${f1(outD)} x ${f1(outH)} мм (+ ножки 2)`;
+
   const holes = { rear: [], front: [], left: [], right: [] };
   const usbcHole = (wall, a, b) => holes[wall].push({ a, b, inner: stad(0, 0, 9.4, 3.8), outer: stad(0, 0, 12.8, 7.2) });
-
-  // ===== корпус =====
-  const shellInfo = `<b>PETG</b>, стенка ${T} мм, углы R${RC}. ${dims}.<br>Вырезы под USB-C ступенчатые: снаружи карман под
+  const shellInfo = `<b>PETG</b>, стенка ${T} мм. ${dimsTxt}.<br>Вырезы под USB-C ступенчатые: снаружи карман под
     литьё штекера 12.8x7.2, у внутренней грани остаётся 0.7 мм с окном 9.4x3.8. Иначе штекер не дойдёт до упора через 2.5 мм стенки.`;
+
+  // ===== дно, ножки, стойки =====
   const floor = P('Дно', shellInfo, [0, 0, -40]);
-  extrude(floor.g(MAT.shell), FZ(-T), rrect(-T, -T, X + T, Y + T, RC, 8), [], T);
+  const floorPoly = form === 'pult' ? rrect(-T, -T, X + T, Y + T, 1.2, 3) : form === 'cube' ? rrectRear(-T, -T, X + T, Y, RC) : rrect(-T, -T, X + T, Y + T, RC, 8);
+  extrude(floor.g(MAT.shell), FZ(-T), floorPoly, [], T);
   const feet = P('Ножки', 'Резиновые ножки ⌀10 x 2, клеятся в углубления дна.', [0, 0, -46]);
-  for (const [x, y] of [[8, 8], [X - 8, 8], [8, Y - 8], [X - 8, Y - 8]]) cylZ(feet.g(MAT.rubber), x, y, -T - 2, -T, 5, 32);
-  const bossP = P('Стойки крышки', 'Четыре колонны ⌀7.5 с латунными вставками M3 x 5: крышка снимается сколько угодно раз.', [0, 0, -40]);
+  const fy1 = form === 'cube' ? Y - 6 : Y - 8;
+  for (const [x, y] of [[8, 8], [X - 8, 8], [8, fy1], [X - 8, fy1]]) cylZ(feet.g(MAT.rubber), x, y, -T - 2, -T, 5, 32);
+  const bossP = P('Стойки крышки', 'Колонны ⌀7.5 с латунными вставками M3 x 5: крышка снимается сколько угодно раз.', [0, 0, -40]);
   for (const [x, y] of bosses) {
-    extrude(bossP.g(MAT.shell), FZ(0), circ(x, y, 3.75, 32), [circ(x, y, 2.1, 20)], H - 0.2);
-    extrude(bossP.g(MAT.brass), FZ(H - 5.2), circ(x, y, 2.1, 20), [circ(x, y, 1.35, 16)], 5);
+    const top = form === 'pult' ? zIn(y) - .2 : fc.H - .2;
+    extrude(bossP.g(MAT.shell), FZ(0), circ(x, y, 3.75, 32), [circ(x, y, 2.1, 20)], top);
+    extrude(bossP.g(MAT.brass), FZ(top - 5), circ(x, y, 2.1, 20), [circ(x, y, 1.35, 16)], 5);
   }
 
-  // ===== начинка: общий стек платы =====
+  // ===== носитель =====
   const carX0 = bx - 4, carX1 = bx + 60, carY0 = by - 7, carY1 = by + W + 8;
   const stand = P('Стойки носителя', 'Латунные стойки M2.5 x 5 мм. У DevKitC-1 нет крепёжных отверстий, поэтому крепится носитель, а плата сидит в его гребёнках.', [0, 0, 8], 'in');
-  for (const [x, y] of [[carX0 + 2, carY0 + 2], [carX1 - 2, carY0 + 2], [carX0 + 2, carY1 - 2], [carX1 - 2, carY1 - 2]]) {
-    cylZ(stand.g(MAT.brass), x, y, 0, ZC0, 2.4, 6);
-  }
-  const car = P('Носитель (макетка)', `Макетка ${carX1 - carX0} x ${(carY1 - carY0).toFixed(1)}, две гребёнки 1x22 «мама»: плата снимается без пайки.
+  for (const [x, y] of [[carX0 + 2, carY0 + 2], [carX1 - 2, carY0 + 2], [carX0 + 2, carY1 - 2], [carX1 - 2, carY1 - 2]]) cylZ(stand.g(MAT.brass), x, y, 0, ZC0, 2.4, 6);
+  const car = P('Носитель (макетка)', `Макетка ${carX1 - carX0} x ${f1(carY1 - carY0)}, две гребёнки 1x22 «мама»: плата снимается без пайки.
     Пятаки проводов на шаге 2.54 прямо напротив нужных пинов, дорожки медью, перемычки цветным проводом.
-    Сзади: <code>5V IN</code> и <code>USB</code> (D+ J3-19, D- J3-20, G J3-21, 5V). Спереди: <code>DISP</code> под J1-15..22${vk === 'dac' ? ' и <code>DAC</code> под J1-2..6' : ''}.`, [0, 0, 16], 'in');
+    Сзади: <code>5V IN</code> и <code>USB</code> (D+ J3-19, D- J3-20, G J3-21, 5V). Спереди: ${panelOn
+      ? '<code>PANEL</code>: TX J1-10 IO17, RX J1-11 IO18, 5V, G'
+      : '<code>DISP</code> под J1-15..22'}${vk === 'dac' ? ' и <code>DAC</code> под J1-2..6' : ''}.`, [0, 0, 16], 'in');
   box(car.g(MAT.perf), carX0, carY0, ZC0, carX1, carY1, ZC1);
-  for (const yr of [yJ3, yJ1]) {
-    box(car.g(MAT.header), pinX(1) - 1.27, yr - 1.27, ZC1, pinX(22) + 1.27, yr + 1.27, ZB0);
-  }
-  // текстура носителя: пятаки, дорожки, шелкография
+  for (const yr of [yJ3, yJ1]) box(car.g(MAT.header), pinX(1) - 1.27, yr - 1.27, ZC1, pinX(22) + 1.27, yr + 1.27, ZB0);
   const carTex = canvasTex(carX1 - carX0, carY1 - carY0, 12, (c, w, h) => {
     const lx = x => x - carX0, ly = y => y - carY0;
     c.fillStyle = '#4a6a3f'; c.fillRect(0, 0, w, h);
@@ -340,9 +376,8 @@ function buildScene(vk) {
       c.strokeStyle = col; c.lineWidth = wdt; c.lineJoin = 'round'; c.lineCap = 'round'; c.beginPath();
       pts.forEach(([x, y], i) => i ? c.lineTo(lx(x), ly(y)) : c.moveTo(lx(x), ly(y))); c.stroke();
     };
-    const pad = (x, y, col = '#e0a65c') => { c.fillStyle = col; c.beginPath(); c.arc(lx(x), ly(y), 1.05, 0, 7); c.fill(); c.fillStyle = '#9aa0a8'; c.beginPath(); c.arc(lx(x), ly(y), .55, 0, 7); c.fill(); };
+    const pad = (x, y) => { c.fillStyle = '#e0a65c'; c.beginPath(); c.arc(lx(x), ly(y), 1.05, 0, 7); c.fill(); c.fillStyle = '#9aa0a8'; c.beginPath(); c.arc(lx(x), ly(y), .55, 0, 7); c.fill(); };
     const silk = (x, y, t, sz = 1.25, rot = 0, al = 'center') => { c.save(); c.translate(lx(x), ly(y)); c.rotate(rot); c.fillStyle = '#f2f2f2'; c.font = `600 ${sz}px ui-monospace, monospace`; c.textAlign = al; c.textBaseline = 'middle'; c.fillText(t, 0, 0); c.restore(); };
-    // сзади: USB и 5V IN
     [19, 20, 21].forEach(i => tr([[pinX(i), yJ3], [pinX(i), rearY]]));
     tr([[pinX(1), rearY], [pinX(1), carY0 + 1.2], [pinX(22) + 1.8, carY0 + 1.2], [pinX(22) + 1.8, rearY], [pinX(22), rearY]], '#d99a52', 1.2);
     tr([[pinX(22) + 1.8, rearY], [pinX(22) + 1.8, yJ1 - 1.6], [pinX(21), yJ1 - 1.6], [pinX(21), yJ1]], '#d99a52', 1.2);
@@ -351,36 +386,43 @@ function buildScene(vk) {
     silk(pinX(1) + 1.27, rearY + 1.9, '5V IN', 1.1);
     [[19, 'D+'], [20, 'D-'], [21, 'G'], [22, '5V']].forEach(([i, t]) => { pad(pinX(i), rearY); silk(pinX(i), rearY - 1.9, t, 1.1); });
     silk((pinX(19) + pinX(22)) / 2, rearY + 1.9, vk === 'dac' ? 'USB -> BSP' : 'USB -> HUB', 1.1);
-    // спереди: экран
-    const disp = [[15, 'BL'], [16, 'CS'], [17, 'SDA'], [18, 'SCL'], [19, 'DC'], [20, 'RES'], [21, '3V3'], [22, 'G']];
-    disp.forEach(([i, t]) => { if (i <= 20 || i === 22) tr([[pinX(i), yJ1], [pinX(i), frontY]]); pad(pinX(i), frontY); silk(pinX(i), frontY + 2.1, t, 1.0); });
-    tr([[pinX(2), yJ1], [pinX(2) + 1.27, yJ1 - 2.6], [pinX(20) + 1.27, yJ1 - 2.6], [pinX(20) + 1.27, frontY - 1.3], [pinX(21), frontY]], '#e05050', .55);
-    silk((pinX(15) + pinX(22)) / 2, frontY + 3.6, 'DISP ST7789', 1.15);
+    if (panelOn) {
+      // UART на панель: TX IO17 (J1-10), RX IO18 (J1-11), 5V и G перемычками от J1-21/22
+      [[10, 'TX'], [11, 'RX']].forEach(([i, t]) => { tr([[pinX(i), yJ1], [pinX(i), frontY]]); pad(pinX(i), frontY); silk(pinX(i), frontY + 2.1, t, 1.0); });
+      [[12, '5V'], [13, 'G']].forEach(([i, t]) => { pad(pinX(i), frontY); silk(pinX(i), frontY + 2.1, t, 1.0); });
+      tr([[pinX(21), yJ1], [pinX(21) - 1.27, yJ1 + 1.6], [pinX(12) + 1.27, yJ1 + 1.6], [pinX(12), frontY]], '#e05050', .55);
+      tr([[pinX(22), yJ1], [pinX(22) + 1.3, yJ1 + 1.4], [pinX(22) + 1.3, frontY + 3.2], [pinX(13) + 1.3, frontY + 3.2], [pinX(13), frontY]], '#202020', .55);
+      silk((pinX(10) + pinX(13)) / 2, frontY + 3.6 + .9, 'PANEL UART', 1.15);
+    } else {
+      const disp = [[15, 'BL'], [16, 'CS'], [17, 'SDA'], [18, 'SCL'], [19, 'DC'], [20, 'RES'], [21, '3V3'], [22, 'G']];
+      disp.forEach(([i, t]) => { if (i <= 20 || i === 22) tr([[pinX(i), yJ1], [pinX(i), frontY]]); pad(pinX(i), frontY); silk(pinX(i), frontY + 2.1, t, 1.0); });
+      tr([[pinX(2), yJ1], [pinX(2) + 1.27, yJ1 - 2.6], [pinX(20) + 1.27, yJ1 - 2.6], [pinX(20) + 1.27, frontY - 1.3], [pinX(21), frontY]], '#e05050', .55);
+      silk((pinX(15) + pinX(22)) / 2, frontY + 3.6, 'DISP ST7789', 1.15);
+    }
     if (vk === 'dac') {
       const dac = [[2, 'VIN'], [3, 'G'], [4, 'BCK'], [5, 'LCK'], [6, 'DIN']];
       dac.forEach(([i, t]) => { if (i !== 3) tr([[pinX(i), yJ1], [pinX(i), frontY]]); pad(pinX(i), frontY); silk(pinX(i), frontY + 2.1, t, 1.0); });
-      tr([[pinX(22), yJ1], [pinX(22) + 1.3, yJ1 + 1.4], [pinX(22) + 1.3, frontY + 3.2], [pinX(3), frontY + 3.2], [pinX(3), frontY]], '#202020', .55);
-      silk((pinX(2) + pinX(6)) / 2, frontY + 3.6 + .8, 'DAC I2S', 1.15);
+      tr([[pinX(22), yJ1], [pinX(22) + 1.3, yJ1 + 1.4], [pinX(22) + 1.3, frontY + 3.6], [pinX(3), frontY + 3.6], [pinX(3), frontY]], '#202020', .55);
+      silk((pinX(2) + pinX(6)) / 2, frontY + 3.6 + .9, 'DAC I2S', 1.15);
     }
-    // ключ пина 1
     silk(pinX(1) - 2.6, yJ1, '1', 1.3); silk(pinX(1) - 2.6, yJ3, '1', 1.3);
     silk(pinX(22) + 3.6, yJ1, 'J1', 1.3); silk(pinX(22) + 3.6, yJ3, 'J3', 1.3);
   });
   car.decals.push({ tex: carTex, build: g => quad(g, [carX0, carY1, ZC1 + .01], AX, scl(AY, -1), carX1 - carX0, carY1 - carY0) });
 
-  // ----- плата DevKitC-1
+  // ===== плата DevKitC-1 =====
   const brd = P('ESP32-S3-DevKitC-1 N8R2', `Плата ${L} x ${W}, стоит в гребёнках носителя.<br>
     <b>USB (OTG)</b> упирается в глухую правую стенку: в него физически нечего воткнуть. D+/D- для ${vk === 'dac' ? 'BSP' : 'хаба'} взяты с пинов
     <code>J3-19 IO20</code> и <code>J3-20 IO19</code> через носитель.<br><b>COM</b> выходит в правую стенку ступенчатым вырезом: прошивка и лог.
-    <br>RGB на IO48 (клоны, v1.0) или IO38 (v1.1), выведен световодом на крышку. RST - толкателем через крышку, BOOT не нужен (CH343 сам вводит в загрузку).`, [0, 0, 34], 'in');
+    ${panelOn ? '<br>Панель Guition: UART1, <code>TX J1-10 IO17</code>, <code>RX J1-11 IO18</code>. RST и RGB наружу не выведены: состояние показывает панель, сброс по COM.'
+      : '<br>RGB на IO48 (клоны, v1.0) или IO38 (v1.1), выведен световодом на крышку. RST - толкателем через крышку, BOOT не нужен (CH343 сам вводит в загрузку).'}`, [0, 0, 34], 'in');
   box(brd.g(MAT.pcbBlack), bx, by, ZB0, bx + L, by + W, ZB1);
   for (let i = 1; i <= 22; i++) for (const yr of [yJ3, yJ1]) cylZ(brd.g(MAT.steel), pinX(i), yr, ZB1, ZB1 + .55, .55, 10);
-  // модуль WROOM-1: 25.5 x 18, антенна у края
   box(brd.g(MAT.pcbBlack), bx - .4, by + W / 2 - 9, ZB1, bx + 25.1, by + W / 2 + 9, ZB1 + .8);
   rbox(brd.g(MAT.steel), bx + 6.9, by + W / 2 - 7.9, ZB1 + .8, bx + 24.6, by + W / 2 + 7.9, ZB1 + 3.1, .5);
   for (let k = 0; k < 5; k++) box(brd.g(MAT.gold), bx + .6 + k * 1.2, by + W / 2 - 7, ZB1 + .8, bx + 1.0 + k * 1.2, by + W / 2 + 7, ZB1 + .83);
-  box(brd.g(MAT.chip), bx + 38, by + W / 2 - 2, ZB1, bx + 42, by + W / 2 + 2, ZB1 + .9);          // CH343
-  box(brd.g(MAT.chip), bx + 45, by + W / 2 + 1, ZB1, bx + 51.5, by + W / 2 + 4.5, ZB1 + 1.6);      // LDO
+  box(brd.g(MAT.chip), bx + 38, by + W / 2 - 2, ZB1, bx + 42, by + W / 2 + 2, ZB1 + .9);
+  box(brd.g(MAT.chip), bx + 45, by + W / 2 + 1, ZB1, bx + 51.5, by + W / 2 + 4.5, ZB1 + 1.6);
   for (const [cx, cy] of [[bx + 30, by + 6], [bx + 30, by + 19], [bx + 36, by + 20], [bx + 44, by + 8], [bx + 53, by + 12]])
     box(brd.g(MAT.cap), cx, cy, ZB1, cx + 1.6, cy + .8, ZB1 + .8);
   for (const [cx, cy] of [rstB, bootB]) {
@@ -397,9 +439,8 @@ function buildScene(vk) {
     const ly = y => y - by, lx = x => x - bx;
     const silk = (x, y, t, sz, rot = 0, al = 'center') => { c.save(); c.translate(lx(x), ly(y)); c.rotate(rot); c.fillStyle = '#eaeaea'; c.font = `600 ${sz}px ui-monospace, monospace`; c.textAlign = al; c.textBaseline = 'middle'; c.fillText(t, 0, 0); c.restore(); };
     for (let i = 1; i <= 22; i++) {
-      const lb = n => /^\d+$/.test(n) ? n : n;
-      silk(pinX(i), yJ3 + 1.6, lb(J3[i - 1]), .95, -Math.PI / 2, 'left');
-      silk(pinX(i), yJ1 - 1.6, lb(J1[i - 1]), .95, -Math.PI / 2, 'right');
+      silk(pinX(i), yJ3 + 1.6, J3[i - 1], .95, -Math.PI / 2, 'left');
+      silk(pinX(i), yJ1 - 1.6, J1[i - 1], .95, -Math.PI / 2, 'right');
     }
     silk(bx + L - 9.5, usbY - .5, 'USB', 1.5); silk(bx + L - 9.5, comY + .5, 'COM', 1.5);
     silk(rstB[0] - 3.4, rstB[1], 'RST', 1.05); silk(bootB[0] - 3.4, bootB[1], 'BOOT', 1.05);
@@ -408,28 +449,14 @@ function buildScene(vk) {
     silk(bx + 33, by + W / 2 + 4.5, 'ESP32-S3-DevKitC-1', 1.3);
   });
   brd.decals.push({ tex: brdTex, build: g => quad(g, [bx, by + W, ZB1 + .01], AX, scl(AY, -1), L, W) });
-  const shTex = canvasTex(17.7, 15.8, 16, (c, w, h) => {
+  const shTex = canvasTex(17.7, 15.8, 16, (c, w) => {
     c.fillStyle = '#3a3d44'; c.font = '600 1.7px ui-monospace, monospace'; c.textAlign = 'center';
     c.fillText('ESP32-S3-WROOM-1', w / 2, 5); c.font = '600 2.4px ui-monospace, monospace'; c.fillText('N8R2', w / 2, 8.5);
     c.font = '1.3px ui-monospace, monospace'; c.fillText('Espressif', w / 2, 11.5);
   });
   brd.decals.push({ tex: shTex, build: g => quad(g, [bx + 6.9, by + W / 2 + 7.9, ZB1 + 3.11], AX, scl(AY, -1), 17.7, 15.8) });
 
-  // ----- экран 1.9" ST7789 170x320 на крышке
-  const dsp = P('Экран 1.9" ST7789, 170x320', `IPS, SPI. Модуль ${DW} x ${DH} (оценка), активная зона 42.72 x 22.7, стекло прижато к крышке изнутри.
-    Угловая гребёнка, чтобы ничего не торчало вниз над платой.<br>
-    <code>G</code> J1-22 · <code>3V3</code> J1-2 · <code>SCL</code> J1-18 IO12 · <code>SDA</code> J1-17 IO11 · <code>RES</code> J1-20 IO14 · <code>DC</code> J1-19 IO13 ·
-    <code>CS</code> J1-16 IO10 · <code>BL</code> J1-15 IO9 (ШИМ). Это родные пины FSPI, 80 МГц без матрицы.`, [0, 0, 78], 'lid');
-  const dz1 = H - .05, dz0 = dz1 - 1.6, pz0 = dz0 - 1.6;
-  box(dsp.g(MAT.dispPcb), dx, dy, pz0, dx + DW, dy + DH, dz0);
-  rbox(dsp.g(MAT.glass), dx + 1, dy + 1, dz0, dx + 49.5, dy + 26, dz1, .8);
-  box(dsp.g(MAT.header), dx + DW - 1, dy + DH / 2 - 10.2, pz0 - 2.5, dx + DW + 1.5, dy + DH / 2 + 10.2, pz0);
-  const hdrPin = k => [dx + DW + 4, dy + DH / 2 + (k - 3.5) * PITCH, pz0 - 1.25];
-  for (let k = 0; k < 8; k++) { const p = hdrPin(k); box(dsp.g(MAT.gold), dx + DW - 1, p[1] - .32, p[2] - .32, p[0], p[1] + .32, p[2] + .32); }
-  const screen = document.createElement('canvas'); screen.width = 640; screen.height = 340;
-  dsp.decals.push({ tex: screen, unlit: true, dynamic: 'screen', build: g => quad(g, [actC[0] - ACT[0] / 2, actC[1] + ACT[1] / 2, dz1 + .005], AX, scl(AY, -1), ACT[0], ACT[1]) });
-
-  // ===== вариант: I2S ЦАП =====
+  // ===== I2S ЦАП или хаб со свистком =====
   if (vk === 'dac') {
     const dac = P('ЦАП PCM5102A (модуль GY)', `Модуль ~19 x 31.5 (оценка), гнездо 3.5 прямо в задней стенке: удлинителей нет.<br>
       <code>VIN</code> J1-2 3V3 · <code>G</code> J1-22 · <code>BCK</code> J1-4 IO4 · <code>LCK</code> J1-5 IO5 · <code>DIN</code> J1-6 IO6.
@@ -443,31 +470,27 @@ function buildScene(vk) {
     box(dac.g(MAT.chip), 15, 16, ZC1, 21.5, 20.4, ZC1 + 1.1);
     for (const [cx, cy, r] of [[12, 15, 1.4], [25, 15, 1.4], [12, 22, 1], [25, 22, 1]]) cylZ(dac.g(MAT.cap), cx, cy, ZC1, ZC1 + 2.2, r, 16);
     box(dac.g(MAT.header), DX0 + 1.1, DY1 - 2.8, ZC1, DX0 + 1.1 + 6 * PITCH, DY1 - .3, ZC1 + 2.5);
-    const dacPin = k => [DX0 + 2.37 + k * PITCH, DY1 - 1.55];
-    for (let k = 0; k < 6; k++) { const [x, y] = dacPin(k); box(dac.g(MAT.gold), x - .32, y - .32, ZC1, x + .32, y + .32, ZC1 + 8.5); }
+    for (let k = 0; k < 6; k++) { const x = DX0 + 2.37 + k * PITCH, y = DY1 - 1.55; box(dac.g(MAT.gold), x - .32, y - .32, ZC1, x + .32, y + .32, ZC1 + 8.5); }
     const dacTex = canvasTex(DX1 - DX0, DY1 - DY0, 16, (c, w, h) => {
       c.fillStyle = '#efe7ff'; c.font = '600 1.6px ui-monospace, monospace'; c.textAlign = 'center';
       c.fillText('PCM5102A', w / 2, h / 2);
       ['VIN', 'GND', 'LCK', 'DIN', 'BCK', 'SCK'].forEach((t, k) => { c.save(); c.translate(2.37 + k * PITCH, h - 4.6); c.rotate(-Math.PI / 2); c.font = '600 1.0px ui-monospace, monospace'; c.fillText(t, 0, .35); c.restore(); });
     });
     dac.decals.push({ tex: dacTex, build: g => quad(g, [DX0, DY1, ZC1 + .01], AX, scl(AY, -1), DX1 - DX0, DY1 - DY0) });
-    holes.rear.push({ a: 18.5, b: ZC1 + 2.5, inner: circ(0, 0, 3.1, 28) });
+    holes.rear.push({ a: 18.5, b: ZC1 + 2.5, inner: circ(0, 0, 3.1, 28), name: 'OUT 3.5 (PCM5102A)', cut: '⌀6.2' });
     labels.push({ t: 'OUT 3.5', p: [18.5, -T, ZC1 + 6], part: dac });
 
     const ua = P('Гнездо USB-A для BSP', `USB-A на платке, стоит в задней стенке. Без кабеля от OTG: провода с носителя.<br>
       <code>D+</code> J3-19 IO20 · <code>D-</code> J3-20 IO19 · <code>G</code> J3-21 · <code>VBUS</code> прямо с шины 5 В, не через стабилизатор платы.`, [0, -30, 18], 'in');
-    for (const x of [35, 49]) cylZ(ua.g(MAT.brass), x, 17, 0, ZC0, 2, 6);
-    box(ua.g(MAT.greenPcb), 33, 2, ZC0, 51, 20, ZC1);
-    extrude(ua.g(MAT.steel), FY(-T), rect2(42, 9.5, 13.2, 5.8), [rect2(42, 9.5, 12.4, 5.0)], 14);
-    box(ua.g(MAT.dark), 35.8, -T + .6, 7.1, 48.2, 11.3, 11.9);
-    box(ua.g(MAT.chip), 36.6, -T + .3, 10.0, 47.4, 10, 11.7);
-    for (let k = 0; k < 4; k++) box(ua.g(MAT.gold), 37.9 + k * 2.54 - .5, 17.6, ZC1, 37.9 + k * 2.54 + .5, 19.2, ZC1 + .05);
-    holes.rear.push({ a: 42, b: 9.5, inner: rect2(0, 0, 13.8, 6.4) });
-    labels.push({ t: 'BSP USB-A', p: [42, -T, 14], part: ua, c2: 1 });
-
-    var pwrX = 69;
+    for (const x of [uaX - 7, uaX + 7]) cylZ(ua.g(MAT.brass), x, 17, 0, ZC0, 2, 6);
+    box(ua.g(MAT.greenPcb), uaX - 9, 2, ZC0, uaX + 9, 20, ZC1);
+    extrude(ua.g(MAT.steel), FY(-T), rect2(uaX, 9.5, 13.2, 5.8), [rect2(uaX, 9.5, 12.4, 5.0)], 14);
+    box(ua.g(MAT.dark), uaX - 6.2, -T + .6, 7.1, uaX + 6.2, 11.3, 11.9);
+    box(ua.g(MAT.chip), uaX - 5.4, -T + .3, 10.0, uaX + 5.4, 10, 11.7);
+    for (let k = 0; k < 4; k++) box(ua.g(MAT.gold), uaX - 4.1 + k * 2.54 - .5, 17.6, ZC1, uaX - 4.1 + k * 2.54 + .5, 19.2, ZC1 + .05);
+    holes.rear.push({ a: uaX, b: 9.5, inner: rect2(0, 0, 13.8, 6.4), name: 'BSP (USB-A)', cut: '13.8 x 6.4' });
+    labels.push({ t: 'BSP USB-A', p: [uaX, -T, 14], part: ua, c2: 1 });
   } else {
-    // ===== вариант: мини-хаб + свисток =====
     const hub = P('Мини-хаб FE1.1s / CH334', `Плата хаба ~40 x 30 (оценка), USB 2.0, один TT. Вверх: <code>D+</code> J3-19 IO20, <code>D-</code> J3-20 IO19, <code>G</code> J3-21, 5V с шины.
       <br>Порт 1 стоит прямо в задней стенке: туда BSP. Порт 2 смотрит влево и держит свисток. Прошивку не трогаем, всё как сейчас с Canyon.`, [0, -18, 20], 'in');
     const HX0 = 53, HX1 = 93, HY0 = .5, HY1 = 30.5;
@@ -476,13 +499,11 @@ function buildScene(vk) {
     box(hub.g(MAT.chip), 70, 17, ZC1, 80, 22.3, ZC1 + 1.5);
     rbox(hub.g(MAT.steel), 82, 17.5, ZC1, 86.5, 21.5, ZC1 + 3.5, 1.4);
     for (const [cx, cy] of [[72, 25], [76, 25], [84, 12], [66, 26]]) box(hub.g(MAT.cap), cx, cy, ZC1, cx + 1.6, cy + .8, ZC1 + .8);
-    // порт 1 (BSP) в задней стенке
     extrude(hub.g(MAT.steel), FY(-T), rect2(76, 9.5, 13.2, 5.8), [rect2(76, 9.5, 12.4, 5.0)], 14);
     box(hub.g(MAT.dark), 69.8, -T + .6, 7.1, 82.2, 11.3, 11.9);
     box(hub.g(MAT.chip), 70.6, -T + .3, 10.0, 81.4, 10, 11.7);
-    holes.rear.push({ a: 76, b: 9.5, inner: rect2(0, 0, 13.8, 6.4) });
+    holes.rear.push({ a: 76, b: 9.5, inner: rect2(0, 0, 13.8, 6.4), name: 'BSP (USB-A хаба)', cut: '13.8 x 6.4' });
     labels.push({ t: 'BSP USB-A', p: [76, -T, 14], part: hub, c2: 1 });
-    // порт 2 влево, со свистком
     extrude(hub.g(MAT.steel), FX(HX0 - 2), rect2(16, 9.5, 13.2, 5.8), [rect2(16, 9.5, 12.4, 5.0)], 14);
     for (let k = 0; k < 4; k++) box(hub.g(MAT.gold), HX1 - 3, 20 + k * 2.54 - .5, ZC1, HX1 - 1.4, 20 + k * 2.54 + .5, ZC1 + .05);
     const hubTex = canvasTex(HX1 - HX0, HY1 - HY0, 14, (c, w, h) => {
@@ -490,24 +511,22 @@ function buildScene(vk) {
       c.fillText('USB2.0 HUB', 22, h - 4); ['5V', 'D-', 'D+', 'G'].forEach((t, k) => c.fillText(t, w - 5.5, (20 + k * 2.54 - HY0) + .5));
     });
     hub.decals.push({ tex: hubTex, build: g => quad(g, [HX0, HY1, ZC1 + .01], AX, scl(AY, -1), HX1 - HX0, HY1 - HY0) });
-
     const dng = P('Свисток Hoco (UAC 1.0)', `~40 x 16 x 9 без штекера (оценка: сними размеры). Вставлен в порт 2 хаба, лежит в ложементе,
       гнездо 3.5 смотрит в левую стенку: удлинителей нет. Отверстие ⌀6.5 с фаской под штекер.`, [-30, 0, 20], 'in');
     extrude(dng.g(MAT.steel), FX(40), rect2(16, 9.5, 12, 4.5), [], 13);
     extrude(dng.g(MAT.dongle), FX(1), rrect(8, 5, 24, 14, 3, 6), [], 39);
     cylX(dng.g(MAT.dark), 16, 9.5, .9, 1.05, 1.8, 24);
     extrude(dng.g(MAT.steel), FX(.95), circ(16, 9.5, 2.6, 24), [circ(16, 9.5, 1.8, 24)], .1);
-    holes.left.push({ a: 16, b: 9.5, inner: circ(0, 0, 3.25, 28) });
+    holes.left.push({ a: 16, b: 9.5, inner: circ(0, 0, 3.25, 28), name: 'OUT 3.5 (свисток)', cut: '⌀6.5' });
     labels.push({ t: 'OUT 3.5', p: [-T, 16, 15], part: dng });
     const tpu = P('Ложемент TPU', 'Печать TPU 95A: держит свисток по высоте порта хаба, гасит вибрацию, не даёт штекеру 3.5 выломать порт.', [-30, 0, 6], 'in');
     extrude(tpu.g(MAT.tpu), FX(6), rrect(6.5, 0, 25.5, 5, 0), [], 28);
     for (const y of [6.5, 23.5]) box(tpu.g(MAT.tpu), 6, y - 1, 5, 34, y + 1, 9);
-    var pwrX = 107;
   }
 
-  // ----- питание: USB-C с резисторами CC
+  // ===== питание =====
   const pwr = P('Вход питания USB-C', `Платка USB-C с резисторами 5.1к на CC: зарядка PD отдаёт 5 В без договора.
-    Провода на <code>5V IN</code> носителя, дальше шина 5 В: <code>J1-21 5V</code> платы и VBUS ${vk === 'dac' ? 'порта BSP' : 'хаба'}.
+    Провода на <code>5V IN</code> носителя, дальше шина 5 В: <code>J1-21 5V</code> платы, VBUS ${vk === 'dac' ? 'порта BSP' : 'хаба'}${panelOn ? ' и панель (подсветка 4" до ~300 мА)' : ''}.
     <br>Если COM воткнут в ПК одновременно, 5 В приходят с двух сторон: проверь диоды на своей плате.`, [0, -30, 14], 'in');
   for (const x of [pwrX - 5, pwrX + 5]) cylZ(pwr.g(MAT.brass), x, 12, 0, ZC0, 1.8, 6);
   box(pwr.g(MAT.greenPcb), pwrX - 7, .5, ZC0, pwrX + 7, 14.5, ZC1);
@@ -515,112 +534,258 @@ function buildScene(vk) {
   extrude(pwr.g(MAT.dark), FY(.6), stad(pwrX, ZC1 + 1.63, 8.1, 2.5), [], 6.6);
   box(pwr.g(MAT.chip), pwrX - 3.3, .2, ZC1 + 1.28, pwrX + 3.3, 6.5, ZC1 + 1.98);
   for (const x of [pwrX - 3, pwrX + 3]) box(pwr.g(MAT.gold), x - .9, 11.5, ZC1, x + .9, 13.3, ZC1 + .05);
-  usbcHole('rear', pwrX, ZC1 + 1.63);
+  usbcHole('rear', pwrX, ZC1 + 1.63); holes.rear[holes.rear.length - 1].name = 'PWR 5V (USB-C)'; holes.rear[holes.rear.length - 1].cut = '9.4 x 3.8, карман 12.8 x 7.2 x 1.8';
   labels.push({ t: '5V USB-C PD', p: [pwrX, -T, 14], part: pwr });
-
-  // ----- COM в правой стенке
-  usbcHole('right', comY, usbZ);
+  usbcHole('right', comY, usbZ); holes.right[0].name = 'COM (USB-C)'; holes.right[0].cut = '9.4 x 3.8, карман 12.8 x 7.2 x 1.8';
   labels.push({ t: 'COM', p: [X + T, comY, usbZ + 5], part: brd, c2: 1 });
 
-  // ===== стенки с вырезами =====
-  const wallInfo = shellInfo;
-  const wallDefs = {
-    rear:  { len: X, F: d => ({ o: [0, -T + d, 0], u: AX, v: AZ, w: AY }), ex: [0, -40, 0], name: 'Задняя стенка' },
-    front: { len: X, F: d => ({ o: [0, Y + d, 0], u: AX, v: AZ, w: AY }), ex: [0, 40, 0], name: 'Передняя стенка' },
-    left:  { len: Y, F: d => ({ o: [-T + d, 0, 0], u: AY, v: AZ, w: AX }), ex: [-40, 0, 0], name: 'Левая стенка' },
-    right: { len: Y, F: d => ({ o: [X + d, 0, 0], u: AY, v: AZ, w: AX }), ex: [40, 0, 0], name: 'Правая стенка' },
-  };
-  for (const [k, w] of Object.entries(wallDefs)) {
-    const part = P(w.name, wallInfo, w.ex);
-    const outerIsLow = k === 'rear' || k === 'left';             // наружный слой со стороны меньшей координаты
-    const outer = rect2(w.len / 2, H / 2, w.len - 2 * RI, H);
-    const hs = holes[k];
+  // ===== стенки =====
+  const wallPart = (name, F, outer, hs, outerIsLow, ex) => {
+    const part = P(name, shellInfo, ex);
     const mv = (poly, a, b) => poly.map(([x, y]) => [x + a, y + b]);
-    const holesFor = layer => hs.map(h => mv(layer === 'out' ? (h.outer || h.inner) : h.inner, h.a, h.b));
-    extrude(part.g(MAT.shell), w.F(outerIsLow ? 0 : .7), outer, holesFor('out'), 1.8);
-    extrude(part.g(MAT.shell), w.F(outerIsLow ? 1.8 : 0), outer, holesFor('in'), .7);
-  }
-  const cornerC = [[RI, RI, 180], [X - RI, RI, 270], [X - RI, Y - RI, 0], [RI, Y - RI, 90]];
-  for (const [cx, cy, a0] of cornerC) {
+    const hl = layer => hs.map(h => mv(layer === 'out' ? (h.outer || h.inner) : h.inner, h.a, h.b));
+    extrude(part.g(MAT.shell), F(outerIsLow ? 0 : .7), outer, hl('out'), 1.8);
+    extrude(part.g(MAT.shell), F(outerIsLow ? 1.8 : 0), outer, hl('in'), .7);
+    return part;
+  };
+  const FR = d => ({ o: [0, -T + d, 0], u: AX, v: AZ, w: AY }), FF = d => ({ o: [0, Y + d, 0], u: AX, v: AZ, w: AY });
+  const FL = d => ({ o: [-T + d, 0, 0], u: AY, v: AZ, w: AX }), FRt = d => ({ o: [X + d, 0, 0], u: AY, v: AZ, w: AX });
+  const cornerPart = (cx, cy, a0, h) => {
     const pts = [];
     for (let i = 0; i <= 8; i++) { const a = (a0 + 90 * i / 8) * Math.PI / 180; pts.push([cx + RC * Math.cos(a), cy + RC * Math.sin(a)]); }
     for (let i = 8; i >= 0; i--) { const a = (a0 + 90 * i / 8) * Math.PI / 180; pts.push([cx + RI * Math.cos(a), cy + RI * Math.sin(a)]); }
-    extrude(P('Угол', wallInfo, [Math.sign(cx - X / 2) * 40, Math.sign(cy - Y / 2) * 40, 0]).g(MAT.shell), FZ(0), pts, [], H);
+    extrude(P('Угол', shellInfo, [Math.sign(cx - X / 2) * 40, Math.sign(cy - Y / 2) * 40, 0]).g(MAT.shell), FZ(0), pts, [], h);
+  };
+  let rearP, rightP, leftP;
+  if (form === 'pult') {
+    // острые рёбра: боковины на всю глубину с наклонным верхом, задняя и передняя между ними
+    rearP = wallPart('Задняя стенка', FR, rect2(X / 2, zIn(-T) / 2, X, zIn(-T)), holes.rear, true, [0, -40, 0]);
+    wallPart('Передняя стенка', FF, rect2(X / 2, zIn(Y) / 2, X, zIn(Y)), holes.front, false, [0, 40, 0]);
+    const side = [[-T, 0], [Y + T, 0], [Y + T, zIn(Y + T)], [-T, zIn(-T)]];
+    leftP = wallPart('Левая стенка', FL, side, holes.left, true, [-40, 0, 0]);
+    rightP = wallPart('Правая стенка', FRt, side, holes.right, false, [40, 0, 0]);
+  } else if (form === 'cube') {
+    const h = fc.H;
+    rearP = wallPart('Задняя стенка', FR, rect2(X / 2, h / 2, X - 2 * RI, h), holes.rear, true, [0, -40, 0]);
+    leftP = wallPart('Левая стенка', FL, rrect(RI, 0, Y, h, 0), holes.left, true, [-40, 0, 0]);
+    rightP = wallPart('Правая стенка', FRt, rrect(RI, 0, Y, h, 0), holes.right, false, [40, 0, 0]);
+    cornerPart(RI, RI, 180, h); cornerPart(X - RI, RI, 270, h);
+  } else {
+    const h = fc.H;
+    rearP = wallPart('Задняя стенка', FR, rect2(X / 2, h / 2, X - 2 * RI, h), holes.rear, true, [0, -40, 0]);
+    wallPart('Передняя стенка', FF, rect2(X / 2, h / 2, X - 2 * RI, h), holes.front, false, [0, 40, 0]);
+    leftP = wallPart('Левая стенка', FL, rect2(Y / 2, h / 2, Y - 2 * RI, h), holes.left, true, [-40, 0, 0]);
+    rightP = wallPart('Правая стенка', FRt, rect2(Y / 2, h / 2, Y - 2 * RI, h), holes.right, false, [40, 0, 0]);
+    for (const [cx, cy, a0] of [[RI, RI, 180], [X - RI, RI, 270], [X - RI, Y - RI, 0], [RI, Y - RI, 90]]) cornerPart(cx, cy, a0, h);
   }
-
-  // подписи на стенках (печать)
   const wallText = (part, o, u, w, h, t) => {
     const tex = canvasTex(w, h, 20, (c, ww, hh) => { c.fillStyle = 'rgba(220,224,232,.85)'; c.font = `700 ${hh * .7}px ui-monospace, monospace`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(t, ww / 2, hh / 2 + .2); });
     part.decals.push({ tex, build: g => quad(g, o, u, AZ, w, h) });
   };
-  const rearP = parts.find(p => p.name === 'Задняя стенка'), rightP = parts.find(p => p.name === 'Правая стенка'), leftP = parts.find(p => p.name === 'Левая стенка');
-  const rText = (x, z, t, w = 14) => wallText(rearP, [x - w / 2, -T - .02, z], AX, w, 3.2, t);
+  const rText = (x, z, t, w = 14) => wallText(rearP, [x + w / 2, -T - .02, z], scl(AX, -1), w, 3.2, t);
   rText(pwrX, 15.5, '5V');
-  if (vk === 'dac') { rText(42, 15.5, 'BSP'); rText(18.5, 15.5, 'OUT'); }
-  else { rText(76, 15.5, 'BSP'); wallText(leftP, [-T - .02, 16 + 7, 15.5], scl(AY, -1), 14, 3.2, 'OUT'); }
-  wallText(rightP, [X + T + .02, comY - 7, usbZ + 5.2], AY, 14, 3.2, 'COM');
+  if (vk === 'dac') { rText(uaX, 15.5, 'BSP'); rText(18.5, 15.5, 'OUT'); }
+  else { rText(76, 15.5, 'BSP'); wallText(leftP, [-T - .02, 16 - 7, 15.5], AY, 14, 3.2, 'OUT'); }
+  wallText(rightP, [X + T + .02, comY + 7, usbZ + 5.2], scl(AY, -1), 14, 3.2, 'COM');
 
-  // ===== крышка =====
-  const lid = P('Крышка', `Окно ${(ACT[0] + 1).toFixed(1)} x ${(ACT[1] + 1).toFixed(1)} точно над активной зоной экрана, световод RGB ⌀3,
-    отверстие толкателя RST ⌀2.2 (утоплен, случайно не нажать), 4 винта M3 с потайной головкой во вставки.`, [0, 0, 110], 'lid');
-  const lidHoles = [rrect(actC[0] - ACT[0] / 2 - .5, actC[1] - ACT[1] / 2 - .5, actC[0] + ACT[0] / 2 + .5, actC[1] + ACT[1] / 2 + .5, .8),
-    circ(led[0], led[1], 1.6, 20), circ(rstB[0], rstB[1], 1.1, 16), ...bosses.map(([x, y]) => circ(x, y, 1.7, 18))];
-  extrude(lid.g(MAT.lid), FZ(H), rrect(-T, -T, X + T, Y + T, RC, 8), lidHoles, T);
-  for (const [x, y] of bosses) { cylZ(lid.g(MAT.screw), x, y, H + T - .01, H + T + .5, 2.9, 24); cylZ(lid.g(MAT.dark), x, y, H + T + .5, H + T + .52, 1.25, 6); }
-  const lidTex = canvasTex(40, 9, 20, (c, w, h) => {
-    c.fillStyle = 'rgba(255,181,71,.9)'; c.font = '700 6px system-ui, sans-serif'; c.textBaseline = 'middle'; c.fillText('esposc', 0, h / 2);
-    c.fillStyle = 'rgba(200,204,212,.55)'; c.font = '600 2px ui-monospace, monospace'; c.fillText('acid groovebox', 22, h / 2 + .4);
-  });
-  lid.decals.push({ tex: lidTex, build: g => quad(g, [X - 46, Y - 4, H + T + .01], AX, scl(AY, -1), 40, 9) });
-  const lidTex2 = canvasTex(18, 4, 20, (c, w, h) => { c.fillStyle = 'rgba(200,204,212,.6)'; c.font = '600 2px ui-monospace, monospace'; c.textBaseline = 'middle'; c.fillText('RST', 0, 2); c.fillText('●', 8.6, 2.1); });
-  lid.decals.push({ tex: lidTex2, build: g => quad(g, [rstB[0] + 2.2, rstB[1] + 2, H + T + .01], AX, scl(AY, -1), 18, 4) });
-  const pipe = P('Световод и толкатель', 'Световод: акрил ⌀3 от RGB-светодиода платы до крышки. Толкатель RST: ⌀1.8, на 0.5 мм утоплен в крышке, нажимать скрепкой.', [0, 0, 110], 'lid');
-  cylZ(pipe.g(MAT.pipe), led[0], led[1], ZB1 + 1, H + T + .3, 1.5, 20);
-  cylZ(pipe.g(MAT.pusher), rstB[0], rstB[1], ZB1 + 1.8, H + T - .5, .9, 14);
-  pipe.isPipe = true;
+  // ===== крышка, экран, панель =====
+  const screen = document.createElement('canvas');
+  let hdrPin = null, p1Pin = null, cableOnLid = false;
+  const panelInfo = `<b>Guition ESP32-S3-4848S040</b>, 4" 480x480 ST7701 по RGB, тач GT911, N16R8. Блок 220 В снят.
+    Глубина с компонентами на обороте ~${GP.PD} мм (оценка, сними штангенциркулем).<br>
+    Связь с синтом по <b>P1</b> (4 пина: <code>GND RX TX +5V</code>): <code>RX</code> ← J1-10 IO17, <code>TX</code> → J1-11 IO18, питание с шины 5 В.
+    Последовательно по 1к на обе линии сигнала. P1, скорее всего, делит UART0 с CH340C: проверь, нет ли прямого соединения с выводом 2 CH340C.
+    ${form === 'pult' ? '<br>USB-C панели в пульте спрятан под крышкой: прошивка по воздуху или снять 4 винта.' : '<br>USB-C панели на её правом боку, доступен снаружи.'}`;
+  // модель панели в кадре F: o - левый нижний угол лицевой плоскости, u вправо, v вверх, w наружу
+  const buildPanel = (part, F) => {
+    const Fw = (w0, o2 = [0, 0]) => ({ o: add(add(F.o, scl(F.w, w0)), add(scl(F.u, o2[0]), scl(F.v, o2[1]))), u: F.u, v: F.v, w: F.w });
+    const S0 = GP.S;
+    extrude(part.g(MAT.panelShell), Fw(-12), rrect(0, 0, S0, S0, GP.R, 8), [rrect(2, 2, S0 - 2, S0 - 2, GP.R - 1.5, 8)], 11);
+    extrude(part.g(MAT.glass), Fw(-1), rrect(0, 0, S0, S0, GP.R, 8), [], 1);
+    extrude(part.g(MAT.guiPcb), Fw(-10.6), rrect(3, 3, S0 - 3, S0 - 3, 1, 2), [], 1.6);
+    extrude(part.g(MAT.steel), Fw(-13.8), rect2(43, 63, 18, 25.5), [], 3.2);              // WROOM на обороте
+    extrude(part.g(MAT.white), Fw(-15.5), rect2(9, 54, 5.5, 8), [], 4.9);                 // P1
+    extrude(part.g(MAT.header), Fw(-19), rect2(19, 27, 5.2, 10.3), [], 8.4);              // H1 2x4
+    extrude(part.g(MAT.steel), Fw(-12.4), rect2(74, 62, 14, 15), [], 1.8);                // TF
+    extrude(part.g(MAT.chip), Fw(-12.3), rect2(63, 37, 4, 10), [], 1.7);                  // CH340C
+    extrude(part.g(MAT.chip), Fw(-12), rect2(60, 52, 5, 5), [], 1.4);                     // NS4168
+    // USB-C на правом боку
+    extrude(part.g(MAT.steel), { o: add(F.o, scl(F.u, 78.7)), u: F.v, v: F.w, w: F.u }, stad(43, -12.2, 8.94, 3.26), [stad(43, -12.2, 8.1, 2.5)], 7.35);
+    const scr = add(add(F.o, scl(F.u, (S0 - GP.ACT) / 2)), add(scl(F.v, (S0 - GP.ACT) / 2 + 1), scl(F.w, .02)));
+    part.decals.push({ tex: screen, unlit: true, dynamic: 'screen', build: g => quad(g, scr, F.u, F.v, GP.ACT, GP.ACT) });
+    p1Pin = k => add(add(F.o, scl(F.w, -15.6)), add(scl(F.u, 9), scl(F.v, 51.9 + k * 1.25)));
+  };
+
+  if (form === 'box') {
+    const [dx, dy] = fc.disp, DW = 56, DH = 27, Hh = fc.H;
+    const actC = [dx + 25.25, dy + 13.5], ACT = [42.72, 22.7];
+    screen.width = 640; screen.height = 340;
+    const dsp = P('Экран 1.9" ST7789, 170x320', `IPS, SPI. Модуль ${DW} x ${DH} (оценка), активная зона 42.72 x 22.7, стекло прижато к крышке изнутри.
+      Угловая гребёнка, чтобы ничего не торчало вниз над платой.<br>
+      <code>G</code> J1-22 · <code>3V3</code> J1-2 · <code>SCL</code> J1-18 IO12 · <code>SDA</code> J1-17 IO11 · <code>RES</code> J1-20 IO14 · <code>DC</code> J1-19 IO13 ·
+      <code>CS</code> J1-16 IO10 · <code>BL</code> J1-15 IO9 (ШИМ).`, [0, 0, 78], 'lid');
+    const dz1 = Hh - .05, dz0 = dz1 - 1.6, pz0 = dz0 - 1.6;
+    box(dsp.g(MAT.dispPcb), dx, dy, pz0, dx + DW, dy + DH, dz0);
+    rbox(dsp.g(MAT.glass), dx + 1, dy + 1, dz0, dx + 49.5, dy + 26, dz1, .8);
+    box(dsp.g(MAT.header), dx + DW - 1, dy + DH / 2 - 10.2, pz0 - 2.5, dx + DW + 1.5, dy + DH / 2 + 10.2, pz0);
+    hdrPin = k => [dx + DW + 4, dy + DH / 2 + (k - 3.5) * PITCH, pz0 - 1.25];
+    for (let k = 0; k < 8; k++) { const p = hdrPin(k); box(dsp.g(MAT.gold), dx + DW - 1, p[1] - .32, p[2] - .32, p[0], p[1] + .32, p[2] + .32); }
+    dsp.decals.push({ tex: screen, unlit: true, dynamic: 'screen', build: g => quad(g, [actC[0] - ACT[0] / 2, actC[1] + ACT[1] / 2, dz1 + .005], AX, scl(AY, -1), ACT[0], ACT[1]) });
+    const lid = P('Крышка', `Окно ${f1(ACT[0] + 1)} x ${f1(ACT[1] + 1)} точно над активной зоной экрана, световод RGB ⌀3,
+      отверстие толкателя RST ⌀2.2, 4 винта M3 с потайной головкой во вставки.`, [0, 0, 110], 'lid');
+    const lidHoles = [rrect(actC[0] - ACT[0] / 2 - .5, actC[1] - ACT[1] / 2 - .5, actC[0] + ACT[0] / 2 + .5, actC[1] + ACT[1] / 2 + .5, .8),
+      circ(led[0], led[1], 1.6, 20), circ(rstB[0], rstB[1], 1.1, 16), ...bosses.map(([x, y]) => circ(x, y, 1.7, 18))];
+    extrude(lid.g(MAT.lid), FZ(Hh), rrect(-T, -T, X + T, Y + T, RC, 8), lidHoles, T);
+    for (const [x, y] of bosses) { cylZ(lid.g(MAT.screw), x, y, Hh + T - .01, Hh + T + .5, 2.9, 24); cylZ(lid.g(MAT.dark), x, y, Hh + T + .5, Hh + T + .52, 1.25, 6); }
+    lid.decals.push({ tex: logoTex(), build: g => quad(g, [X - 46, Y - 4, Hh + T + .01], AX, scl(AY, -1), 40, 9) });
+    const pipe = P('Световод и толкатель', 'Световод: акрил ⌀3 от RGB-светодиода платы до крышки. Толкатель RST: ⌀1.8, на 0.5 мм утоплен в крышке, нажимать скрепкой.', [0, 0, 110], 'lid');
+    cylZ(pipe.g(MAT.pipe), led[0], led[1], ZB1 + 1, Hh + T + .3, 1.5, 20);
+    cylZ(pipe.g(MAT.pusher), rstB[0], rstB[1], ZB1 + 1.8, Hh + T - .5, .9, 14);
+  } else if (form === 'pult') {
+    screen.width = 480; screen.height = 480;
+    // наклонная крышка: кадр по нижней грани, v вверх по склону к задней стенке, w - нормаль наружу
+    const v = [0, -cosA, sinA], w = [0, sinA, cosA], Lv = (Y + 2 * T) / cosA;
+    const p0 = [-T, Y + T, zIn(Y + T)];
+    const FP = { o: p0, u: AX, v, w };
+    const pU = (X + 2 * T - GP.S) / 2, pV = (Lv - GP.S) / 2;
+    const toUV = (x, y) => [x + T, (Y + T - y) / cosA];
+    const lid = P('Наклонная крышка', `Склон ${fc.slope}°, длина по склону ${f1(Lv)} мм. Окно под панель ${GP.S + .4} x ${GP.S + .4} R${GP.R},
+      панель стоит в нём на рамке-переходнике (повторяет защёлки снятого блока 220 В) и выступает на 0.6 мм.
+      4 винта M3 в стойки по углам.`, [0, 0, 110], 'lid');
+    const lidHoles = [rrect(pU - .2, pV - .2, pU + GP.S + .2, pV + GP.S + .2, GP.R + .2, 8), ...bosses.map(([x, y]) => circ(...toUV(x, y), 1.7, 18))];
+    extrude(lid.g(MAT.lid), FP, rrect(0, 0, X + 2 * T, Lv, 1.2, 3), lidHoles, T);
+    for (const [x, y] of bosses) {
+      const [uu, vv] = toUV(x, y), c = add(p0, add(scl(AX, uu), add(scl(v, vv), scl(w, T - .01))));
+      extrude(lid.g(MAT.screw), { o: c, u: AX, v, w }, circ(0, 0, 2.9, 24), [], .5);
+    }
+    const lidLogo = add(p0, add(scl(AX, X + 2 * T - 24), add(scl(v, .5), scl(w, T + .01))));
+    lid.decals.push({ tex: logoTex(), build: g => quad(g, lidLogo, AX, v, 20, 4.5) });
+    const pan = P('Панель Guition 4848S040', panelInfo, [0, 0, 150], 'lid');
+    buildPanel(pan, { o: add(p0, add(scl(AX, pU), add(scl(v, pV), scl(w, T + .6)))), u: AX, v, w });
+    cableOnLid = true;
+    labels.push({ t: `${fc.slope}°`, p: add(p0, add(scl(AX, -1), add(scl(v, Lv * .5), scl(w, T)))), part: lid, dim: 1 });
+  } else {
+    screen.width = 480; screen.height = 480;
+    const h = fc.H;
+    const lid = P('Крышка', `Плоская крышка на 4 винта M3 во вставки. Панель держится не на ней, а на передней рамке.`, [0, 0, 110], 'lid');
+    extrude(lid.g(MAT.lid), FZ(h), rrectRear(-T, -T, X + T, Y, RC), bosses.map(([x, y]) => circ(x, y, 1.7, 18)), T);
+    for (const [x, y] of bosses) { cylZ(lid.g(MAT.screw), x, y, h + T - .01, h + T + .5, 2.9, 24); cylZ(lid.g(MAT.dark), x, y, h + T + .5, h + T + .52, 1.25, 6); }
+    lid.decals.push({ tex: logoTex(), build: g => quad(g, [X / 2 - 20, Y - 6, h + T + .01], AX, scl(AY, -1), 40, 9) });
+    const pan = P('Панель Guition 4848S040', panelInfo, [0, 60, 0], 'body');
+    buildPanel(pan, { o: [-T, Y + GP.PD, -T], u: AX, v: AZ, w: AY });
+    const frame = P('Рамка-переходник', `Печатная рамка 86 x 86 со стенкой 2: с одной стороны повторяет защёлки снятого блока 220 В, с другой входит в корпус.
+      Держит панель на ${GP.PD} мм впереди корпуса.`, [0, 30, 0]);
+    extrude(frame.g(MAT.shell), { o: [0, Y, 0], u: AX, v: AZ, w: AY }, rrect(-T, -T, X + T, h + T, 1, 2), [rrect(-T + 2, -T + 2, X + T - 2, h + T - 2, .5, 2)], GP.PD - 12);
+  }
 
   // ===== провода =====
   const wires = P('Провода', `Все провода паяются к пятакам носителя, не к плате. Цвета: красный 5V/3V3, чёрный земля, зелёный D+, белый D-.`, [0, 0, 0], 'wire');
-  const W_R = .55;
-  const route = (m, pts) => tube(wires.g(m), catmull(pts, 8), W_R, 8);
+  const route = (m, pts) => tube(wires.g(m), catmull(pts, 8), .55, 8);
   const rp = i => [pinX(i), rearY, ZC1 + .3], fp = i => [pinX(i), frontY, ZC1 + .3];
   if (vk === 'dac') {
-    const DX0 = 9, DY1 = 32.1, dacPin = k => [DX0 + 2.37 + k * PITCH, DY1 - 1.55, ZC1 + 8.6];
-    // VIN, G, BCK, LCK, DIN -> пины модуля VIN0 GND1 LCK2 DIN3 BCK4
+    const dacPin = k => [9 + 2.37 + k * PITCH, 32.1 - 1.55, ZC1 + 8.6];
     [[2, 0, 'red'], [3, 1, 'black'], [4, 4, 'blue'], [5, 2, 'yellow'], [6, 3, 'green']].forEach(([c, k, col], j) => {
       const a = fp(c), b = dacPin(k), z = 9 + j * .9;
-      route(WIRE[col], [a, [a[0], a[1] + 2, z], [carX0 - 2 - j, a[1] + 3 + j * .6, z], [b[0] + 4, 40 - j, z + 1], [b[0], b[1] + 2, b[2] + 1.5], b]);
+      route(WIRE[col], [a, [a[0], a[1] + 2, z], [carX0 - 2 - j, a[1] + 3 + j * .6, z], [b[0] + 4, b[1] + 9 - j, z + 1], [b[0], b[1] + 2, b[2] + 1.5], b]);
     });
-    // USB-A: D+, D-, G, 5V -> пятаки платки 37.9.. (5V, D-, D+, G)
     [[19, 2, 'green'], [20, 1, 'white'], [21, 3, 'black'], [22, 0, 'red']].forEach(([c, k, col], j) => {
-      const a = rp(c), b = [37.9 + k * PITCH, 18.4, ZC1 + .3], z = 10 + j * .9;
+      const a = rp(c), b = [uaX - 4.1 + k * PITCH, 18.4, ZC1 + .3], z = 10 + j * .9;
       route(WIRE[col], [a, [a[0], a[1] - 1.5, z], [a[0] - 10, carY0 - 1.5, z + 1], [b[0] + 6, b[1] + 3, z], [b[0], b[1] + .6, b[2] + 1], b]);
     });
   } else {
-    // вверх к хабу: D+, D-, G, 5V -> пятаки хаба (5V, D-, D+, G) по y 20..27.6
     [[19, 2, 'green'], [20, 1, 'white'], [21, 3, 'black'], [22, 0, 'red']].forEach(([c, k, col], j) => {
       const a = rp(c), b = [91.2, 20 + k * PITCH, ZC1 + .3], z = 9 + j * .9;
       route(WIRE[col], [a, [a[0], a[1] - 1.5, z], [a[0] - 6, 34, z + .5], [96, b[1] + 1, z], [b[0] + 1, b[1], b[2] + 1], b]);
     });
   }
-  // питание -> 5V IN
   [[pwrX - 3, 1, 'red'], [pwrX + 3, 2, 'black']].forEach(([x, c, col], j) => {
     const a = [x, 12.4, ZC1 + .3], b = rp(c), z = 8.5 + j * .9;
     route(WIRE[col], [a, [x, 14, z], [(x + b[0]) / 2, (14 + b[1]) / 2 - 1, z + 1.5], [b[0], b[1] - 2, z], b]);
   });
-  // шлейф экрана: динамический, зависит от положения крышки
-  const ribbon = P('Шлейф экрана', `8 жил, 15 см с запасом на открытую крышку. С носителя <code>DISP</code> на угловую гребёнку модуля.`, [0, 0, 0], 'ribbon');
-  const RIB = [[22, 0, 'black'], [21, 1, 'red'], [18, 2, 'yellow'], [17, 3, 'green'], [20, 4, 'orange'], [19, 5, 'blue'], [16, 6, 'violet'], [15, 7, 'grey']];
-  ribbon.rebuild = off => {
-    ribbon.geos = new Map();
-    RIB.forEach(([c, k, col], j) => {
-      const a = fp(c), b = add(hdrPin(k), off), lift = off[2];
-      const mid = [(a[0] + b[0]) / 2 + 4, (a[1] + b[1]) / 2 + 5 + j * .25, a[2] + (b[2] - a[2]) * .55];
-      tube(ribbon.g(WIRE[col]), catmull([a, [a[0], a[1] + 1.2, a[2] + 3], [a[0] - 2, a[1] + 3 + j * .3, Math.min(a[2] + 7, b[2] - 2)], mid, [b[0] + 5, b[1], b[2] - 1.5], b], 10), .45, 7);
-    });
-  };
+  // шлейф: экран 1.9" или кабель UART на P1 панели; пересобирается за крышкой
+  const ribbon = P(panelOn ? 'Кабель UART к панели' : 'Шлейф экрана', panelOn
+    ? `4 жилы в разъём P1 панели (шаг 1.25, оценка). <code>TX</code> носителя → <code>RX</code> P1, <code>RX</code> ← <code>TX</code> P1, 5V, G. Длина с запасом на открытую крышку.`
+    : `8 жил, 15 см с запасом на открытую крышку. С носителя <code>DISP</code> на угловую гребёнку модуля.`, [0, 0, 0], 'ribbon');
+  ribbon.onLid = panelOn ? cableOnLid : true;
+  if (panelOn) {
+    // P1 сверху вниз: GND, RX, TX, +5V -> k = 3, 2, 1, 0
+    const CAB = [[13, 3, 'black'], [10, 2, 'yellow'], [11, 1, 'green'], [12, 0, 'red']];
+    ribbon.rebuild = off => {
+      ribbon.geos = new Map();
+      CAB.forEach(([c, k, col], j) => {
+        const a = fp(c), b = add(p1Pin(k), ribbon.onLid ? off : [0, 0, 0]);
+        const back = add(b, form === 'pult' ? [0, -6 * sinA, -6 * cosA] : [0, -6, 0]);
+        const mid = [(a[0] + b[0]) / 2, Math.max(a[1], b[1]) - 4 + j * .4, (a[2] + back[2]) / 2 + 4];
+        tube(ribbon.g(WIRE[col]), catmull([a, [a[0], a[1] + 1.2, a[2] + 3], [a[0] - 3, a[1] + 3 + j * .3, a[2] + 8], mid, back, b], 10), .45, 7);
+      });
+    };
+  } else {
+    const RIB = [[22, 0, 'black'], [21, 1, 'red'], [18, 2, 'yellow'], [17, 3, 'green'], [20, 4, 'orange'], [19, 5, 'blue'], [16, 6, 'violet'], [15, 7, 'grey']];
+    ribbon.rebuild = off => {
+      ribbon.geos = new Map();
+      RIB.forEach(([c, k, col], j) => {
+        const a = fp(c), b = add(hdrPin(k), off);
+        const mid = [(a[0] + b[0]) / 2 + 4, (a[1] + b[1]) / 2 + 5 + j * .25, a[2] + (b[2] - a[2]) * .55];
+        tube(ribbon.g(WIRE[col]), catmull([a, [a[0], a[1] + 1.2, a[2] + 3], [a[0] - 2, a[1] + 3 + j * .3, Math.min(a[2] + 7, b[2] - 2)], mid, [b[0] + 5, b[1], b[2] - 1.5], b], 10), .45, 7);
+      });
+    };
+  }
 
-  return { vk, cfg, X, Y, H, parts, labels, dims, screenCanvas: screen, center: [X / 2, Y / 2, H / 2] };
+  // ===== размеры =====
+  const zb = -T, yF = form === 'cube' ? Y + GP.PD : Y + T;
+  const dimLine = (a, b, off, t) => dimL.push({ a, b, off, t });
+  dimLine([-T, yF, zb], [X + T, yF, zb], [0, 14, -4], `${f1(outW)}`);
+  dimLine([X + T, -T, zb], [X + T, yF, zb], [16, 0, -4], `${f1(outD)}`);
+  if (form === 'pult') {
+    dimLine([X + T, yF, zb], [X + T, yF, zTop(Y + T)], [14, 10, 0], `${f1(zTop(Y + T) + T)}`);
+    dimLine([X + T, -T, zb], [X + T, -T, zTop(-T)], [14, -10, 0], `${f1(zTop(-T) + T)}`);
+  } else {
+    dimLine([X + T, yF, zb], [X + T, yF, outH - T], [14, 10, 0], `${f1(outH)}`);
+  }
+  if (form === 'cube') dimLine([-T, -T, outH - T], [-T, Y, outH - T], [-12, 0, 8], `корпус ${f1(T + Y)}`);
+  // таблица
+  const outerX = x => f1(x + T), outerZ = z => f1(z + T);
+  table.push(['Габарит', `${f1(outW)} x ${f1(outD)} x ${f1(outH)}`, 'Ш x Г x В, без ножек 2']);
+  table.push(['Стенка, дно, крышка', `${T}`, 'PETG']);
+  if (form === 'pult') {
+    table.push(['Высота спереди / сзади', `${f1(zTop(Y + T) + T)} / ${f1(zTop(-T) + T)}`, 'от низа дна до верха крышки']);
+    table.push(['Наклон крышки', `${fc.slope}°`, `длина по склону ${f1((Y + 2 * T) / cosA)}`]);
+  }
+  if (panelOn) {
+    table.push([form === 'pult' ? 'Окно под панель' : 'Панель на рамке', form === 'pult' ? `${GP.S + .4} x ${GP.S + .4} R${GP.R}` : `${GP.S} x ${GP.S}`, 'панель 86 x 86, глубина ~' + GP.PD + ' (оценка)']);
+    table.push(['Экран', `${GP.ACT} x ${GP.ACT}`, '4", 480x480']);
+  }
+  table.push(['Внутри', `${X} x ${Y} x ${f1(form === 'pult' ? zIn(Y) : fc.H)}${form === 'pult' ? '…' + f1(zIn(-T)) : ''}`, 'Ш x Г x В']);
+  for (const h of holes.rear) table.push([h.name, h.cut, `задняя: центр ${outerX(h.a)} от левого края (вид спереди), ${outerZ(h.b)} от низа`]);
+  for (const h of holes.left) table.push([h.name, h.cut, `левая: центр ${f1(h.a + T)} от задней грани, ${outerZ(h.b)} от низа`]);
+  for (const h of holes.right) table.push([h.name, h.cut, `правая: центр ${f1(h.a + T)} от задней грани, ${outerZ(h.b)} от низа`]);
+  table.push(['Плата на носителе', `${L} x ${W}`, `левый край ${outerX(bx)}, задний ${f1(by + T)}, низ платы ${outerZ(ZB0)}`]);
+  table.push(['Стойки крышки', '⌀7.5, вставка M3', bosses.map(([x, y]) => `(${outerX(x)}, ${f1(y + T)})`).join(' ')]);
+
+  const dimP = P('Размеры', 'Размерные линии, мм.', [0, 0, 0], 'dim');
+  for (const d of dimL) {
+    const pa = add(d.a, d.off), pb = add(d.b, d.off), ext = nrm(d.off), e = scl(ext, 2);
+    tube(dimP.g(MAT.dimc), [pa, pb], .22, 6);
+    tube(dimP.g(MAT.dimc), [d.a, add(pa, e)], .12, 5); tube(dimP.g(MAT.dimc), [d.b, add(pb, e)], .12, 5);
+    labels.push({ t: d.t, p: scl(add(pa, pb), .5), part: dimP, dim: 1 });
+  }
+  const zc = form === 'pult' ? zTop(Y / 2) / 2 : (form === 'cube' ? fc.H / 2 : fc.H / 2);
+  return { form, vk, X, Y, H, parts, labels, dims: dimsTxt, dimL, table, screenCanvas: screen,
+    center: [X / 2, (form === 'cube' ? (Y + GP.PD) / 2 : Y / 2), zc], size: Math.max(outW, outD, outH) };
+}
+function rrectRear(x0, y0, x1, y1, r) {
+  // скруглены только задние углы (y0), передняя кромка прямая под панель
+  const p = [];
+  for (let i = 0; i <= 6; i++) { const a = (-90 + 90 * i / 6) * Math.PI / 180; p.push([x1 - r + r * Math.cos(a), y0 + r + r * Math.sin(a)]); }
+  p.push([x1, y1], [x0, y1]);
+  for (let i = 0; i <= 6; i++) { const a = (180 + 90 * i / 6) * Math.PI / 180; p.push([x0 + r + r * Math.cos(a), y0 + r + r * Math.sin(a)]); }
+  return clean(p);
+}
+function logoTex() {
+  return canvasTex(40, 9, 20, (c, w, h) => {
+    c.fillStyle = 'rgba(255,181,71,.9)'; c.font = '700 6px system-ui, sans-serif'; c.textBaseline = 'middle'; c.fillText('esposc', 0, h / 2);
+    c.fillStyle = 'rgba(200,204,212,.55)'; c.font = '600 2px ui-monospace, monospace'; c.fillText('acid groovebox', 22, h / 2 + .4);
+  });
 }
 
 // ---------- WebGL ----------
@@ -746,9 +911,11 @@ function uploadPart(p) {
   p.items = [];
   for (const [m, g] of p.geos) if (g.d.length) p.items.push({ ...upload(g), mat: m });
 }
-function loadScene(vk) {
+function loadScene(form, vk) {
   if (S) for (const p of S.parts) { (p.items || []).forEach(freeItem); (p.dItems || []).forEach(d => { freeItem(d); gl.deleteTexture(d.tex); }); }
-  S = buildScene(vk);
+  S = buildScene(form, vk);
+  document.querySelectorAll('#segVar button').forEach(b => { b.disabled = form !== 'box' && b.dataset.v === 'hub'; b.classList.toggle('on', b.dataset.v === S.vk); });
+  document.getElementById('dimTable').innerHTML = S.table.map(([n, v, note]) => `<tr><td>${n}<div class="nt">${note}</div></td><td>${v}</td></tr>`).join('');
   for (const p of S.parts) {
     if (p.rebuild) p.rebuild([0, 0, 0]);
     uploadPart(p);
@@ -757,7 +924,7 @@ function loadScene(vk) {
   document.getElementById('dims').textContent = S.dims;
   const list = document.getElementById('parts'); list.innerHTML = '';
   for (const p of S.parts) {
-    if (p.name === 'Угол') continue;
+    if (p.name === 'Угол' || p.group === 'dim') continue;
     const d = document.createElement('div'); d.textContent = p.name; d.dataset.id = p.id;
     d.onmouseenter = () => { listHover = p.id; }; d.onmouseleave = () => { listHover = 0; };
     d.onclick = () => { selected = selected === p.id ? 0 : p.id; showInfo(p); };
@@ -767,7 +934,7 @@ function loadScene(vk) {
 }
 
 // ---------- состояние UI ----------
-let lidState = 0, lidAnim = 0, explode = 0, explodeAnim = 0, xray = false, showLbl = true;
+let lidState = 0, lidAnim = 0, explode = 0, explodeAnim = 0, xray = false, showLbl = true, showDims = true, curForm = 'pult', curVk = 'dac';
 let hover = 0, selected = 0, listHover = 0, lastRibbon = null;
 const cam = { yaw: .95, pitch: .6, dist: 260, target: [55, 36, 12] };
 let camGoal = null;
@@ -794,12 +961,50 @@ function showInfo(p) {
 // подписи портов
 function buildLabels() {
   const box = document.getElementById('labels'); box.innerHTML = '';
-  S.labels.forEach(l => { const d = document.createElement('div'); d.className = 'lbl' + (l.c2 ? ' c2' : ''); d.textContent = l.t; box.appendChild(d); l.el = d; });
+  S.labels.forEach(l => { const d = document.createElement('div'); d.className = 'lbl' + (l.c2 ? ' c2' : '') + (l.dim ? ' dim' : ''); d.textContent = l.t; box.appendChild(d); l.el = d; });
 }
 
 // экран: простой интерфейс статуса
 let beat = 0;
+function drawPanel(c) {
+  // 480x480: интерфейс панели Guition
+  const x = c.getContext('2d'), w = 480;
+  x.fillStyle = '#05070b'; x.fillRect(0, 0, w, w);
+  const pages = ['MIX', 'DRM', 'DR2', 'SY1', 'SY2', 'FX', 'DLY', 'PRC', 'CYM', 'KEY'];
+  pages.forEach((p, i) => {
+    const on = i === 3; x.fillStyle = on ? '#ffb547' : '#151820'; x.fillRect(8 + i * 46.4, 8, 42, 30);
+    x.fillStyle = on ? '#111' : '#7d8496'; x.font = '700 13px ui-monospace, monospace'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(p, 29 + i * 46.4, 24);
+  });
+  x.textAlign = 'left'; x.fillStyle = '#f2f2f2'; x.font = '700 26px system-ui, sans-serif'; x.fillText('Синт 1 · 303', 14, 66);
+  x.textAlign = 'right'; x.fillStyle = '#8be38b'; x.font = '700 26px ui-monospace, monospace'; x.fillText('125.0', w - 56, 66);
+  x.fillStyle = '#7d8496'; x.font = '600 14px ui-monospace, monospace'; x.fillText('BPM', w - 14, 69);
+  const vals = [96, 40, 110, 64, 20, 80, 127, 52], names = ['CUTOFF', 'RESO', 'ENV', 'DECAY', 'ACCENT', 'DRIVE', 'VOLUME', 'GLIDE'];
+  vals.forEach((v, i) => {
+    const cx = 64 + (i % 4) * 117, cy = 140 + Math.floor(i / 4) * 112;
+    x.lineCap = 'round'; x.strokeStyle = '#1f232c'; x.lineWidth = 9; x.beginPath(); x.arc(cx, cy, 36, Math.PI * .75, Math.PI * 2.25); x.stroke();
+    x.strokeStyle = ['#ffb547', '#ff6f7d', '#6fc3ff', '#8be38b'][i % 4]; x.beginPath(); x.arc(cx, cy, 36, Math.PI * .75, Math.PI * (.75 + 1.5 * v / 127)); x.stroke();
+    x.fillStyle = '#e6e6e6'; x.font = '700 22px ui-monospace, monospace'; x.textAlign = 'center'; x.fillText(String(v), cx, cy + 2);
+    x.fillStyle = '#7d8496'; x.font = '600 12px ui-monospace, monospace'; x.fillText(names[i], cx, cy + 50);
+  });
+  for (let s = 0; s < 16; s++) {
+    const on = [0, 3, 6, 8, 10, 14].includes(s), cur = s === beat % 16, sx = 12 + s * 28.6;
+    x.fillStyle = cur ? '#ffffff' : on ? '#ff6f7d' : '#161a22'; x.fillRect(sx, 334, 24, 34);
+    if (on && !cur) { x.fillStyle = '#ffb547'; x.fillRect(sx, 334, 24, 4); }
+  }
+  // уровни и загрузка ядер
+  const lv = .55 + .35 * Math.abs(Math.sin(beat * .9)), lv2 = .5 + .35 * Math.abs(Math.sin(beat * .7 + 1));
+  [['L', lv], ['R', lv2]].forEach(([t, v], i) => {
+    const y0 = 392 + i * 22; x.fillStyle = '#7d8496'; x.font = '600 13px ui-monospace, monospace'; x.textAlign = 'left'; x.fillText(t, 12, y0 + 8);
+    for (let k = 0; k < 24; k++) { x.fillStyle = k / 24 < v ? (k > 20 ? '#ff6f7d' : k > 16 ? '#ffb547' : '#8be38b') : '#161a22'; x.fillRect(30 + k * 9, y0, 7, 16); }
+  });
+  [['ядро 1', .82], ['ядро 0', .66]].forEach(([t, v], i) => {
+    const y0 = 392 + i * 22; x.fillStyle = '#7d8496'; x.textAlign = 'left'; x.fillText(t, 262, y0 + 8);
+    x.fillStyle = '#161a22'; x.fillRect(320, y0, 148, 16); x.fillStyle = '#c79bff'; x.fillRect(320, y0, 148 * v, 16);
+  });
+  x.fillStyle = '#7d8496'; x.font = '600 14px ui-monospace, monospace'; x.textAlign = 'left'; x.fillText('C min · DJ ─ · PUMP 40 · BSP ●', 12, 462);
+}
 function drawScreen(c) {
+  if (c.width === c.height) return drawPanel(c);
   const x = c.getContext('2d'), w = c.width, h = c.height;
   x.fillStyle = '#04060a'; x.fillRect(0, 0, w, h);
   x.fillStyle = '#ffb547'; x.fillRect(16, 14, 64, 40);
@@ -862,17 +1067,20 @@ function seg(id, cb) {
   const el = document.getElementById(id);
   el.querySelectorAll('button').forEach(b => b.onclick = () => { el.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); cb(b.dataset.v); });
 }
-seg('segVar', v => { loadScene(v); selected = 0; showInfo(null); setView('keep'); history.replaceState(null, '', '#' + v); });
+const switchTo = (form, vk) => { curForm = form; curVk = vk; loadScene(form, vk); selected = 0; showInfo(null); setView('keep'); history.replaceState(null, '', '#' + form + '/' + S.vk); };
+seg('segVar', v => switchTo(curForm, v));
+seg('segForm', v => switchTo(v, curVk));
 seg('segLid', v => { lidState = +v; });
 seg('segView', v => setView(v));
 document.getElementById('explode').oninput = e => {
   explode = +e.target.value;
-  camGoal = { target: add(S.center, [0, 0, explode * 30]), dist: Math.max(S.X, S.Y) * 2.3 * (1 + .75 * explode), yaw: cam.yaw, pitch: cam.pitch };
+  camGoal = { target: add(S.center, [0, 0, explode * 30]), dist: S.size * 2.7 * (1 + .75 * explode), yaw: cam.yaw, pitch: cam.pitch };
 };
 document.getElementById('xray').onchange = e => { xray = e.target.checked; };
 document.getElementById('lbls').onchange = e => { showLbl = e.target.checked; };
+document.getElementById('dimsChk').onchange = e => { showDims = e.target.checked; };
 function setView(v) {
-  const c = S.center, base = Math.max(S.X, S.Y) * 2.3;
+  const c = S.center, base = S.size * 2.7;
   const views = { iso: [.95, .6], top: [Math.PI / 2, 1.5], rear: [-Math.PI / 2 - .3, .32], right: [.25, .32] };
   if (v === 'keep') { camGoal = { target: c, dist: base, yaw: cam.yaw, pitch: cam.pitch }; return; }
   camGoal = { target: c, dist: base, yaw: views[v][0], pitch: views[v][1] };
@@ -910,10 +1118,11 @@ function frame(now) {
   const visible = p => {
     if (p.group === 'lid' && lidAnim > 1.9) return false;
     if ((p.group === 'wire' || p.group === 'ribbon') && explodeAnim > .03) return false;
-    if (p.group === 'ribbon' && lidAnim > 1.05) return false;
+    if (p.group === 'ribbon' && p.onLid && lidAnim > 1.05) return false;
+    if (p.group === 'dim' && (!showDims || explodeAnim > .03 || lidAnim > .02)) return false;
     return true;
   };
-  const isShell = p => ['Дно', 'Стойки крышки', 'Задняя стенка', 'Передняя стенка', 'Левая стенка', 'Правая стенка', 'Угол', 'Крышка', 'Ножки'].includes(p.name);
+  const isShell = p => ['Дно', 'Стойки крышки', 'Задняя стенка', 'Передняя стенка', 'Левая стенка', 'Правая стенка', 'Угол', 'Крышка', 'Наклонная крышка', 'Рамка-переходник', 'Ножки'].includes(p.name);
   const off = p => partOffset(p, lo);
 
   // тени
@@ -932,7 +1141,7 @@ function frame(now) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, pkFbo); gl.viewport(0, 0, w, h); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.useProgram(pprog.p); gl.uniformMatrix4fv(pprog.u.uVP, false, VP);
     for (const p of S.parts) {
-      if (!visible(p) || (xray && isShell(p))) continue;
+      if (!visible(p) || (xray && isShell(p)) || p.group === 'dim') continue;
       gl.uniform3f(pprog.u.uId, (p.id & 255) / 255, ((p.id >> 8) & 255) / 255, 0); drawItems(p, pprog);
     }
     const px = new Uint8Array(4); gl.readPixels(Math.round(mouse[0] * dpr), h - Math.round(mouse[1] * dpr), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
@@ -999,25 +1208,26 @@ function frame(now) {
 
   // подписи
   for (const l of S.labels) {
-    const vis = showLbl && visible(l.part);
+    const vis = (l.dim ? showDims && explodeAnim < .03 && lidAnim < .02 : showLbl) && visible(l.part);
     if (!vis) { l.el.style.display = 'none'; continue; }
     const q = xform(VP, add(l.p, partOffset(l.part, lo)));
     if (q[3] <= 0) { l.el.style.display = 'none'; continue; }
     l.el.style.display = 'block';
     l.el.style.left = ((q[0] * .5 + .5) * cv.clientWidth) + 'px';
-    l.el.style.top = ((-q[1] * .5 + .5) * cv.clientHeight - 14) + 'px';
+    l.el.style.top = ((-q[1] * .5 + .5) * cv.clientHeight - (l.dim ? 0 : 14)) + 'px';
   }
   requestAnimationFrame(frame);
 }
 let screenDirty = true, screenUploaded = -1;
 
 // старт
-const start = (location.hash.slice(1) in VARIANTS) ? location.hash.slice(1) : 'dac';
-document.querySelector(`#segVar button[data-v="${start}"]`).classList.add('on');
+const [hf, hv] = location.hash.slice(1).split('/');
+curForm = hf in FORMS ? hf : 'pult'; curVk = hv in BOXV ? hv : 'dac';
+document.querySelector(`#segForm button[data-v="${curForm}"]`).classList.add('on');
 document.querySelector('#segLid button[data-v="0"]').classList.add('on');
 document.querySelector('#segView button[data-v="iso"]').classList.add('on');
-loadScene(start);
-cam.target = S.center.slice(); cam.dist = Math.max(S.X, S.Y) * 2.3;
+loadScene(curForm, curVk);
+cam.target = S.center.slice(); cam.dist = S.size * 2.7;
 requestAnimationFrame(frame);
 </script>
 </body>
