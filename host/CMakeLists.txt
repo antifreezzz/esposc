@@ -7,6 +7,9 @@ add_compile_options(-Wall -Wextra -Werror -O2)
 
 set(ACID_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../components/acid)
 file(GLOB ACID_SRCS CONFIGURE_DEPENDS ${ACID_DIR}/*.c)
+# Общий код панели и синта: протокол, подписи, жест, модель экрана.
+set(PL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../components/panel_link)
+file(GLOB PL_SRCS CONFIGURE_DEPENDS ${PL_DIR}/*.c)
 
 # Plaits: чужой код, собираем без -Werror и со своими флагами.
 set(PLAITS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../components/plaits)
@@ -20,8 +23,8 @@ enable_testing()
 file(GLOB TEST_SRCS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/test_*.c)
 foreach(src ${TEST_SRCS})
     get_filename_component(name ${src} NAME_WE)
-    add_executable(${name} ${src} wav.c bank_fixture.c ${ACID_SRCS})
-    target_include_directories(${name} PRIVATE ${ACID_DIR}/include)
+    add_executable(${name} ${src} wav.c bank_fixture.c ${ACID_SRCS} ${PL_SRCS})
+    target_include_directories(${name} PRIVATE ${ACID_DIR}/include ${PL_DIR}/include)
     target_link_libraries(${name} plaits m)
     add_test(NAME ${name} COMMAND ${name})
 endforeach()
