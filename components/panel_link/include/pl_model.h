@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "pl_load.h"
 #include "pl_proto.h"
 
 // Что показывает панель: копия того, что прислал синт (правда - у синта).
@@ -28,6 +29,9 @@ typedef struct {
     uint8_t user_val[PL_USER_PAGES][PL_KNOBS], user_held[PL_USER_PAGES][PL_KNOBS];
     int user_have; // бит up: кадр определений пришёл
     pl_scene_state_t scene;
+    pl_load_t load; // загрузка ядер синта, последний кадр
+    uint32_t load_ms;
+    int have_load;
 } pl_model_t;
 
 void pl_model_init(pl_model_t *m);

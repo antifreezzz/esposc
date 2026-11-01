@@ -95,6 +95,10 @@ void pl_model_apply(pl_model_t *m, uint8_t type, const uint8_t *payload, size_t 
         apply_custom(m, &c);
     } else if (type == PL_SCENE_STATE && len == sizeof(pl_scene_state_t)) {
         memcpy(&m->scene, payload, sizeof m->scene);
+    } else if (type == PL_LOAD && len == sizeof(pl_load_t)) {
+        memcpy(&m->load, payload, sizeof m->load);
+        m->load_ms = ms;
+        m->have_load = 1;
     } else {
         return;
     }

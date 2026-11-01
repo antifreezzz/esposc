@@ -260,8 +260,30 @@ TEST(test_scene_state_applied)
     CHECK(m.last_rx_ms == 7);
 }
 
+TEST(test_load_frame_stored)
+{
+    pl_model_init(&m);
+    CHECK(!m.have_load);
+    pl_load_t l = {75, 90, 50, 95, 2, 1};
+    pl_model_apply(&m, PL_LOAD, (const uint8_t *)&l, sizeof l, 1234);
+    CHECK(m.have_load);
+    CHECK(m.load_ms == 1234);
+    CHECK(m.last_rx_ms == 1234);
+    CHECK(memcmp(&m.load, &l, sizeof l) == 0);
+}
+
+TEST(test_load_wrong_len_ignored)
+{
+    pl_model_init(&m);
+    uint8_t b[5] = {1, 2, 3, 4, 5};
+    pl_model_apply(&m, PL_LOAD, b, sizeof b, 50);
+    CHECK(!m.have_load);
+}
+
 int main(void)
 {
+    RUN(test_load_frame_stored);
+    RUN(test_load_wrong_len_ignored);
     RUN(test_model_snapshot_replaces_all);
     RUN(test_knob_updates_value);
     RUN(test_toast_only_from_bsp);

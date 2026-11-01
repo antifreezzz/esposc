@@ -45,7 +45,8 @@ static struct {
     pl_turn_t turn;
     pl_edit_t ed;
     int sent; // последнее отправленное значение захваченной ручки
-    lv_obj_t *bar_left, *bar_nav, *bar_right, *bar_edit, *bar_xy;
+    lv_obj_t *bar_left, *bar_nav, *bar_right, *bar_edit, *bar_xy, *bar_load;
+    uint32_t load_color;
     uint8_t xy_view; // бит своей страницы: вместо сетки XY-пэд
     lv_obj_t *menu, *menu2, *grid;
     lv_obj_t *tile[PL_PAGES], *tile_sub[PL_PAGES], *tile2_sub[MENU2_TILES];
@@ -176,7 +177,10 @@ static void build(void)
     u.bar_nav = ui_label(bar, &lv_font_montserrat_20, C_ACCENT);
     lv_obj_align(u.bar_nav, LV_ALIGN_CENTER, 0, 0);
     u.bar_right = ui_label(bar, &lv_font_montserrat_14, C_ACCENT);
-    lv_obj_align(u.bar_right, LV_ALIGN_RIGHT_MID, -14, 0);
+    lv_obj_align(u.bar_right, LV_ALIGN_RIGHT_MID, -14, -8);
+    // Под режимом - худшая загрузка ядер синта за полсекунды: ядро 1, ядро 0 (проценты бюджета).
+    u.bar_load = ui_label(bar, &lv_font_montserrat_12, C_TEXT);
+    lv_obj_align(u.bar_load, LV_ALIGN_RIGHT_MID, -14, 10);
     u.bar_edit = ui_label(bar, &lv_font_montserrat_14, C_TEXT);
     lv_obj_align(u.bar_edit, LV_ALIGN_LEFT_MID, EDIT_X0 + 4, 0);
     u.bar_xy = ui_label(bar, &lv_font_montserrat_14, C_TEXT);
@@ -553,6 +557,30 @@ static void draw_status(const pl_model_t *m, uint32_t ms)
     lv_obj_set_style_text_color(u.bar_right, lv_color_hex(c), 0);
 }
 
+#define LOAD_WARN 85
+#define LOAD_STALE_MS 2000
+
+static void draw_load(const pl_model_t *m, uint32_t ms)
+{
+    char t[24] = "";
+    uint32_t c = 0x9aa3b2;
+    if (m->have_load && ms - m->load_ms <= LOAD_STALE_MS) {
+        const pl_load_t *l = &m->load;
+        int worst = l->c1_worst > l->c0_worst ? l->c1_worst : l->c0_worst;
+        if (l->guard) {
+            snprintf(t, sizeof t, "G%d %d %d%%", l->guard, l->c1_worst, l->c0_worst);
+        } else {
+            snprintf(t, sizeof t, "%d %d%%", l->c1_worst, l->c0_worst);
+        }
+        c = (worst >= 100 || l->underruns) ? 0xff5e6c : worst >= LOAD_WARN ? 0xffb547 : 0x9aa3b2;
+    }
+    ui_text(u.bar_load, t);
+    if (u.load_color != c) {
+        lv_obj_set_style_text_color(u.bar_load, lv_color_hex(c), 0);
+        u.load_color = c;
+    }
+}
+
 static void toast_shape(int tall)
 {
     if (u.toast_tall == tall) {
@@ -796,6 +824,7 @@ void ui_step(pl_model_t *m, int down, int x, int y, uint32_t ms)
     draw_bar(m);
     ui_show(u.bar_nav, 1);
     draw_status(m, ms);
+    draw_load(m, ms);
     draw_toast(m, ms);
     lvgl_port_unlock();
 }
