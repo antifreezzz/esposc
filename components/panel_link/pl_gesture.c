@@ -34,8 +34,6 @@ int pl_grid_cell(int x, int y)
     return ((y - 44) / 86) * 3 + (x - 6) / 156;
 }
 
-
-
 void pl_turn_begin(pl_turn_t *t, int x, int y, int v, int lo, int hi)
 {
     float a = angle(x, y);

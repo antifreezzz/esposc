@@ -168,7 +168,6 @@ TEST(test_grid_cell)
     CHECK(pl_grid_cell(400, 440) == 14); // правый низ: 15-я ручка (энкодер 16)
 }
 
-
 int main(void)
 {
     RUN(test_sector_clock);
@@ -184,4 +183,3 @@ int main(void)
     RUN(test_grid_cell);
     TEST_MAIN_END();
 }
-
