@@ -465,7 +465,10 @@ static void knob_303(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
 {
     switch (slot) {
     case 2: sl->cut_base = expo(v, 60.0f, 3000.0f); break;
-    case 3: sl->res = res_knob(v); break;
+    case 3:
+        sl->res = res_knob(v);
+        acid_ladder_prep(&sl->lc, sl->g, sl->res); // резонанс - сразу, как раньше на каждом сэмпле
+        break;
     case 4: sl->env_hz = lin(v, 0.0f, 6000.0f); break;
     case 5: sl->decay_s = expo(v, 0.05f, 1.5f); break;
     case 6: sl->accent_amt = lin(v, 1.0f, 2.0f); break;
@@ -519,6 +522,7 @@ static void type_defaults(acid_synth_t *s, acid_slot_t *v)
         v->decay_s = FENV_NORMAL_S;
         v->accent_amt = ACCENT_GAIN;
         v->res = RES;
+        acid_ladder_prep(&v->lc, v->g, v->res);
         v->wave = 0;
     } else {
         acid_plaits_params_t *p = &v->pp;
@@ -827,13 +831,14 @@ static float voice_next(acid_synth_t *s, acid_slot_t *v, int gate)
     }
     if (v->ctrl_left == 0) {
         v->g = control_update(s, v);
+        acid_ladder_prep(&v->lc, v->g, v->res);
         v->ctrl_left = CTRL_BLOCK;
     }
     v->ctrl_left--;
 
     float x = v->wave ? acid_osc_square(&v->osc) : acid_osc_saw(&v->osc);
     acid_decay_next(&v->fenv);
-    float y = acid_ladder_run(&v->flt, x, v->g, v->res);
+    float y = acid_ladder_tick(&v->flt, x, &v->lc);
     float amp = acid_amp_next(&v->amp) * v->accent_gain;
     if (acid_drive_on(&v->drv)) {
         return acid_drive_run(&v->drv, y * amp) * v->gain; // акцент бьёт в перегруз сильнее, громкость слота после

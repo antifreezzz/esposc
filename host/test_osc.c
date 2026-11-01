@@ -1,6 +1,8 @@
 #include "acid.h"
 #include "test.h"
 
+#include <math.h>
+
 #define SR 48000.0f
 
 static int rising_zero_crossings(float (*gen)(acid_osc_t *), float hz, int n)
@@ -55,11 +57,70 @@ TEST(test_osc_range)
     }
 }
 
+// Прежний PolyBLEP с делением на dt: эталон для быстрого пути.
+static float ref_blep(float t, float dt)
+{
+    if (t < dt) {
+        t /= dt;
+        return t + t - t * t - 1.0f;
+    }
+    if (t > 1.0f - dt) {
+        t = (t - 1.0f) / dt;
+        return t * t + t + t + 1.0f;
+    }
+    return 0.0f;
+}
+
+static float ref_next(float *ph, float inc, int square)
+{
+    float p = *ph, y;
+    if (square) {
+        y = p < 0.5f ? 1.0f : -1.0f;
+        y += ref_blep(p, inc);
+        float t2 = p + 0.5f;
+        t2 -= t2 >= 1.0f ? 1.0f : 0.0f;
+        y -= ref_blep(t2, inc);
+    } else {
+        y = 2.0f * p - 1.0f - ref_blep(p, inc);
+    }
+    p += inc;
+    *ph = p >= 1.0f ? p - 1.0f : p;
+    return y;
+}
+
+TEST(test_blep_matches_division)
+{
+    static const float hz[] = {55.0f, 440.0f, 5000.0f};
+    float worst = 0.0f;
+    for (int sq = 0; sq < 2; sq++) {
+        for (int h = 0; h < 3; h++) {
+            acid_osc_t o = {0};
+            acid_osc_set_freq(&o, hz[h], SR);
+            float ph = 0.0f;
+            for (int i = 0; i < 48000; i++) {
+                float y = sq ? acid_osc_square(&o) : acid_osc_saw(&o);
+                float d = fabsf(y - ref_next(&ph, o.inc, sq));
+                worst = d > worst ? d : worst;
+            }
+        }
+    }
+    CHECK(worst < 1e-5f);
+}
+
+TEST(test_osc_idt_is_reciprocal)
+{
+    acid_osc_t o = {0};
+    acid_osc_set_freq(&o, 440.0f, SR);
+    CHECK_NEAR(o.idt * o.inc, 1.0f, 1e-6f);
+}
+
 int main(void)
 {
     RUN(test_midi_to_hz);
     RUN(test_saw_frequency);
     RUN(test_square_frequency);
     RUN(test_osc_range);
+    RUN(test_blep_matches_division);
+    RUN(test_osc_idt_is_reciprocal);
     TEST_MAIN_END();
 }

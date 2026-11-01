@@ -1,7 +1,9 @@
 #include "acid.h"
+#include "acid_math.h"
 #include "test.h"
 
 #include <math.h>
+#include <stdint.h>
 
 #define SR 48000.0f
 #define PI_F 3.14159265f
@@ -88,6 +90,49 @@ TEST(test_ladder_stable_max_res)
     CHECK(peak < 4.0f);
 }
 
+// Прежний acid_ladder_run с делениями на каждом сэмпле: эталон для быстрого пути.
+static float ref_ladder_run(acid_ladder_t *f, float in, float g, float res)
+{
+    res = res < 0.0f ? 0.0f : (res > ACID_LADDER_RES_MAX ? ACID_LADDER_RES_MAX : res);
+    float G = g / (1.0f + g);
+    float k = 4.0f * res;
+    float G2 = G * G;
+    float S = (G2 * G * f->s[0] + G2 * f->s[1] + G * f->s[2] + f->s[3]) / (1.0f + g);
+    float x = in * (1.0f + 0.5f * k);
+    float u = acid_tanh((x - k * S) / (1.0f + k * G2 * G2));
+    for (int i = 0; i < 4; i++) {
+        float v = (u - f->s[i]) * G;
+        float y = v + f->s[i];
+        f->s[i] = y + v;
+        u = y;
+    }
+    return u;
+}
+
+TEST(test_ladder_tick_matches_reference)
+{
+    static const float gs[] = {0.01f, 0.1f, 0.5f, 1.2f};
+    static const float rs[] = {0.0f, 0.5f, 1.0f, 1.15f, 1.3f};
+    float worst = 0.0f;
+    for (int a = 0; a < 4; a++) {
+        for (int b = 0; b < 5; b++) {
+            acid_ladder_t f, r;
+            acid_ladder_reset(&f);
+            acid_ladder_reset(&r);
+            acid_ladder_coefs_t c;
+            acid_ladder_prep(&c, gs[a], rs[b]);
+            uint32_t seed = 12345;
+            for (int i = 0; i < 20000; i++) {
+                seed = seed * 1664525u + 1013904223u;
+                float x = ((float)(seed >> 8) / 16777216.0f * 2.0f - 1.0f) * 1.5f;
+                float d = fabsf(acid_ladder_tick(&f, x, &c) - ref_ladder_run(&r, x, gs[a], rs[b]));
+                worst = d > worst ? d : worst;
+            }
+        }
+    }
+    CHECK(worst < 1e-5f);
+}
+
 int main(void)
 {
     RUN(test_ladder_passes_low);
@@ -95,5 +140,6 @@ int main(void)
     RUN(test_ladder_resonance_peak);
     RUN(test_ladder_self_oscillates_above_1);
     RUN(test_ladder_stable_max_res);
+    RUN(test_ladder_tick_matches_reference);
     TEST_MAIN_END();
 }

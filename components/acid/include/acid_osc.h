@@ -6,6 +6,7 @@ float acid_midi_to_hz(int note);
 typedef struct {
     float phase; // [0, 1)
     float inc;   // приращение фазы за сэмпл
+    float idt;   // 1 / inc: PolyBLEP без деления на сэмпле
 } acid_osc_t;
 
 void acid_osc_set_freq(acid_osc_t *o, float hz, float sr);

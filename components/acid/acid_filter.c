@@ -20,26 +20,22 @@ float acid_ladder_coef(float cutoff_hz, float sr)
     return tanf(PI_F * cutoff_hz / sr);
 }
 
-float acid_ladder_run(acid_ladder_t *f, float in, float g, float res)
+void acid_ladder_prep(acid_ladder_coefs_t *c, float g, float res)
 {
     res = res < 0.0f ? 0.0f : (res > ACID_LADDER_RES_MAX ? ACID_LADDER_RES_MAX : res);
-    float G = g / (1.0f + g);
-    float k = 4.0f * res;
+    c->inv1g = acid_rcp(1.0f + g);
+    c->G = g * c->inv1g;
+    c->k = 4.0f * res;
+    c->comp = 1.0f + 0.5f * c->k;
+    float G2 = c->G * c->G;
+    c->invd = acid_rcp(1.0f + c->k * G2 * G2);
+}
 
-    // Решаем мгновенную обратную связь: y4 = G^4 * u + S.
-    float G2 = G * G;
-    float S = (G2 * G * f->s[0] + G2 * f->s[1] + G * f->s[2] + f->s[3]) / (1.0f + g);
-    // Частичная компенсация провала в полосе пропускания на высоком резонансе.
-    float x = in * (1.0f + 0.5f * k);
-    float u = acid_tanh((x - k * S) / (1.0f + k * G2 * G2));
-
-    for (int i = 0; i < 4; i++) {
-        float v = (u - f->s[i]) * G;
-        float y = v + f->s[i];
-        f->s[i] = y + v;
-        u = y;
-    }
-    return u;
+float acid_ladder_run(acid_ladder_t *f, float in, float g, float res)
+{
+    acid_ladder_coefs_t c;
+    acid_ladder_prep(&c, g, res);
+    return acid_ladder_tick(f, in, &c);
 }
 
 float acid_ladder_process(acid_ladder_t *f, float in, float cutoff_hz, float res, float sr)
