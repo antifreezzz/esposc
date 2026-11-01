@@ -9,3 +9,4 @@ __pycache__/
 .superpowers/
 *.bin
 build-stress/
+build-stress-layers/
