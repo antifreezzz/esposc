@@ -9,33 +9,33 @@
 #include "pl_gesture.h"
 #include "pl_labels.h"
 
-// Экраны: меню страниц с живой сводкой, круг ручек («барабан») с цветами групп и биполярными дугами,
-// захват ручки в центре, всплывашка от BSP.
+// Вариант Б: модульная сетка 4x4 (16 ячеек, как 16 энкодеров BSP) + круговой захват в центре.
 
 #define W 480
 #define TOP_H 40    // верхняя полоса: меню и быстрое листание страниц
-#define RING_DY 18  // сдвиг центра круга вниз от (240, 240): ровно посередине рабочей области 40..480
+#define RING_DY 18  // центр вращения (240, 258) - посередине рабочей области 40..480
 #define RING_CY (PL_CENTER + RING_DY)
-#define RING_R 172  // радиус центров малых дуг
-#define KNOB_D 50   // диаметр малой дуги: соседние сектора и подписи не пересекаются
-#define BIG_D 204   // большая дуга захваченной ручки в центре
-#define KNOBS 15    // энкодеры 2..16
+#define KNOB_D 56   // дуга внутри карточки сетки
+#define BIG_BOX 244 // круглый диск подложки под большую дугу в центре
+#define BIG_D 210   // большая дуга захваченной ручки
+#define KNOBS 15    // энкодеры 2..16 (ячейки 1..15; ячейка 0 - энкодер 1 PAGE)
 
 #define C_BG 0x0b0c0e
 #define C_BAR 0x14161b
-#define C_TILE 0x171920
-#define C_TILE_BRD 0x262a34
-#define C_DIM 0x888e99
+#define C_TILE 0x161922
+#define C_TILE_EMPTY 0x0f1116
+#define C_TILE_BRD 0x252a35
+#define C_DIM 0x9096a3
 #define C_MUTED 0x454a54
 #define C_TEXT 0xeeeeee
 #define C_ACCENT 0xff9900
-#define C_TRACK 0x23262f
+#define C_TRACK 0x242832
 #define C_BSP 0x66ccff
 
 enum { MENU, PAGE };
 
 typedef struct {
-    lv_obj_t *arc, *val, *name, *pdot, *empty_dot;
+    lv_obj_t *card, *num, *arc, *val, *name, *pdot, *empty_dot;
     int v, held, grabbed; // нарисовано
     uint32_t color;
     const char *label;
@@ -48,12 +48,12 @@ static struct {
     int sent;  // последнее отправленное значение захваченной ручки
     int dirty; // сменился экран или страница: перестроить под локом
     lv_obj_t *bar_left, *bar_nav, *bar_right;
-    lv_obj_t *menu, *ring;
-    lv_obj_t *center_tag, *center_title, *center_sub;
+    lv_obj_t *menu, *grid;
+    lv_obj_t *page_card, *page_num, *page_title, *page_sub;
     lv_obj_t *tile[PL_PAGES], *tile_sub[PL_PAGES];
     int drawn_bsp_page;
     knob_t knob[KNOBS];
-    lv_obj_t *big, *big_val, *big_name, *big_sub, *bsp_mark;
+    lv_obj_t *big_box, *big, *big_val, *big_name, *big_sub, *bsp_mark;
     uint32_t big_color;
     int big_sym;
     lv_obj_t *toast, *toast_name, *toast_val;
@@ -98,14 +98,6 @@ static lv_obj_t *arc(lv_obj_t *parent, int d, int width)
     return a;
 }
 
-// Центр ручки i на круге в координатах экрана: по часовой от 12 часов, как pl_sector.
-static void knob_xy(int i, int *x, int *y)
-{
-    float a = (float)i * (2.0f * (float)M_PI / KNOBS);
-    *x = PL_CENTER + (int)lroundf(RING_R * sinf(a));
-    *y = RING_CY - (int)lroundf(RING_R * cosf(a));
-}
-
 static void show(lv_obj_t *o, int on)
 {
     if (lv_obj_is_hidden(o) == !!on) {
@@ -119,6 +111,13 @@ static void text(lv_obj_t *l, const char *s)
     if (strcmp(lv_label_get_text(l), s) != 0) {
         lv_label_set_text(l, s);
     }
+}
+
+// Координаты ячейки c (0..15) внутри контейнера u.grid (480 x 440).
+static void cell_xy(int c, int *x, int *y)
+{
+    *x = 11 + (c % 4) * 116;
+    *y = 6 + (c / 4) * 107;
 }
 
 static void build(void)
@@ -160,47 +159,68 @@ static void build(void)
         u.tile[p] = t;
     }
 
-    // Страница: круг из 15 ручек.
-    u.ring = box(scr, 0, TOP_H, W, W - TOP_H, C_BG);
-    lv_obj_set_style_bg_opa(u.ring, LV_OPA_TRANSP, 0);
-    int cy_in = RING_CY - TOP_H;
+    // Страница: сетка 4x4 (ячейка 0 - карточка страницы E1, ячейки 1..15 - ручки E2..E16).
+    u.grid = box(scr, 0, TOP_H, W, W - TOP_H, C_BG);
+    int px, py;
+    cell_xy(0, &px, &py);
+    u.page_card = box(u.grid, px, py, 110, 101, 0x1a1e29);
+    lv_obj_set_style_radius(u.page_card, 10, 0);
+    lv_obj_set_style_border_width(u.page_card, 2, 0);
+    lv_obj_set_style_border_color(u.page_card, lv_color_hex(C_ACCENT), 0);
+
+    lv_obj_t *e1 = label(u.page_card, &lv_font_montserrat_12, C_DIM);
+    lv_label_set_text(e1, "1  PAGE");
+    lv_obj_align(e1, LV_ALIGN_TOP_LEFT, 8, 5);
+
+    u.page_num = label(u.page_card, &lv_font_montserrat_28, C_ACCENT);
+    lv_obj_align(u.page_num, LV_ALIGN_LEFT_MID, 10, -2);
+    u.page_title = label(u.page_card, &lv_font_montserrat_14, C_TEXT);
+    lv_obj_align(u.page_title, LV_ALIGN_LEFT_MID, 34, -2);
+    u.page_sub = label(u.page_card, &lv_font_montserrat_12, C_DIM);
+    lv_obj_align(u.page_sub, LV_ALIGN_BOTTOM_MID, 0, -6);
+
     for (int i = 0; i < KNOBS; i++) {
         knob_t *k = &u.knob[i];
         int x, y;
-        knob_xy(i, &x, &y);
-        y -= TOP_H; // координаты внутри u.ring
-        k->arc = arc(u.ring, KNOB_D, 5);
-        lv_obj_set_pos(k->arc, x - KNOB_D / 2, y - KNOB_D / 2 - 4);
+        cell_xy(i + 1, &x, &y);
+        k->card = box(u.grid, x, y, 110, 101, C_TILE);
+        lv_obj_set_style_radius(k->card, 10, 0);
+        lv_obj_set_style_border_width(k->card, 1, 0);
+        lv_obj_set_style_border_color(k->card, lv_color_hex(C_TILE_BRD), 0);
+
+        k->num = label(k->card, &lv_font_montserrat_12, C_MUTED);
+        lv_label_set_text_fmt(k->num, "%d", i + 2);
+        lv_obj_set_pos(k->num, 7, 4);
+
+        k->pdot = box(k->card, 96, 7, 7, 7, C_MUTED);
+        lv_obj_set_style_radius(k->pdot, 4, 0);
+
+        k->arc = arc(k->card, KNOB_D, 6);
+        lv_obj_align(k->arc, LV_ALIGN_TOP_MID, 0, 14);
         k->val = label(k->arc, &lv_font_montserrat_14, C_TEXT);
-        lv_obj_align(k->val, LV_ALIGN_CENTER, 0, -1);
+        lv_obj_align(k->val, LV_ALIGN_CENTER, 0, 0);
 
-        // Индикатор подхвата BSP в нижнем растворе малой дуги.
-        k->pdot = box(u.ring, x - 3, y + 12, 6, 6, C_MUTED);
-        lv_obj_set_style_radius(k->pdot, 3, 0);
-
-        k->name = label(u.ring, &lv_font_montserrat_12, C_DIM);
-        lv_obj_set_width(k->name, 84);
+        k->name = label(k->card, &lv_font_montserrat_12, C_DIM);
+        lv_obj_set_width(k->name, 104);
         lv_obj_set_style_text_align(k->name, LV_TEXT_ALIGN_CENTER, 0);
-        lv_obj_set_pos(k->name, x - 42, y + KNOB_D / 2 - 4);
+        lv_obj_align(k->name, LV_ALIGN_BOTTOM_MID, 0, -5);
 
-        k->empty_dot = box(u.ring, x - 3, y - 3, 6, 6, C_TRACK);
+        k->empty_dot = box(k->card, 52, 47, 6, 6, C_TRACK);
         lv_obj_set_style_radius(k->empty_dot, 3, 0);
         k->v = k->held = k->grabbed = -1;
         k->color = 0;
     }
 
-    // Центр круга в покое: номер страницы, крупное имя и текущий режим/модель.
-    u.center_tag = label(u.ring, &lv_font_montserrat_12, C_ACCENT);
-    lv_obj_align(u.center_tag, LV_ALIGN_TOP_MID, 0, cy_in - 38);
-    u.center_title = label(u.ring, &lv_font_montserrat_28, C_TEXT);
-    lv_obj_align(u.center_title, LV_ALIGN_TOP_MID, 0, cy_in - 18);
-    u.center_sub = label(u.ring, &lv_font_montserrat_14, C_DIM);
-    lv_obj_align(u.center_sub, LV_ALIGN_TOP_MID, 0, cy_in + 18);
+    // Захват: круглый медальон с большой дугой в центре экрана поверх сетки.
+    int cy_in = RING_CY - TOP_H;
+    u.big_box = box(u.grid, PL_CENTER - BIG_BOX / 2, cy_in - BIG_BOX / 2, BIG_BOX, BIG_BOX, 0x0e1016);
+    lv_obj_set_style_radius(u.big_box, BIG_BOX / 2, 0);
+    lv_obj_set_style_border_width(u.big_box, 2, 0);
+    lv_obj_set_style_border_color(u.big_box, lv_color_hex(0x2c3240), 0);
 
-    // Захват: большая дуга в центре круга.
-    u.big = arc(u.ring, BIG_D, 14);
-    lv_obj_set_style_arc_color(u.big, lv_color_hex(0x1c1f26), LV_PART_MAIN);
-    lv_obj_set_pos(u.big, PL_CENTER - BIG_D / 2, cy_in - BIG_D / 2);
+    u.big = arc(u.big_box, BIG_D, 14);
+    lv_obj_set_style_arc_color(u.big, lv_color_hex(0x1c1f28), LV_PART_MAIN);
+    lv_obj_center(u.big);
     u.big_name = label(u.big, &lv_font_montserrat_14, C_DIM);
     lv_obj_align(u.big_name, LV_ALIGN_CENTER, 0, -40);
     u.big_val = label(u.big, &lv_font_montserrat_48, C_ACCENT);
@@ -208,7 +228,7 @@ static void build(void)
     u.big_sub = label(u.big, &lv_font_montserrat_12, C_BSP);
     lv_obj_align(u.big_sub, LV_ALIGN_CENTER, 0, 44);
 
-    u.bsp_mark = box(u.ring, 0, 0, 16, 16, C_BG);
+    u.bsp_mark = box(u.big_box, 0, 0, 16, 16, C_BG);
     lv_obj_set_style_bg_opa(u.bsp_mark, LV_OPA_TRANSP, 0);
     lv_obj_set_style_radius(u.bsp_mark, 8, 0);
     lv_obj_set_style_border_color(u.bsp_mark, lv_color_hex(C_BSP), 0);
@@ -239,9 +259,9 @@ static void style_knob_grab(knob_t *k, int grabbed)
     if (!k->label) {
         return;
     }
+    lv_obj_set_style_border_width(k->card, grabbed ? 2 : 1, 0);
+    lv_obj_set_style_border_color(k->card, lv_color_hex(grabbed ? k->color : C_TILE_BRD), 0);
     lv_obj_set_style_text_color(k->name, lv_color_hex(grabbed ? k->color : C_DIM), 0);
-    lv_obj_set_style_arc_width(k->arc, grabbed ? 7 : 5, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_width(k->arc, grabbed ? 7 : 5, LV_PART_MAIN);
 }
 
 // Подписи и цвета страницы зависят от типа синта и модели перкуссии: перестроить при смене.
@@ -253,11 +273,13 @@ static void page_labels(const pl_model_t *m)
         knob_t *k = &u.knob[i];
         int enc = i + 1;
         k->label = pl_knob_label(u.page, enc, raw);
-        show(k->arc, k->label != NULL);
-        show(k->name, k->label != NULL);
-        show(k->pdot, k->label != NULL);
-        show(k->empty_dot, k->label == NULL);
-        if (k->label) {
+        int on = k->label != NULL;
+        lv_obj_set_style_bg_color(k->card, lv_color_hex(on ? C_TILE : C_TILE_EMPTY), 0);
+        show(k->arc, on);
+        show(k->name, on);
+        show(k->pdot, on);
+        show(k->empty_dot, !on);
+        if (on) {
             int lo, hi;
             pl_knob_range(u.page, enc, raw, &lo, &hi);
             lv_arc_set_range(k->arc, lo, hi);
@@ -274,11 +296,13 @@ static void page_labels(const pl_model_t *m)
         style_knob_grab(k, 0);
     }
     u.drawn_grab = -1;
-    char tag[20];
-    snprintf(tag, sizeof tag, "PAGE %d", u.page);
-    text(u.center_tag, tag);
-    lv_obj_set_style_text_color(u.center_tag, lv_color_hex(pc), 0);
-    text(u.center_title, pl_page_name(u.page));
+
+    lv_obj_set_style_border_color(u.page_card, lv_color_hex(pc), 0);
+    char num[8];
+    snprintf(num, sizeof num, "%d", u.page);
+    text(u.page_num, num);
+    lv_obj_set_style_text_color(u.page_num, lv_color_hex(pc), 0);
+    text(u.page_title, pl_page_name(u.page));
 
     char nav[32];
     snprintf(nav, sizeof nav, LV_SYMBOL_LEFT "  %d %s  " LV_SYMBOL_RIGHT, u.page, pl_page_name(u.page));
@@ -305,16 +329,16 @@ static void open_menu(void)
     show(u.bar_nav, 0);
 }
 
-// Голубое кольцо на большой дуге: где стоит физический энкодер BSP.
+// Голубое кольцо на большой дуге внутри u.big_box: где стоит физический энкодер BSP.
 static void place_mark(int pos, int lo, int hi)
 {
     float f = hi > lo ? (float)(pos - lo) / (float)(hi - lo) : 0.0f;
     f = f < 0.0f ? 0.0f : f > 1.0f ? 1.0f : f;
     float a = (135.0f + 270.0f * f) * (float)M_PI / 180.0f;
     float r = (BIG_D - 14) / 2.0f;
-    int cy_in = RING_CY - TOP_H;
-    lv_obj_set_pos(u.bsp_mark, PL_CENTER + (int)lroundf(r * cosf(a)) - 8,
-                   cy_in + (int)lroundf(r * sinf(a)) - 8);
+    int c = BIG_BOX / 2;
+    lv_obj_set_pos(u.bsp_mark, c + (int)lroundf(r * cosf(a)) - 8,
+                   c + (int)lroundf(r * sinf(a)) - 8);
 }
 
 static void draw_menu(const pl_model_t *m)
@@ -344,6 +368,7 @@ static void draw_page(const pl_model_t *m, uint32_t ms)
         page_labels(m);
     }
     char buf[24];
+    text(u.page_sub, pl_page_summary(u.page, raw, buf));
     for (int i = 0; i < KNOBS; i++) {
         knob_t *k = &u.knob[i];
         if (!k->label) {
@@ -359,6 +384,7 @@ static void draw_page(const pl_model_t *m, uint32_t ms)
         int held = m->held[u.page][enc] && m->bsp_pos[enc] != 0xFF;
         if (held != k->held) {
             lv_obj_set_style_bg_color(k->pdot, lv_color_hex(held ? C_BSP : C_MUTED), 0);
+            lv_obj_set_style_text_color(k->num, lv_color_hex(held ? C_BSP : C_MUTED), 0);
             k->held = held;
         }
     }
@@ -374,14 +400,8 @@ static void draw_page(const pl_model_t *m, uint32_t ms)
         u.drawn_grab = g;
     }
 
-    show(u.big, g >= 0);
-    show(u.center_tag, g < 0);
-    show(u.center_title, g < 0);
-    show(u.center_sub, g < 0);
-    if (g < 0) {
-        text(u.center_sub, pl_page_summary(u.page, raw, buf));
-        show(u.bsp_mark, 0);
-    } else {
+    show(u.big_box, g >= 0);
+    if (g >= 0) {
         int enc = g + 1;
         int lo, hi, v = raw[enc];
         pl_knob_range(u.page, enc, raw, &lo, &hi);
@@ -400,6 +420,7 @@ static void draw_page(const pl_model_t *m, uint32_t ms)
         if (u.big_color != c) {
             lv_obj_set_style_arc_color(u.big, lv_color_hex(c), LV_PART_INDICATOR);
             lv_obj_set_style_text_color(u.big_val, lv_color_hex(c), 0);
+            lv_obj_set_style_border_color(u.big_box, lv_color_hex(c), 0);
             u.big_color = c;
         }
         text(u.big_val, pl_value_text(u.page, enc, v, raw, buf));
@@ -480,7 +501,6 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
             pl_model_page_sent(m, ms);
         }
     } else if (tap && y0 < TOP_H && y1 < TOP_H + 16) {
-        // Шапка страницы: слева - в меню, по краям центрального заголовка - соседняя страница.
         if (x0 >= 140 && x0 < 215) {
             open_page(u.page - 1);
             link_page(u.page);
@@ -493,6 +513,10 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
             u.screen = MENU;
             u.grab = -1;
         }
+    } else if (tap && pl_grid_cell(x0, y0) == 0 && pl_grid_cell(x1, y1) == 0) {
+        // Ячейка 0 (энкодер 1 BSP - PAGE): тап открывает меню страниц.
+        u.screen = MENU;
+        u.grab = -1;
     } else {
         knob_input(m, ev, down, x, y, x0, y0);
     }
@@ -505,8 +529,9 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
 static void knob_input(pl_model_t *m, int ev, int down, int x, int y, int x0, int y0)
 {
     if (ev == PL_PRESS_HOLD && y0 >= TOP_H) {
-        int i = pl_sector(x0, y0 - RING_DY);
-        if (i >= 0 && u.knob[i].label && m->have) {
+        int c = pl_grid_cell(x0, y0);
+        int i = c - 1; // ячейки 1..15 -> ручки 0..14
+        if (i >= 0 && i < KNOBS && u.knob[i].label && m->have) {
             int lo, hi;
             pl_knob_range(u.page, i + 1, m->raw[u.page], &lo, &hi);
             pl_turn_begin(&u.turn, x, y - RING_DY, m->raw[u.page][i + 1], lo, hi);
@@ -556,7 +581,7 @@ void ui_step(pl_model_t *m, int down, int x, int y, uint32_t ms)
         u.dirty = 0;
     }
     show(u.menu, u.screen == MENU);
-    show(u.ring, u.screen == PAGE);
+    show(u.grid, u.screen == PAGE);
     if (u.screen == PAGE) {
         draw_page(m, ms);
     } else {
