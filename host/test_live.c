@@ -1336,10 +1336,13 @@ TEST(test_live_load_guard)
     CHECK(s.tight);
     load_n(0.5f, 200);
     CHECK(s.tight);
-    load_n(1.5f, 10); // новый перегруз сбрасывает счёт спокойных блоков
+    load_n(1.5f, 10); // новый перегруз сбрасывает счёт спокойных блоков; выше бюджета - сразу ступень 2 (слои)
+    CHECK(s.tight == 2);
     load_n(0.5f, 200);
-    CHECK(s.tight);
+    CHECK(s.tight == 2);
     load_n(0.5f, 100);
+    CHECK(s.tight == 1); // назад по ступеням
+    load_n(0.5f, ACID_LOAD_CALM);
     CHECK(!s.tight);
     on(DRUMS, 41, 127);
     on(DRUMS, 50, 127);

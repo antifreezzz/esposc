@@ -180,7 +180,8 @@ void acid_synth_init(acid_synth_t *s, float sr)
     s->dl_tone = 83;
     acid_cym_init(&s->cym, sr);
     acid_perc_init(&s->perc, sr);
-    s->tight = s->calm = s->hot = 0;
+    s->tight = s->calm = s->hot = s->was2 = 0;
+    s->calm_need = ACID_LOAD_CALM;
     for (int k = 0; k < ACID_SLOTS; k++) {
         s->layer_duck[k] = 1.0f;
     }
@@ -243,17 +244,24 @@ void acid_synth_set_load(acid_synth_t *s, float load)
             s->hot = 0;
             acid_perc_set_limit(&s->perc, 1);
             acid_cym_set_limit(&s->cym, 1);
-        } else if (s->tight == 1 && ++s->hot >= ACID_LOAD_STEP) {
-            s->tight = 2; // одного голоса перкуссии не хватило: слои приглушаются (layer_add)
+        }
+        if (s->tight == 1 && (load >= ACID_LOAD_OVER || ++s->hot >= ACID_LOAD_STEP)) {
+            // Одного голоса перкуссии не хватило (или и ждать нечего): слои приглушаются (layer_add).
+            // Повтор без полного успокоения - слои возвращались зря: ждать вдвое дольше, без качелей.
+            s->tight = 2;
+            s->calm_need = s->was2 && s->calm_need < 16 * ACID_LOAD_CALM ? 2 * s->calm_need : s->calm_need;
+            s->was2 = 1;
         }
     } else if (s->tight) {
         s->hot = 0;
         s->calm = load < ACID_LOAD_LOW ? s->calm + 1 : 0;
-        if (s->calm >= ACID_LOAD_CALM) {
+        if (s->calm >= (s->tight == 2 ? s->calm_need : ACID_LOAD_CALM)) {
             s->calm = 0;
             if (--s->tight == 0) { // назад по ступеням: сначала слои, потом перкуссия и тарелки
                 acid_perc_set_limit(&s->perc, ACID_PERC_SOUNDING);
                 acid_cym_set_limit(&s->cym, ACID_CYM_SLOTS - ACID_CYM_RESERVE);
+                s->calm_need = ACID_LOAD_CALM;
+                s->was2 = 0;
             }
         }
     }
@@ -649,10 +657,24 @@ static int synth_knob_ok(int type, int slot, int v)
 }
 
 // Страница синта: энкодер 2 - тип синтеза, дальше ручки типа (запоминаются по типам).
+// Выключенный слой не считается и время его стоит: при включении он берёт стек нот и время у своего синта.
+static void layer_sync(acid_slot_t *lv, const acid_slot_t *v)
+{
+    memcpy(lv->held, v->held, sizeof lv->held);
+    memcpy(lv->held_at, v->held_at, sizeof lv->held_at);
+    lv->nheld = v->nheld;
+    lv->now = v->now;
+    lv->pend_note = v->pend_note;
+    lv->pend_at = v->pend_at;
+}
+
 // layer - страница слоя: у типа есть ещё значение ACID_LAYER_OFF.
 static void page_synth(acid_synth_t *s, acid_slot_t *sl, int slot, int v, int layer)
 {
     if (slot == TYPE_ENC) {
+        if (layer && v < ACID_TYPES && sl->type == ACID_LAYER_OFF && sl->fade == 0) {
+            layer_sync(sl, &s->slot[sl->idx]);
+        }
         if (v < ACID_TYPES + layer) {
             type_request(sl, v); // значение на экране = номер типа, остальное игнор
         }
@@ -936,10 +958,10 @@ static int layer_on(const acid_slot_t *lv)
 static inline float layer_add(acid_synth_t *s, int k, float y)
 {
     acid_slot_t *lv = &s->layer[k];
-    slot_tick(s, lv);
     if (!layer_on(lv)) {
-        return y;
+        return y; // выключенный слой не трогаем вовсе: стек нот возьмёт у синта при включении
     }
+    slot_tick(s, lv);
     // Защита на ступени 2: слой плавно уходит и, затихнув, не считается. Своя громкость у каждого слоя:
     // слои на разных ядрах.
     float *d = &s->layer_duck[k];

@@ -61,3 +61,20 @@ static const acid_demo_part_t parts[] = {
 };
 
 const acid_demo_song_t acid_stress_song = {parts, 1};
+
+// Стенд слоёв: та же нагрузка, и на оба синта слой modal с перегрузом (BSP 16-17). Целиком не влезает:
+// проверяется защита (ступень 2 глушит слои без лавины).
+static const acid_demo_knob_t layer_knobs[] = {
+    {16, 2, 21, 21, 0}, {16, 3, 90, 90, 0}, {16, 4, 90, 90, 0}, {16, 5, 90, 90, 0}, {16, 6, 127, 127, 0},
+    {16, 14, 127, 127, 0}, {16, 15, 64, 64, 0}, {16, 16, 100, 100, 0},
+    {17, 2, 21, 21, 0}, {17, 3, 90, 90, 0}, {17, 4, 90, 90, 0}, {17, 5, 90, 90, 0}, {17, 6, 127, 127, 0},
+    {17, 14, 127, 127, 0}, {17, 15, 64, 64, 0}, {17, 16, 100, 100, 0},
+    {8, 13, 100, 100, 0}, {8, 14, 100, 100, 0},
+};
+
+static const acid_demo_part_t layer_parts[] = {
+    {1, mel1, mel2, drums, knobs, (uint8_t)(sizeof knobs / sizeof knobs[0]), NULL, 0, 0, 0},
+    {63, mel1, mel2, drums, layer_knobs, (uint8_t)(sizeof layer_knobs / sizeof layer_knobs[0]), NULL, 0, 0, 0},
+};
+
+const acid_demo_song_t acid_stress_layers_song = {layer_parts, 2};

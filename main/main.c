@@ -54,11 +54,18 @@ static pl_load_acc_t s_load; // период индикатора загрузк
 // Стенд замеров (сборка с -DESPOSC_STRESS=1): вместо демо стресс-песня, BSP не слушаем, защита от перегруза
 // выключена, чтобы видеть полную цену худшего случая.
 #ifdef ESPOSC_STRESS
+#ifdef ESPOSC_STRESS_LAYERS
+#define DEMO_SONG acid_stress_layers_song // слои не влезают целиком: здесь проверяется защита, она включена
+#define GUARD 1
+#else
 #define DEMO_SONG acid_stress_song
+#define GUARD 0
+#endif
 #define BENCH 1
 #else
 #define DEMO_SONG acid_demo_song
 #define BENCH 0
+#define GUARD 1
 #endif
 
 static void slot1_task(void *arg)
@@ -258,7 +265,7 @@ static void synth_task(void *arg)
     int custom_pending = 0, scene_pending = 0;
     enter_mode(0, blob, blob_ok);
     if (BENCH) {
-        ESP_LOGW(TAG, "STRESS BENCH build: stress song, BSP ignored, overload guard off");
+        ESP_LOGW(TAG, "STRESS BENCH build: stress song, BSP ignored, overload guard %s", GUARD ? "on" : "off");
     }
     ESP_LOGI(TAG, "free: internal %u, psram %u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
@@ -300,7 +307,7 @@ static void synth_task(void *arg)
         s_load.blocks++;
         // Защита от лавины: тяжёлый блок - перкуссия и тарелки на одном голосе, пока не отпустит.
         int was_tight = s_synth.tight;
-        acid_synth_set_load(&s_synth, BENCH ? 0.0f : (float)dt / (float)BLOCK_US);
+        acid_synth_set_load(&s_synth, GUARD ? (float)dt / (float)BLOCK_US : 0.0f);
         if (s_synth.tight != was_tight) {
             ESP_LOGW(TAG, "overload guard step %d (block %lld us)", s_synth.tight, dt);
         }

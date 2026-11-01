@@ -192,6 +192,41 @@ TEST(test_guard_steps)
     CHECK(b.tight == 0);
 }
 
+// Среднее выше бюджета: урезанием перкуссии не спастись, слои глушатся сразу, без ожидания ступени 1.
+TEST(test_guard_jumps_on_overrun)
+{
+    init2();
+    load_n(&b, 0.8f, 100);
+    int n = 0;
+    while (b.tight < 2 && n < 100) {
+        acid_synth_set_load(&b, 1.4f);
+        n++;
+    }
+    CHECK(b.tight == 2);
+    CHECK(n <= 8);
+}
+
+// Слои вернулись и снова перегруз: в следующий раз ждём вдвое дольше, без качелей каждые полсекунды.
+TEST(test_guard_backoff)
+{
+    init2();
+    load_n(&b, 1.4f, 20);
+    CHECK(b.tight == 2);
+    load_n(&b, 0.5f, ACID_LOAD_CALM + 10);
+    CHECK(b.tight == 1);
+    load_n(&b, 1.4f, 20);
+    CHECK(b.tight == 2);
+    load_n(&b, 0.5f, ACID_LOAD_CALM + 10);
+    CHECK(b.tight == 2); // ждём дольше
+    load_n(&b, 0.5f, ACID_LOAD_CALM);
+    CHECK(b.tight == 1);
+    load_n(&b, 0.5f, 2 * ACID_LOAD_CALM);
+    CHECK(b.tight == 0);
+    load_n(&b, 1.4f, 20); // после полного успокоения - снова с обычного ожидания
+    load_n(&b, 0.5f, ACID_LOAD_CALM + 10);
+    CHECK(b.tight == 1);
+}
+
 // Выход слоя (b минус a) и его худший скачок между соседними сэмплами.
 static float layer_jump(float *last_peak)
 {
@@ -228,8 +263,31 @@ TEST(test_guard_ducks_layers)
     CHECK(j < base + 0.05f);
 }
 
+// Слой включили посреди длинной ноты: он подхватывает её и отпускает вместе с синтом.
+TEST(test_layer_on_mid_note)
+{
+    init2();
+    both_note(4, 1, 45);
+    render2();
+    render2();
+    acid_synth_set_knob(&b, ACID_PAGE_LAYER1, 1, 0);
+    acid_synth_render_lr(&a, la, ra, 100); // отпускание сразу после включения слоя: время слоя - как у синта
+    acid_synth_render_lr(&b, lb, rb, 100);
+    CHECK(b.layer[0].nheld == 1 && b.layer[0].held[0] == 45);
+    both_note(4, 0, 45);
+    CHECK(b.layer[0].nheld == b.slot[0].nheld && b.layer[0].pend_note == b.slot[0].pend_note); // сразу, без дребезга
+    for (int k = 0; k < 3; k++) {
+        render2();
+    }
+    CHECK(b.layer[0].nheld == 0);
+    CHECK(max_diff() < 1e-3f);
+}
+
 int main(void)
 {
+    RUN(test_guard_jumps_on_overrun);
+    RUN(test_guard_backoff);
+    RUN(test_layer_on_mid_note);
     RUN(test_guard_steps);
     RUN(test_guard_ducks_layers);
     RUN(test_layer_off_by_default);

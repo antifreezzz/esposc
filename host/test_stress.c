@@ -72,8 +72,40 @@ TEST(test_stress_song_fits)
     CHECK(ok);
 }
 
+// Стенд слоёв: после первого такта на обоих синтах слой modal с перегрузом, стресс как был.
+TEST(test_stress_layers_song)
+{
+    static acid_midi_event_t ev[96];
+    float l[CH], r[CH];
+    acid_synth_init(&s, SR);
+    acid_demo_init(&d, &acid_stress_layers_song);
+    int finite = 1, chunks = 0, held = 0;
+    for (int k = 0; k < 10 * 48000 / CH; k++) {
+        int n = acid_demo_events(&d, ev, 96);
+        for (int i = 0; i < n; i++) {
+            acid_synth_midi(&s, &ev[i]);
+        }
+        acid_synth_render_lr(&s, l, r, CH);
+        for (int i = 0; i < CH; i++) {
+            finite &= isfinite(l[i]) && isfinite(r[i]);
+        }
+        if (k < 4 * 48000 / CH) {
+            continue;
+        }
+        chunks++;
+        int ok = s.slot[0].type == MODAL && s.slot[1].type == MODAL;
+        for (int j = 0; j < 2; j++) {
+            ok &= s.layer[j].type == MODAL && s.layer[j].drv.drive == 127 && s.layer_gain[j] > 0.7f;
+        }
+        held += ok;
+    }
+    CHECK(finite);
+    CHECK(held == chunks);
+}
+
 int main(void)
 {
+    RUN(test_stress_layers_song);
     RUN(test_stress_song_fits);
     RUN(test_stress_worst_case);
     TEST_MAIN_END();

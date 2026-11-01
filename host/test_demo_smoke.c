@@ -17,6 +17,7 @@ typedef struct {
     int wave[2], models[ACID_TYPES], drum[128], hat_knob, pump, djf[3], drive, pan;
     int howl_303, drive_plaits, whistle; // перегруз синта с воем на 303, на Plaits, свист резонанса 303
     int motion[3], times[5], sends, crush, stutter[5], tonal_step, scale_chrom, scale_mode, cym_knob, perc_models[ACID_PERC_MODELS], perc_knob;
+    int layer[2], layer_vol; // слои синтов звучали, их громкость крутили
     long silent_windows, wide_windows;
     int finite;
 } seen_t;
@@ -72,6 +73,11 @@ static void play_cycle(seen_t *z, int c)
         }
         for (int k = 0; k < 2; k++) {
             z->drive_plaits |= s.slot[k].type != 0 && acid_drive_on(&s.slot[k].drv);
+        }
+        for (int k = 0; k < 2; k++) {
+            const acid_slot_t *lv = &s.layer[k];
+            z->layer[k] |= lv->type != ACID_LAYER_OFF && lv->nheld > 0;
+            z->layer_vol |= s.layer_gain[k] != 100.0f / 127.0f;
         }
         z->hat_knob |= s.hat_tone != ACID_HAT_HZ;
         for (int k = 0; k < ACID_PERC_SLOTS; k++) {
@@ -151,6 +157,7 @@ TEST(test_demo_coverage)
         CHECK(z.crush);
         CHECK(count(z.stutter, 5, 1) >= 2);
         CHECK(z.tonal_step && z.scale_chrom && z.scale_mode);
+        CHECK(z.layer[0] && z.layer[1] && z.layer_vol);
         printf("  cycle %d: %d models\n", c, count(z.models, ACID_TYPES, 1));
     }
 }
