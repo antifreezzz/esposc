@@ -23,6 +23,11 @@ typedef struct {
     uint32_t page_sent_ms;
     int page_sent;
     int goto_page; // BSP сменил страницу: экрану открыть её (-1 нет), интерфейс сбрасывает сам
+    // Свои страницы 10..15 (индекс up = страница - 10), слоты по индексу энкодера с 0.
+    pl_target_t user_t[PL_USER_PAGES][PL_KNOBS][PL_TARGETS];
+    uint8_t user_val[PL_USER_PAGES][PL_KNOBS], user_held[PL_USER_PAGES][PL_KNOBS];
+    int user_have; // бит up: кадр определений пришёл
+    pl_scene_state_t scene;
 } pl_model_t;
 
 void pl_model_init(pl_model_t *m);
@@ -38,4 +43,5 @@ int pl_model_page_resend(const pl_model_t *m, int screen_page, uint32_t ms);
 void pl_model_page_sent(pl_model_t *m, uint32_t ms);
 // Своя правка: показать сразу, не дожидаясь эха; синт пометит её «ждёт BSP».
 // 1 - правка принята и её надо слать синту; 0 - снимка ещё нет (значения не настоящие) или не ручка.
+// page 10..15 - своя страница (нужен её кадр определений).
 int pl_model_local_set(pl_model_t *m, int page, int enc, int v);

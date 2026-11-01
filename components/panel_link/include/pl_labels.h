@@ -1,6 +1,8 @@
 #pragma once
 #include <stdint.h>
 
+#include "pl_proto.h"
+
 // Подписи ручек панели по-английски, капителью. enc - индекс энкодера BSP с 0 (0 - страница, на круге нет).
 // page_raw - сырые значения страницы: энкодер 2 (индекс 1) - тип синта на 6-7 и модель перкуссии на 3-5.
 
@@ -21,3 +23,8 @@ uint32_t pl_knob_color(int page, int enc, const uint8_t page_raw[16]);
 int pl_knob_bipolar(int page, int enc, const uint8_t page_raw[16]);
 // Краткая сводка состояния страницы для плитки меню и центра круга. Возвращает buf или константу.
 const char *pl_page_summary(int page, const uint8_t page_raw[16], char buf[24]);
+// Имя своей страницы up 0..5 ("USER 1".."USER 6"), NULL вне.
+const char *pl_user_name(int up);
+// Подпись слота своей страницы: подпись первой цели по raw её страницы и " +N" у слота с N + 1 целями.
+// NULL - пустой слот. Возвращает buf или константу.
+const char *pl_slot_label(const pl_target_t t[PL_TARGETS], const uint8_t raw[PL_PAGES][PL_KNOBS], char buf[20]);

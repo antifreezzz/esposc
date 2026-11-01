@@ -217,6 +217,26 @@ TEST(test_page_summary)
     CHECK(strcmp(pl_page_summary(0, raw, buf), "DJF HP +6") == 0);
 }
 
+TEST(test_slot_label)
+{
+    static uint8_t raw[PL_PAGES][PL_KNOBS];
+    memset(raw, 0, sizeof raw); // синт 1 - 303
+    pl_target_t t[PL_TARGETS];
+    memset(t, PL_NONE, sizeof t);
+    char buf[20];
+    CHECK(pl_slot_label(t, raw, buf) == NULL);
+    t[0] = (pl_target_t){6 << 4 | 2, 0, 127};
+    CHECK(strcmp(pl_slot_label(t, raw, buf), "CUTOFF") == 0);
+    t[1] = (pl_target_t){6 << 4 | 3, 0, 127};
+    t[2] = (pl_target_t){8 << 4 | 3, 0, 127};
+    CHECK(strcmp(pl_slot_label(t, raw, buf), "CUTOFF +2") == 0);
+    raw[6][1] = 11; // Plaits: подпись по типу
+    CHECK(strcmp(pl_slot_label(t, raw, buf), "HARMONICS +2") == 0);
+    CHECK(strcmp(pl_user_name(0), "USER 1") == 0);
+    CHECK(strcmp(pl_user_name(5), "USER 6") == 0);
+    CHECK(pl_user_name(6) == NULL && pl_user_name(-1) == NULL);
+}
+
 int main(void)
 {
     RUN(test_labels_cover_synth);
@@ -228,5 +248,6 @@ int main(void)
     RUN(test_colors);
     RUN(test_bipolar);
     RUN(test_page_summary);
+    RUN(test_slot_label);
     TEST_MAIN_END();
 }

@@ -164,6 +164,89 @@ TEST(test_link_lost)
     CHECK(pl_model_linked(&m, 9000));
 }
 
+static void linked(void)
+{
+    static pl_snapshot_t s;
+    memset(&s, 0, sizeof s);
+    s.mode = 1;
+    pl_model_apply(&m, PL_SNAPSHOT, (const uint8_t *)&s, sizeof s, 1);
+}
+
+static void custom(int up, int enc, int page, int tenc, int lo, int hi, int val)
+{
+    static pl_custom_t c;
+    memset(&c, PL_NONE, sizeof c);
+    memset(c.val, 0, sizeof c.val);
+    memset(c.held, 0, sizeof c.held);
+    c.up = (uint8_t)up;
+    c.t[enc - 1][0] = (pl_target_t){(uint8_t)(page << 4 | tenc), (uint8_t)lo, (uint8_t)hi};
+    c.val[enc - 1] = (uint8_t)val;
+    c.held[(enc - 1) / 8] = (uint8_t)(1 << ((enc - 1) % 8));
+    pl_model_apply(&m, PL_CUSTOM, (const uint8_t *)&c, sizeof c, 5);
+}
+
+TEST(test_custom_frame_applied)
+{
+    pl_model_init(&m);
+    linked();
+    custom(2, 3, 6, 2, 10, 90, 44);
+    CHECK(m.user_have == (1 << 2));
+    CHECK(m.user_t[2][3][0].pe == (6 << 4 | 2) && m.user_t[2][3][0].lo == 10 && m.user_t[2][3][0].hi == 90);
+    CHECK(m.user_t[2][3][1].pe == PL_NONE);
+    CHECK(m.user_val[2][3] == 44 && m.user_held[2][3] == 1 && m.user_held[2][4] == 0);
+    CHECK(m.last_rx_ms == 5);
+}
+
+TEST(test_custom_wrong_len_skipped)
+{
+    pl_model_init(&m);
+    static pl_custom_t c;
+    memset(&c, 0, sizeof c);
+    c.up = 9; // нет такой страницы
+    pl_model_apply(&m, PL_CUSTOM, (const uint8_t *)&c, sizeof c, 5);
+    CHECK(m.user_have == 0);
+    c.up = 0;
+    pl_model_apply(&m, PL_CUSTOM, (const uint8_t *)&c, sizeof c - 1, 6);
+    CHECK(m.user_have == 0 && m.last_rx_ms == 5); // короткий кадр не считается
+}
+
+TEST(test_user_knob_and_page_change)
+{
+    pl_model_init(&m);
+    linked();
+    custom(0, 2, 6, 2, 0, 50, 0);
+    knob(10, 2, 70, 0, 70, 0, 100);
+    CHECK(m.user_val[0][2] == 70 && m.user_held[0][2] == 0 && m.bsp_pos[2] == 70);
+    CHECK(m.toast_page == 10 && m.toast_enc == 2 && m.toast_until_ms == 100 + PL_TOAST_MS);
+    knob(10, 0, 12, 0, 0, 0, 110); // BSP открыл свою страницу 3
+    CHECK(m.bsp_page == 12 && m.goto_page == 12);
+    knob(16, 2, 1, 0, 0, 0, 120); // нет такой страницы
+    CHECK(m.user_val[0][2] == 70);
+    m.toast_until_ms = 0;
+    knob(10, 5, 9, 0, 9, 0, 130); // пустой слот не всплывает
+    CHECK(m.user_val[0][5] == 9 && m.toast_until_ms == 0);
+}
+
+TEST(test_local_set_user_needs_frame)
+{
+    pl_model_init(&m);
+    linked();
+    CHECK(pl_model_local_set(&m, 11, 2, 40) == 0); // определений ещё нет
+    custom(1, 2, 0, 1, 0, 127, 0);
+    CHECK(pl_model_local_set(&m, 11, 2, 40) == 1);
+    CHECK(m.user_val[1][2] == 40 && m.user_held[1][2] == 1);
+    CHECK(pl_model_local_set(&m, 16, 2, 40) == 0);
+}
+
+TEST(test_scene_state_applied)
+{
+    pl_model_init(&m);
+    pl_scene_state_t st = {0x05, 2, 2};
+    pl_model_apply(&m, PL_SCENE_STATE, (const uint8_t *)&st, sizeof st, 7);
+    CHECK(m.scene.used == 0x05 && m.scene.cur == 2 && m.scene.state == 2);
+    CHECK(m.last_rx_ms == 7);
+}
+
 int main(void)
 {
     RUN(test_model_snapshot_replaces_all);
@@ -177,5 +260,10 @@ int main(void)
     RUN(test_follow_bsp_page);
     RUN(test_page_resend);
     RUN(test_link_lost);
+    RUN(test_custom_frame_applied);
+    RUN(test_custom_wrong_len_skipped);
+    RUN(test_user_knob_and_page_change);
+    RUN(test_local_set_user_needs_frame);
+    RUN(test_scene_state_applied);
     TEST_MAIN_END();
 }
