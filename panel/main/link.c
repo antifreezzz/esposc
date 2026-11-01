@@ -70,3 +70,14 @@ void link_page(int page)
     uint8_t p = (uint8_t)page;
     send(PL_PAGE, &p, 1);
 }
+
+void link_custom_edit(const pl_custom_edit_t *e)
+{
+    send(PL_CUSTOM_EDIT, e, sizeof *e);
+}
+
+void link_scene(int op, int n, int bars)
+{
+    pl_scene_t s = {(uint8_t)op, (uint8_t)n, (uint8_t)bars};
+    send(PL_SCENE, &s, sizeof s);
+}
