@@ -17,6 +17,9 @@ typedef struct {
 } acid_link_ev_t;
 
 #define ACID_LINK_PEND 8
+// Цели макро ставятся не сразу, а шагом связки: не больше стольких ручек за кусок (пересчёт до ~70 мкс на ручку).
+#define ACID_LINK_PER_CHUNK 4
+#define ACID_LINK_DEFER (ACID_PAGES * ACID_KNOBS)
 
 typedef struct {
     uint8_t bsp_pos[ACID_KNOBS]; // последнее значение энкодера BSP, 0xFF - не крутили
@@ -29,6 +32,11 @@ typedef struct {
     acid_link_ev_t pend[ACID_LINK_PEND]; // события для панели сверх первого (цели слота)
     int npend, pend_at;
     uint8_t custom_due; // бит своей страницы: панели нужен её кадр определений
+    // Отложенные цели макро: очередь ручек page * 16 + enc без повторов, последнее значение побеждает.
+    uint8_t defer_st[ACID_LINK_DEFER]; // 0 нет в очереди, 1 ждёт, 2 в очереди, но отменена прямой правкой
+    uint8_t defer_v[ACID_LINK_DEFER];
+    uint8_t defer_q[ACID_LINK_DEFER];
+    int dq_head, dq_n;
 } acid_link_t;
 
 // И при каждой смене режима демо <-> live. Свои страницы не трогает.
@@ -44,6 +52,9 @@ int acid_link_custom_edit(acid_link_t *l, int up, int enc, int idx, int page, in
 int acid_link_midi(acid_link_t *l, acid_synth_t *s, const acid_midi_event_t *ev, int src, acid_link_ev_t *out);
 // Правка с панели, enc с 0 (энкодер 1 не трогает), page 0..15. Возвращает 0 или 1 событие в out.
 int acid_link_panel_set(acid_link_t *l, acid_synth_t *s, int page, int enc, int v, acid_link_ev_t *out);
+// Каждый кусок до рендера: ставит до ACID_LINK_PER_CHUNK отложенных целей макро. Возвращает 0 или 1 событие
+// в out, остальные - acid_link_take.
+int acid_link_step(acid_link_t *l, acid_synth_t *s, acid_link_ev_t *out);
 // На панели открыта страница: энкодеры 2-16 BSP крутят её, пока не тронут энкодер 1. В демо не звать
 // (демо само листает страницы). Возвращает 0 или 1 событие (смена страницы) в out.
 int acid_link_panel_page(acid_link_t *l, acid_synth_t *s, int page, acid_link_ev_t *out);
