@@ -30,10 +30,12 @@ void pl_model_init(pl_model_t *m);
 void pl_model_apply(pl_model_t *m, uint8_t type, const uint8_t *payload, size_t len, uint32_t ms);
 int pl_model_need_hello(const pl_model_t *m, uint32_t ms);
 void pl_model_hello_sent(pl_model_t *m, uint32_t ms);
-// Своя правка: показать сразу, не дожидаясь эха; синт пометит её «ждёт BSP».
 // Связь жива: снимок был и синт отвечал недавно (значения при обрыве не стираются, только индикатор).
 int pl_model_linked(const pl_model_t *m, uint32_t ms);
 // Экран на странице screen_page, а синт (live) на другой и BSP не листал: пора повторить PL_PAGE.
 int pl_model_page_resend(const pl_model_t *m, int screen_page, uint32_t ms);
+// Экран сам выбрал страницу и отправил её синту; отменяет ждущее листание с BSP.
 void pl_model_page_sent(pl_model_t *m, uint32_t ms);
-void pl_model_local_set(pl_model_t *m, int page, int enc, int v);
+// Своя правка: показать сразу, не дожидаясь эха; синт пометит её «ждёт BSP».
+// 1 - правка принята и её надо слать синту; 0 - снимка ещё нет (значения не настоящие) или не ручка.
+int pl_model_local_set(pl_model_t *m, int page, int enc, int v);

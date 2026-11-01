@@ -319,7 +319,7 @@ static void draw_menu(const pl_model_t *m)
 {
     char buf[24];
     for (int p = 0; p < PL_PAGES; p++) {
-        text(u.tile_sub[p], pl_page_summary(p, m->raw[p], buf));
+        text(u.tile_sub[p], m->have ? pl_page_summary(p, m->raw[p], buf) : ""); // до снимка значения не настоящие
     }
     int active = (m->have && m->mode == 1 && m->bsp_page < PL_PAGES) ? m->bsp_page : -1;
     if (active != u.drawn_bsp_page) {
@@ -485,6 +485,7 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
         } else {
             u.screen = MENU;
             u.grab = -1;
+            m->goto_page = -1; // тап «в меню» новее листания на BSP
         }
     } else {
         knob_input(m, ev, down, x, y, x0, y0);
@@ -500,7 +501,7 @@ static void knob_input(pl_model_t *m, int ev, int down, int x, int y, int x0, in
     // Захват по удержанию 50 мс или сразу при начале сдвига пальца внутри рабочей области страницы.
     if (down && u.grab < 0 && y0 >= TOP_H && (ev == PL_PRESS_HOLD || u.press.state == 2)) {
         int i = pl_grid_cell(x0, y0);
-        if (i >= 0 && i < KNOBS && u.knob[i].label) {
+        if (i >= 0 && i < KNOBS && u.knob[i].label && m->have) { // без снимка значения нули: ручка прыгнула бы в 0
             int lo, hi;
             pl_knob_range(u.page, i + 1, m->raw[u.page], &lo, &hi);
             pl_turn_begin(&u.turn, x, y - RING_DY, m->raw[u.page][i + 1], lo, hi);
@@ -514,8 +515,9 @@ static void knob_input(pl_model_t *m, int ev, int down, int x, int y, int x0, in
     if (u.grab >= 0 && down) {
         int v = pl_turn_move(&u.turn, x, y - RING_DY);
         if (v != u.sent) {
-            pl_model_local_set(m, u.page, u.grab + 1, v);
-            link_set(u.page, u.grab + 1, v);
+            if (pl_model_local_set(m, u.page, u.grab + 1, v)) {
+                link_set(u.page, u.grab + 1, v);
+            }
             u.sent = v;
         }
     }
