@@ -127,6 +127,53 @@ TEST(test_labels_depend)
     }
 }
 
+TEST(test_colors)
+{
+    uint8_t raw[16] = {0};
+    for (int p = 0; p < 10; p++) {
+        CHECK(pl_page_color(p) != 0);
+        int variants = (p == 6 || p == 7) ? 25 : (p >= 3 && p <= 5) ? 5 : 1;
+        for (int t = 0; t < variants; t++) {
+            raw[1] = (uint8_t)t;
+            CHECK(pl_knob_color(p, 0, raw) == 0);
+            for (int enc = 1; enc < 16; enc++) {
+                uint32_t c = pl_knob_color(p, enc, raw);
+                CHECK((c == 0) == empty(p, enc, t));
+            }
+        }
+    }
+    CHECK(pl_page_color(-1) == 0);
+    CHECK(pl_page_color(10) == 0);
+    // На странице MIX мастер, синты, ударка, фильтр и панорама различаются по цвету групп.
+    CHECK(pl_knob_color(0, 1, raw) != pl_knob_color(0, 3, raw));
+    CHECK(pl_knob_color(0, 3, raw) != pl_knob_color(0, 5, raw));
+    CHECK(pl_knob_color(0, 5, raw) != pl_knob_color(0, 11, raw));
+}
+
+TEST(test_bipolar)
+{
+    uint8_t raw[16] = {0};
+    CHECK(pl_knob_bipolar(0, 1, raw) == 0);  // MASTER
+    CHECK(pl_knob_bipolar(0, 11, raw) == 1); // DJ FILTER
+    CHECK(pl_knob_bipolar(0, 13, raw) == 1); // PAN S1
+    CHECK(pl_knob_bipolar(1, 13, raw) == 1); // PAN HAT
+    CHECK(pl_knob_bipolar(2, 3, raw) == 1);  // CRASH TUNE
+    CHECK(pl_knob_bipolar(2, 4, raw) == 1);  // CRASH PAN
+    CHECK(pl_knob_bipolar(3, 12, raw) == 1); // TOMS PAN
+    raw[1] = 0;                              // 303
+    CHECK(pl_knob_bipolar(6, 2, raw) == 0);  // CUTOFF
+    CHECK(pl_knob_bipolar(6, 9, raw) == 1);  // TRANS 303
+    CHECK(pl_knob_bipolar(6, 14, raw) == 1); // TONE
+    raw[1] = 11;                             // Plaits
+    CHECK(pl_knob_bipolar(6, 8, raw) == 1);  // TRANS Plaits
+    CHECK(pl_knob_bipolar(6, 9, raw) == 1);  // T ENV
+    CHECK(pl_knob_bipolar(6, 10, raw) == 1); // M ENV
+    CHECK(pl_knob_bipolar(6, 11, raw) == 1); // P ENV
+    CHECK(pl_knob_bipolar(9, 7, raw) == 0);  // ROOT
+    CHECK(pl_knob_bipolar(9, 8, raw) == 1);  // STEP 1
+    CHECK(pl_knob_bipolar(9, 15, raw) == 1); // STEP 8
+}
+
 int main(void)
 {
     RUN(test_labels_cover_synth);
@@ -134,5 +181,8 @@ int main(void)
     RUN(test_value_text);
     RUN(test_label_follows_model);
     RUN(test_labels_depend);
+    RUN(test_colors);
+    RUN(test_bipolar);
     TEST_MAIN_END();
 }
+

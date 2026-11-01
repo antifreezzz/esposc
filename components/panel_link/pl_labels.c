@@ -144,3 +144,88 @@ int pl_labels_depend(int page)
 {
     return page >= 3 && page <= 7;
 }
+
+static const uint32_t PAGE_COLOR[10] = {0x6fc3ff, 0xff6f7d, 0xffb84d, 0xff7b47, 0xff9457,
+                                        0xffd24d, 0xff9900, 0x7be382, 0xc79bff, 0x5fd3e6};
+
+uint32_t pl_page_color(int page)
+{
+    return page >= 0 && page < N(PAGE_COLOR) ? PAGE_COLOR[page] : 0;
+}
+
+uint32_t pl_knob_color(int page, int enc, const uint8_t page_raw[16])
+{
+    if (!pl_knob_label(page, enc, page_raw)) {
+        return 0;
+    }
+    switch (page) {
+    case 0: // MIX: мастер/драйв, синты, ударка, пампинг/DJ-фильтр, панорама
+        if (enc <= 2) return 0xffb547;
+        if (enc <= 4) return 0x7be382;
+        if (enc <= 8) return 0xff6f7d;
+        if (enc <= 12) return 0x6fc3ff;
+        return 0x5fd3e6;
+    case 1: // DRUMS: бочка, хэты, клэп, малый, панорама
+        if (enc <= 4) return 0xff6f7d;
+        if (enc <= 7) return 0xffb84d;
+        if (enc <= 9) return 0xc79bff;
+        if (enc <= 12) return 0x6fc3ff;
+        return 0x5fd3e6;
+    case 2: // CYMBALS: крэш, райд, купол и велосити
+        if (enc <= 4) return 0xff8844;
+        if (enc <= 8) return 0xffc247;
+        return 0x6fc3ff;
+    case 3:
+    case 4:
+    case 5: // PERC: модель, высота/спад, тембр, грязь, выход/стерео
+        if (enc == 1) return 0xffd24d;
+        if (enc <= 5) return 0xff7b47;
+        if (enc <= 8) return 0xffb547;
+        if (enc <= 10) return 0xff5e6c;
+        return 0x5fd3e6;
+    case 6:
+    case 7: { // SYNTH 1 & 2
+        int plaits = model(page_raw, 25) != 0;
+        if (enc == 1) return 0xffd24d;
+        if (enc <= 6) return page == 6 ? 0xff9900 : 0x7be382;
+        if (enc <= (plaits ? 8 : 9)) return 0x6fc3ff;
+        if (enc <= 12) return 0xc79bff;
+        return 0xff5e6c;
+    }
+    case 8: // FX: крашер, посылы, дилэй, статтер
+        if (enc <= 2) return 0xff6f7d;
+        if (enc <= 5) return 0xffb547;
+        if (enc == 9) return 0x5fd3e6;
+        return 0xc79bff;
+    case 9: // TONAL: шагатель, лад/тоника, шаги 1..8
+        if (enc <= 5) return 0x5fd3e6;
+        if (enc <= 7) return 0xffb547;
+        return 0x7be382;
+    default:
+        return 0;
+    }
+}
+
+int pl_knob_bipolar(int page, int enc, const uint8_t page_raw[16])
+{
+    if (!pl_knob_label(page, enc, page_raw)) {
+        return 0;
+    }
+    switch (page) {
+    case 0: return enc == 11 || enc == 13 || enc == 14;
+    case 1: return enc >= 13 && enc <= 15;
+    case 2: return enc == 3 || enc == 4 || enc == 7 || enc == 8;
+    case 3:
+    case 4:
+    case 5: return enc == 12;
+    case 6:
+    case 7:
+        if (model(page_raw, 25) == 0) {
+            return enc == 9 || enc == 14;
+        }
+        return (enc >= 8 && enc <= 11) || enc == 14;
+    case 9: return enc >= 8 && enc <= 15;
+    default: return 0;
+    }
+}
+

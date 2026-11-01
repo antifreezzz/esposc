@@ -13,3 +13,10 @@ void pl_knob_range(int page, int enc, const uint8_t page_raw[16], int *lo, int *
 const char *pl_value_text(int page, int enc, int v, const uint8_t page_raw[16], char buf[12]);
 // 1 - подписи страницы зависят от энкодера 2 (тип синта, модель перкуссии): при его смене перестроить круг.
 int pl_labels_depend(int page);
+// Акцентный цвет страницы (RGB24) для меню и шапки; 0 вне 0..9.
+uint32_t pl_page_color(int page);
+// Цвет смысловой группы ручки (RGB24); 0 для пустого слота.
+uint32_t pl_knob_color(int page, int enc, const uint8_t page_raw[16]);
+// 1 - биполярная ручка с центром в 64 (панорама, DJ-фильтр, транспозиция, тон перегруза, огибающие Plaits).
+int pl_knob_bipolar(int page, int enc, const uint8_t page_raw[16]);
+
