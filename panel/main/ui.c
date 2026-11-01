@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "esp_log.h"
 #include "link.h"
 #include "pl_gesture.h"
 #include "pl_labels.h"
@@ -24,6 +25,8 @@
 #define MENU2_TILES 7 // USER 1-6 и SCENES
 #define EDIT_X0 362 // кнопка EDIT в шапке своей страницы
 #define EDIT_X1 412
+#define XY_X0 88 // кнопка XY в шапке своей страницы: между «MENU» и стрелками
+#define XY_X1 140
 
 enum { MENU, MENU2, PAGE, SCENES };
 
@@ -42,7 +45,8 @@ static struct {
     pl_turn_t turn;
     pl_edit_t ed;
     int sent; // последнее отправленное значение захваченной ручки
-    lv_obj_t *bar_left, *bar_nav, *bar_right, *bar_edit;
+    lv_obj_t *bar_left, *bar_nav, *bar_right, *bar_edit, *bar_xy;
+    uint8_t xy_view; // бит своей страницы: вместо сетки XY-пэд
     lv_obj_t *menu, *menu2, *grid;
     lv_obj_t *tile[PL_PAGES], *tile_sub[PL_PAGES], *tile2_sub[MENU2_TILES];
     int drawn_bsp_page;
@@ -175,6 +179,8 @@ static void build(void)
     lv_obj_align(u.bar_right, LV_ALIGN_RIGHT_MID, -14, 0);
     u.bar_edit = ui_label(bar, &lv_font_montserrat_14, C_TEXT);
     lv_obj_align(u.bar_edit, LV_ALIGN_LEFT_MID, EDIT_X0 + 4, 0);
+    u.bar_xy = ui_label(bar, &lv_font_montserrat_14, C_TEXT);
+    lv_obj_align(u.bar_xy, LV_ALIGN_LEFT_MID, XY_X0 + 4, 0);
 
     // Меню: 2 столбца по 5 плиток с цветной полоской и сводкой состояния.
     u.menu = ui_box(scr, 0, TOP_H, W, W - TOP_H, C_BG);
@@ -338,6 +344,12 @@ static int editing(void)
     return u.ed.state != PL_EDIT_OFF;
 }
 
+// На экране XY-пэд вместо сетки: своя страница с видом XY, не в редакторе.
+static int xy_on(void)
+{
+    return u.screen == PAGE && !editing() && u.page >= PL_USER_FIRST && (u.xy_view >> (u.page - PL_USER_FIRST) & 1);
+}
+
 // Какую страницу рисует сетка: при выборе ручки цели - выбранную в редакторе.
 static int view_page(void)
 {
@@ -376,6 +388,9 @@ static void draw_bar(const pl_model_t *m)
     char nav[40];
     uint32_t nc = C_ACCENT;
     int user = u.page >= PL_USER_FIRST;
+    if (editing() || u.screen != PAGE) {
+        ui_text(u.bar_xy, "");
+    }
     if (editing()) {
         snprintf(nav, sizeof nav, "%s", STEP[u.ed.state]);
         if (u.ed.state == PL_EDIT_TARGETS) {
@@ -390,6 +405,7 @@ static void draw_bar(const pl_model_t *m)
         nc = pl_view_page_color(u.page);
         ui_text(u.bar_left, LV_SYMBOL_LEFT " MENU");
         ui_text(u.bar_edit, user && (m->user_have >> (u.page - PL_USER_FIRST) & 1) ? "EDIT" : "");
+        ui_text(u.bar_xy, !user ? "" : xy_on() ? "GRID" : "XY");
     } else if (u.screen == SCENES) {
         snprintf(nav, sizeof nav, "SCENES");
         ui_text(u.bar_left, LV_SYMBOL_LEFT " MENU");
@@ -685,7 +701,11 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
         }
     } else if (head) {
         int user = u.page >= PL_USER_FIRST;
-        if (x0 >= 140 && x0 < 215) {
+        uc_xy_release(m);
+        if (user && x0 >= XY_X0 && x0 < XY_X1) {
+            u.xy_view ^= (uint8_t)(1 << (u.page - PL_USER_FIRST));
+            u.grab = -1;
+        } else if (x0 >= 140 && x0 < 215) {
             send_page(m, pl_view_page_step(u.page, -1), ms);
         } else if (x0 >= 265 && x0 < 360) {
             send_page(m, pl_view_page_step(u.page, 1), ms);
@@ -697,6 +717,8 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
             u.grab = -1;
             m->goto_page = -1; // тап «в меню» новее листания на BSP
         }
+    } else if (xy_on()) {
+        uc_xy_input(m, u.page, ev, down, x, y, x0, y0, ms);
     } else {
         knob_input(m, ev, down, x, y, x0, y0);
     }
@@ -737,6 +759,10 @@ void ui_start(void)
 {
     lvgl_port_lock(0);
     build();
+    lv_mem_monitor_t mon;
+    lv_mem_monitor(&mon); // куча LVGL 96 КБ: при нехватке падает в первой отрисовке, а не здесь
+    ESP_LOGI("panel", "lvgl heap: used %d%%, free %u of %u, biggest %u", mon.used_pct, (unsigned)mon.free_size,
+             (unsigned)mon.total_size, (unsigned)mon.free_biggest_size);
     lvgl_port_unlock();
 }
 
@@ -752,10 +778,13 @@ void ui_step(pl_model_t *m, int down, int x, int y, uint32_t ms)
     }
     ui_show(u.menu, u.screen == MENU);
     ui_show(u.menu2, u.screen == MENU2);
-    ui_show(u.grid, u.screen == PAGE);
+    ui_show(u.grid, u.screen == PAGE && !xy_on());
+    uc_xy_show(xy_on());
     uc_scenes_show(u.screen == SCENES);
     uc_edit_draw(m, &u.ed);
-    if (u.screen == PAGE) {
+    if (xy_on()) {
+        uc_xy_draw(m, u.page);
+    } else if (u.screen == PAGE) {
         draw_page(m);
     } else if (u.screen == MENU) {
         draw_menu(m);

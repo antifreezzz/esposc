@@ -173,6 +173,7 @@ static void reset_custom(void)
 }
 
 static int take(void) { return acid_link_take(&l, &ev); }
+static int step(void) { return nev = acid_link_step(&l, &s, &ev); }
 
 TEST(test_user_page_macro_from_bsp)
 {
@@ -181,12 +182,15 @@ TEST(test_user_page_macro_from_bsp)
     acid_custom_edit(&c, 0, 2, 1, 0, 1, 127, 0);
     CHECK(bsp(1, 10) == 1);
     CHECK(ev.page == 10 && ev.enc == 0 && ev.value == 10);
+    int master = knob(0, 2);
     CHECK(bsp(3, 127) == 1);
-    CHECK(knob(6, 3) == 127 && knob(0, 2) == 0);
     CHECK(ev.page == 10 && ev.enc == 2 && ev.value == 127);
-    CHECK(take() == 1 && ev.page == 6 && ev.enc == 2 && ev.value == 127);
+    CHECK(take() == 0);
+    CHECK(knob(0, 2) == master); // цели макро - в следующем шаге связки, не в этом событии
+    CHECK(step() == 1 && ev.page == 6 && ev.enc == 2 && ev.value == 127);
     CHECK(take() == 1 && ev.page == 0 && ev.enc == 1 && ev.value == 0);
     CHECK(take() == 0);
+    CHECK(knob(6, 3) == 127 && knob(0, 2) == 0);
     CHECK(c.val[0][2] == 127 && c.save == 1);
 }
 
@@ -257,8 +261,9 @@ TEST(test_user_panel_set_macro)
     reset_custom();
     acid_custom_edit(&c, 1, 4, 0, 8, 3, 0, 100);
     CHECK(panel(11, 5, 127) == 1);
-    CHECK(knob(8, 4) == 100 && c.val[1][4] == 127 && l.held[11][4] == 1);
-    CHECK(take() == 1 && ev.page == 8 && ev.enc == 3 && ev.value == 100);
+    CHECK(c.val[1][4] == 127 && l.held[11][4] == 1);
+    CHECK(step() == 1 && ev.page == 8 && ev.enc == 3 && ev.value == 100);
+    CHECK(knob(8, 4) == 100);
     CHECK(panel(16, 5, 1) == 0);
 }
 
@@ -303,6 +308,7 @@ TEST(test_targets_do_not_toast)
     bsp(1, 10);
     bsp(3, 50);
     CHECK(ev.page == 10 && ev.src == ACID_SRC_BSP); // всплывашка - слот своей страницы
+    CHECK(step() == 1 && ev.src != ACID_SRC_BSP);
     while (take()) {
         CHECK(ev.src != ACID_SRC_BSP); // цели - отражение, не поворот на их странице
     }
@@ -316,6 +322,79 @@ TEST(test_rejected_edit_resyncs_panel)
     l.custom_due = 0;
     CHECK(acid_link_custom_edit(&l, 9, 2, 0, 0, 1, 0, 127) == 0);
     CHECK(l.custom_due == 0);
+}
+
+// Два макро по 4 цели: 8 разных ручек.
+static void two_macros(void)
+{
+    reset_custom();
+    for (int i = 0; i < 4; i++) {
+        acid_custom_edit(&c, 0, 1, i, 0, 1 + i, 0, 127); // E2: микс 2..5
+        acid_custom_edit(&c, 0, 2, i, 8, 2 + i, 0, 127); // E3: эффекты 3..6
+    }
+}
+
+static int drain(void)
+{
+    int n = step();
+    while (n && take()) {
+        n++;
+    }
+    return n;
+}
+
+TEST(test_macro_targets_limited_per_step)
+{
+    two_macros();
+    panel(10, 2, 100);
+    panel(10, 3, 100);
+    CHECK(drain() == ACID_LINK_PER_CHUNK);
+    CHECK(drain() == 8 - ACID_LINK_PER_CHUNK);
+    CHECK(drain() == 0);
+    for (int i = 0; i < 4; i++) {
+        CHECK(knob(0, 2 + i) == 100 && knob(8, 3 + i) == 100);
+    }
+}
+
+TEST(test_macro_latest_value_wins)
+{
+    two_macros();
+    panel(10, 2, 10);
+    panel(10, 2, 20);
+    panel(10, 2, 30);
+    CHECK(drain() == 4); // одна запись на ручку, не три
+    CHECK(knob(0, 2) == 30 && knob(0, 5) == 30);
+    CHECK(drain() == 0);
+}
+
+TEST(test_direct_set_cancels_deferred)
+{
+    two_macros();
+    panel(10, 2, 100);
+    panel(0, 3, 7); // прямая правка цели новее макро
+    bsp(1, 0);
+    bsp(5, 9); // и с BSP
+    CHECK(drain() == 2);
+    CHECK(knob(0, 3) == 7 && knob(0, 5) == 9 && knob(0, 2) == 100 && knob(0, 4) == 100);
+}
+
+TEST(test_requeue_after_cancel)
+{
+    two_macros();
+    panel(10, 2, 100);
+    panel(0, 2, 7);
+    panel(10, 2, 50); // снова макро: запись живая, без дублей в очереди
+    CHECK(drain() == 4);
+    CHECK(knob(0, 2) == 50);
+    CHECK(drain() == 0);
+}
+
+TEST(test_init_drops_deferred)
+{
+    two_macros();
+    panel(10, 2, 100);
+    acid_link_init(&l);
+    CHECK(drain() == 0);
 }
 
 int main(void)
@@ -342,5 +421,10 @@ int main(void)
     RUN(test_custom_edit_marks_due);
     RUN(test_targets_do_not_toast);
     RUN(test_rejected_edit_resyncs_panel);
+    RUN(test_macro_targets_limited_per_step);
+    RUN(test_macro_latest_value_wins);
+    RUN(test_direct_set_cancels_deferred);
+    RUN(test_requeue_after_cancel);
+    RUN(test_init_drops_deferred);
     TEST_MAIN_END();
 }

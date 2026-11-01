@@ -15,6 +15,8 @@ void acid_link_init(acid_link_t *l)
     l->user = -1;
     l->npend = l->pend_at = 0;
     l->custom_due = 0;
+    memset(l->defer_st, 0, sizeof l->defer_st);
+    l->dq_head = l->dq_n = 0;
 }
 
 void acid_link_use_custom(acid_link_t *l, acid_custom_t *c)
@@ -91,24 +93,67 @@ static int report(const acid_link_t *l, const acid_synth_t *s, int page, int enc
     return 1;
 }
 
-// Слот своей страницы: псевдоним - прямо в цель, макро - своё значение и отображение в каждую цель.
-// События целей - в pend.
+static void defer_put(acid_link_t *l, int page, int enc, int v)
+{
+    int k = page * ACID_KNOBS + enc;
+    if (l->defer_st[k] == 0) {
+        l->defer_q[(l->dq_head + l->dq_n++) % ACID_LINK_DEFER] = (uint8_t)k;
+    }
+    l->defer_st[k] = 1;
+    l->defer_v[k] = (uint8_t)v;
+}
+
+// Прямая правка ручки новее отложенной цели макро.
+static void defer_cancel(acid_link_t *l, int page, int enc)
+{
+    int k = page * ACID_KNOBS + enc;
+    if (page < ACID_PAGES && l->defer_st[k] == 1) {
+        l->defer_st[k] = 2;
+    }
+}
+
+// Слот своей страницы: псевдоним - прямо в цель (событие цели в pend), макро - своё значение сразу,
+// цели в очередь шага связки.
 static void user_apply(acid_link_t *l, acid_synth_t *s, int up, int enc, int v)
 {
     acid_custom_t *c = l->custom;
     l->npend = l->pend_at = 0;
-    int alias = acid_custom_is_alias(c, up, enc);
-    if (!alias) {
-        c->val[up][enc] = (uint8_t)v;
-        c->save = 1;
-    }
     int n = acid_custom_count(c, up, enc);
-    for (int i = 0; i < n; i++) {
-        const acid_target_t *t = &c->t[up][enc][i];
-        acid_synth_set_knob(s, t->page, t->enc, alias ? v : acid_custom_map(t, v));
+    if (acid_custom_is_alias(c, up, enc)) {
+        const acid_target_t *t = &c->t[up][enc][0];
+        defer_cancel(l, t->page, t->enc);
+        acid_synth_set_knob(s, t->page, t->enc, v);
         // Цель - отражение поворота слота, не поворот на её странице: всплывашка остаётся за слотом.
         report(l, s, t->page, t->enc, ACID_SRC_PANEL, &l->pend[l->npend++]);
+        return;
     }
+    c->val[up][enc] = (uint8_t)v;
+    c->save = 1;
+    for (int i = 0; i < n; i++) {
+        const acid_target_t *t = &c->t[up][enc][i];
+        defer_put(l, t->page, t->enc, acid_custom_map(t, v));
+    }
+}
+
+int acid_link_step(acid_link_t *l, acid_synth_t *s, acid_link_ev_t *out)
+{
+    l->npend = l->pend_at = 0;
+    int got = 0;
+    while (l->dq_n > 0 && got < ACID_LINK_PER_CHUNK) {
+        int k = l->defer_q[l->dq_head];
+        l->dq_head = (l->dq_head + 1) % ACID_LINK_DEFER;
+        l->dq_n--;
+        int st = l->defer_st[k];
+        l->defer_st[k] = 0;
+        if (st != 1) {
+            continue;
+        }
+        int page = k / ACID_KNOBS, enc = k % ACID_KNOBS;
+        acid_synth_set_knob(s, page, enc, l->defer_v[k]);
+        report(l, s, page, enc, ACID_SRC_PANEL, got ? &l->pend[l->npend++] : out);
+        got++;
+    }
+    return got > 0;
 }
 
 int acid_link_midi(acid_link_t *l, acid_synth_t *s, const acid_midi_event_t *ev, int src, acid_link_ev_t *out)
@@ -152,6 +197,7 @@ int acid_link_midi(acid_link_t *l, acid_synth_t *s, const acid_midi_event_t *ev,
         user_apply(l, s, l->user, enc, ev->d2);
         return report(l, s, page, enc, src, out);
     }
+    defer_cancel(l, page, enc);
     acid_synth_midi(s, ev);
     type_check(l, page, enc);
     return report(l, s, page, enc, src, out);
@@ -167,6 +213,7 @@ int acid_link_panel_set(acid_link_t *l, acid_synth_t *s, int page, int enc, int 
         user_apply(l, s, page - ACID_USER_FIRST, enc, v);
     } else {
         l->npend = l->pend_at = 0;
+        defer_cancel(l, page, enc);
         acid_synth_set_knob(s, page, enc, v);
     }
     l->held[page][enc] = 1;

@@ -150,6 +150,7 @@ static void render_block(float *l, float *r)
             }
         }
         custom_and_scenes();
+        to_panel(acid_link_step(&s_link, &s_synth, &lev), &lev); // цели макро: не больше 4 ручек за кусок
         if (s_link.snapshot_due) {
             s_link.snapshot_due = 0; // сменился тип синта: у типа своя память, страница новая целиком
             panel_uart_snapshot_due();
