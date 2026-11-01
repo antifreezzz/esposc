@@ -2,6 +2,8 @@
 
 #include <string.h>
 
+#include "pl_labels.h"
+
 #define SRC_BSP 0
 
 void pl_model_init(pl_model_t *m)
@@ -38,7 +40,7 @@ static void apply_knob(pl_model_t *m, const pl_knob_t *k, uint32_t ms)
     m->raw[k->page][k->enc] = k->value;
     m->bsp_pos[k->enc] = k->bsp_pos;
     m->held[k->page][k->enc] = k->held;
-    if (k->src == SRC_BSP) {
+    if (k->src == SRC_BSP && pl_knob_label(k->page, k->enc, m->raw[k->page])) { // пустой энкодер не всплывает
         m->toast_page = k->page;
         m->toast_enc = k->enc;
         m->toast_until_ms = ms + PL_TOAST_MS;
@@ -75,12 +77,14 @@ void pl_model_hello_sent(pl_model_t *m, uint32_t ms)
     m->last_hello_ms = ms;
 }
 
-void pl_model_local_set(pl_model_t *m, int page, int enc, int v)
+int pl_model_local_set(pl_model_t *m, int page, int enc, int v)
 {
-    if (page >= 0 && page < PL_PAGES && enc > 0 && enc < PL_KNOBS) {
-        m->raw[page][enc] = (uint8_t)v;
-        m->held[page][enc] = 1;
+    if (!m->have || page < 0 || page >= PL_PAGES || enc <= 0 || enc >= PL_KNOBS) {
+        return 0;
     }
+    m->raw[page][enc] = (uint8_t)v;
+    m->held[page][enc] = 1;
+    return 1;
 }
 
 int pl_model_linked(const pl_model_t *m, uint32_t ms)
@@ -98,4 +102,5 @@ void pl_model_page_sent(pl_model_t *m, uint32_t ms)
 {
     m->page_sent = 1;
     m->page_sent_ms = ms;
+    m->goto_page = -1; // страницу выбрали на экране: это новее листания на BSP
 }

@@ -104,6 +104,19 @@ TEST(test_value_text)
     text(0, 1, 100, 0, "100");
 }
 
+TEST(test_tonal_step_in_scale)
+{
+    uint8_t raw[16] = {0};
+    char buf[12];
+    raw[6] = 0; // полутоны: весь ход
+    CHECK(strcmp(pl_value_text(9, 8, 76, raw, buf), "+12") == 0);
+    raw[6] = 2; // лад: синт зажимает до 7 ступеней
+    CHECK(strcmp(pl_value_text(9, 8, 76, raw, buf), "+7") == 0);
+    CHECK(strcmp(pl_value_text(9, 15, 52, raw, buf), "-7") == 0);
+    CHECK(strcmp(pl_value_text(9, 8, 67, raw, buf), "+3") == 0);
+    CHECK(strcmp(pl_value_text(6, 9, 76, raw, buf), "+12") == 0); // транспозиция синта лад не трогает
+}
+
 TEST(test_label_follows_model)
 {
     uint8_t raw[16] = {0};
@@ -127,12 +140,93 @@ TEST(test_labels_depend)
     }
 }
 
+TEST(test_colors)
+{
+    uint8_t raw[16] = {0};
+    for (int p = 0; p < 10; p++) {
+        CHECK(pl_page_color(p) != 0);
+        int variants = (p == 6 || p == 7) ? 25 : (p >= 3 && p <= 5) ? 5 : 1;
+        for (int t = 0; t < variants; t++) {
+            raw[1] = (uint8_t)t;
+            CHECK(pl_knob_color(p, 0, raw) == 0);
+            for (int enc = 1; enc < 16; enc++) {
+                uint32_t c = pl_knob_color(p, enc, raw);
+                CHECK((c == 0) == empty(p, enc, t));
+            }
+        }
+    }
+    CHECK(pl_page_color(-1) == 0);
+    CHECK(pl_page_color(10) == 0);
+    // На странице MIX мастер, синты, ударка, фильтр и панорама различаются по цвету групп.
+    CHECK(pl_knob_color(0, 1, raw) != pl_knob_color(0, 3, raw));
+    CHECK(pl_knob_color(0, 3, raw) != pl_knob_color(0, 5, raw));
+    CHECK(pl_knob_color(0, 5, raw) != pl_knob_color(0, 11, raw));
+}
+
+TEST(test_bipolar)
+{
+    uint8_t raw[16] = {0};
+    CHECK(pl_knob_bipolar(0, 1, raw) == 0);  // MASTER
+    CHECK(pl_knob_bipolar(0, 11, raw) == 1); // DJ FILTER
+    CHECK(pl_knob_bipolar(0, 13, raw) == 1); // PAN S1
+    CHECK(pl_knob_bipolar(1, 13, raw) == 1); // PAN HAT
+    CHECK(pl_knob_bipolar(2, 3, raw) == 1);  // CRASH TUNE
+    CHECK(pl_knob_bipolar(2, 4, raw) == 1);  // CRASH PAN
+    CHECK(pl_knob_bipolar(3, 12, raw) == 1); // TOMS PAN
+    raw[1] = 0;                              // 303
+    CHECK(pl_knob_bipolar(6, 2, raw) == 0);  // CUTOFF
+    CHECK(pl_knob_bipolar(6, 9, raw) == 1);  // TRANS 303
+    CHECK(pl_knob_bipolar(6, 14, raw) == 1); // TONE
+    raw[1] = 11;                             // Plaits
+    CHECK(pl_knob_bipolar(6, 8, raw) == 1);  // TRANS Plaits
+    CHECK(pl_knob_bipolar(6, 9, raw) == 1);  // T ENV
+    CHECK(pl_knob_bipolar(6, 10, raw) == 1); // M ENV
+    CHECK(pl_knob_bipolar(6, 11, raw) == 1); // P ENV
+    CHECK(pl_knob_bipolar(9, 7, raw) == 0);  // ROOT
+    CHECK(pl_knob_bipolar(9, 8, raw) == 1);  // STEP 1
+    CHECK(pl_knob_bipolar(9, 15, raw) == 1); // STEP 8
+}
+
+TEST(test_page_summary)
+{
+    uint8_t raw[16] = {0};
+    char buf[24];
+    raw[1] = 0;
+    CHECK(strcmp(pl_page_summary(6, raw, buf), "303") == 0);
+    raw[1] = 11;
+    CHECK(strcmp(pl_page_summary(7, raw, buf), "FM 2OP") == 0);
+    raw[1] = 3;
+    CHECK(strcmp(pl_page_summary(3, raw, buf), "MODAL") == 0);
+    // TONAL: выключен или лад и тоника.
+    raw[1] = 0;
+    CHECK(strcmp(pl_page_summary(9, raw, buf), "OFF") == 0);
+    raw[1] = 4;
+    raw[6] = 2; // MINOR
+    raw[7] = 9; // A
+    CHECK(strcmp(pl_page_summary(9, raw, buf), "MINOR A") == 0);
+    // FX: время дилэя.
+    raw[6] = 1; // 1/8
+    raw[9] = 0; // stutter off
+    CHECK(strcmp(pl_page_summary(8, raw, buf), "DLY 1/8") == 0);
+    // MIX: DJ-фильтр выключен ровно на 64, 0 - ФНЧ до упора.
+    raw[11] = 64;
+    CHECK(strcmp(pl_page_summary(0, raw, buf), "LEVELS & DJF") == 0);
+    raw[11] = 0;
+    CHECK(strcmp(pl_page_summary(0, raw, buf), "DJF LP -64") == 0);
+    raw[11] = 70;
+    CHECK(strcmp(pl_page_summary(0, raw, buf), "DJF HP +6") == 0);
+}
+
 int main(void)
 {
     RUN(test_labels_cover_synth);
     RUN(test_ranges);
     RUN(test_value_text);
+    RUN(test_tonal_step_in_scale);
     RUN(test_label_follows_model);
     RUN(test_labels_depend);
+    RUN(test_colors);
+    RUN(test_bipolar);
+    RUN(test_page_summary);
     TEST_MAIN_END();
 }

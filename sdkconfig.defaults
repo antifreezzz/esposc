@@ -14,7 +14,7 @@ CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB=y
 CONFIG_ESP32S3_DATA_CACHE_64KB=y
 CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
-# Встроенная PSRAM 2 МБ (quad): буферы дилэя и статтера. Только явные запросы, malloc остаётся во внутренней.
+# Встроенная PSRAM 2 МБ (quad): буфер статтера (дилэй во внутренней). Только явные запросы, malloc остаётся во внутренней.
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_QUAD=y
 CONFIG_SPIRAM_SPEED_80M=y

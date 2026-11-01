@@ -83,8 +83,32 @@ TEST(test_need_hello)
 TEST(test_local_set)
 {
     pl_model_init(&m);
-    pl_model_local_set(&m, 6, 3, 30);
+    CHECK(pl_model_local_set(&m, 6, 3, 30) == 0); // снимка нет: значение с нуля сбросило бы ручку синта
+    CHECK(m.raw[6][3] == 0 && m.held[6][3] == 0);
+    static pl_snapshot_t s;
+    pl_model_apply(&m, PL_SNAPSHOT, (const uint8_t *)&s, sizeof s, 0);
+    CHECK(pl_model_local_set(&m, 6, 3, 30) == 1);
     CHECK(m.raw[6][3] == 30 && m.held[6][3] == 1);
+    CHECK(pl_model_local_set(&m, 6, 0, 30) == 0); // энкодер 1 - страница, не ручка
+}
+
+TEST(test_toast_skips_empty_knob)
+{
+    pl_model_init(&m);
+    knob(0, 15, 40, 0, 40, 0, 1000); // энкодер 16 на MIX пустой
+    CHECK(m.toast_until_ms == 0);
+    CHECK(m.raw[0][15] == 40 && m.bsp_pos[15] == 40); // положение BSP помним: нужно подхвату на других страницах
+    knob(6, 11, 40, 0, 40, 0, 1000); // у 303 энкодер 12 пустой
+    CHECK(m.toast_until_ms == 0);
+}
+
+TEST(test_page_choice_beats_bsp)
+{
+    pl_model_init(&m);
+    knob(0, 0, 3, 0, 0xFF, 0, 5); // листали на BSP, пока палец на экране
+    CHECK(m.goto_page == 3);
+    pl_model_page_sent(&m, 10); // потом тап выбрал страницу: он новее
+    CHECK(m.goto_page == -1);
 }
 
 TEST(test_follow_bsp_page)
@@ -148,6 +172,8 @@ int main(void)
     RUN(test_page_event);
     RUN(test_need_hello);
     RUN(test_local_set);
+    RUN(test_toast_skips_empty_knob);
+    RUN(test_page_choice_beats_bsp);
     RUN(test_follow_bsp_page);
     RUN(test_page_resend);
     RUN(test_link_lost);
