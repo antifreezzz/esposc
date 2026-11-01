@@ -571,7 +571,7 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
     int x0, y0, x1, y1;
     pl_press_where(&u.press, &x0, &y0);
     pl_press_last(&u.press, &x1, &y1);
-    int tap = ev == PL_PRESS_TAP || ev == PL_PRESS_END || (ev == PL_PRESS_RELEASE && u.grab < 0);
+    int tap = pl_press_tap(ev) && (ev != PL_PRESS_RELEASE || u.grab < 0); // отпустили крутилку - не тап
     int head = tap && y0 < TOP_H && y1 < TOP_H + 16;
     if (editing()) {
         edit_input(m, ev, down, x, y, x0, y0, x1, y1, tap);

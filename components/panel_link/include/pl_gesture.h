@@ -36,6 +36,8 @@ typedef struct {
 // Каждый опрос тача: down 1 - палец на экране. TAP - отпущен быстро и без сдвига, HOLD - захват (один раз),
 // RELEASE - отпущен после захвата, END - отпущен после мазка (палец поплыл до захвата: для плиток это тоже тап).
 int pl_press_step(pl_press_t *p, int down, int x, int y, uint32_t ms);
+// Касание отпущено как нажатие кнопки или плитки: TAP, END и RELEASE после захвата (палец дольше PL_HOLD_MS).
+int pl_press_tap(int ev);
 // Где начиналось касание.
 void pl_press_where(const pl_press_t *p, int *x, int *y);
 // Где палец был последним перед отпусканием.

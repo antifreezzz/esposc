@@ -135,7 +135,7 @@ void uc_scenes_draw(const pl_model_t *m)
 
 void uc_scenes_input(const pl_model_t *m, int ev, int x0, int y0, int x1, int y1, uint32_t held_ms)
 {
-    int done = ev == PL_PRESS_TAP || ev == PL_PRESS_END || ev == PL_PRESS_RELEASE;
+    int done = pl_press_tap(ev);
     int p = ui_tile_at(x0, y0);
     if (!done || p < 0 || p != ui_tile_at(x1, y1) || !m->have) {
         return;
@@ -212,7 +212,7 @@ void uc_edit_draw(const pl_model_t *m, const pl_edit_t *e)
 
 void uc_edit_input(pl_model_t *m, pl_edit_t *e, int ev, int down, int x, int y, int x0, int y0)
 {
-    int tap = ev == PL_PRESS_TAP || ev == PL_PRESS_END;
+    int tap = pl_press_tap(ev); // обычное нажатие пальцем дольше 50 мс - это RELEASE, не TAP
     pl_custom_edit_t out;
     int wy = y0 - UI_TOP_H;
     if (e->state == PL_EDIT_TARGETS) {
