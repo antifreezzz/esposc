@@ -172,8 +172,66 @@ TEST(test_blob_v3_roundtrip)
     CHECK(acid_synth_knob(&b, ACID_PAGE_LAYER1, 1) == ACID_LAYER_OFF);
 }
 
+static void load_n(acid_synth_t *s, float load, int n)
+{
+    for (int i = 0; i < n; i++) {
+        acid_synth_set_load(s, load);
+    }
+}
+
+TEST(test_guard_steps)
+{
+    init2();
+    load_n(&b, 1.0f, 30);
+    CHECK(b.tight == 1); // сначала перкуссия и тарелки
+    load_n(&b, 1.0f, ACID_LOAD_STEP);
+    CHECK(b.tight == 2); // не помогло - слои
+    load_n(&b, 0.5f, ACID_LOAD_CALM + 10);
+    CHECK(b.tight == 1);
+    load_n(&b, 0.5f, ACID_LOAD_CALM);
+    CHECK(b.tight == 0);
+}
+
+// Выход слоя (b минус a) и его худший скачок между соседними сэмплами.
+static float layer_jump(float *last_peak)
+{
+    render2();
+    float jump = 0.0f, pk = 0.0f;
+    for (int i = 1; i < N; i++) {
+        float d0 = lb[i - 1] - la[i - 1], d1 = lb[i] - la[i];
+        jump = fabsf(d1 - d0) > jump ? fabsf(d1 - d0) : jump;
+        if (i > N - 480) {
+            pk = fabsf(d1) > pk ? fabsf(d1) : pk;
+        }
+    }
+    *last_peak = pk;
+    return jump;
+}
+
+TEST(test_guard_ducks_layers)
+{
+    init2();
+    acid_synth_set_knob(&b, ACID_PAGE_LAYER1, 1, 0);
+    acid_synth_set_knob(&b, ACID_PAGE_LAYER1, 9, 76);
+    both_note(4, 1, 45);
+    float pk, base = layer_jump(&pk);
+    CHECK(pk > 0.05f);
+    load_n(&b, 1.0f, 30 + ACID_LOAD_STEP);
+    CHECK(b.tight == 2);
+    float j = layer_jump(&pk);
+    CHECK(pk == 0.0f);          // слой затих и не считается
+    CHECK(j < base + 0.05f);    // без щелчка
+    load_n(&b, 0.5f, ACID_LOAD_CALM + 10);
+    CHECK(b.tight == 1);
+    j = layer_jump(&pk);
+    CHECK(pk > 0.05f);          // вернулся
+    CHECK(j < base + 0.05f);
+}
+
 int main(void)
 {
+    RUN(test_guard_steps);
+    RUN(test_guard_ducks_layers);
     RUN(test_layer_off_by_default);
     RUN(test_layer_plays_parent_notes);
     RUN(test_layer2_on_slot_render);

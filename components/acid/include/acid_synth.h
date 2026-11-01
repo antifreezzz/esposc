@@ -123,7 +123,9 @@ typedef struct {
     const acid_bank_t *bank;
     uint8_t cym_tail[2], cym_tune[2], cym_pan[2];
     acid_perc_t perc; // страницы 3-5: томы, рим, ковбелл
-    int tight, calm;  // защита от перегруза: перкуссия и тарелки на одном голосе; спокойных блоков подряд
+    int tight, calm;  // ступень защиты (0 нет, 1 перкуссия и тарелки на одном голосе, 2 и слои молчат); спокойных блоков
+    int hot;          // блоков подряд выше порога на ступени 1
+    float layer_duck[ACID_SLOTS]; // громкость слоёв от защиты: 0 - слой не считается
     float load_avg;   // сглаженная нагрузка блоков
     // Зеркало для панели: сырые значения страниц 0-2 и 8 (у синтов, перкуссии и тональности - свои knob[]).
     uint8_t raw[ACID_PAGES][ACID_KNOBS];
@@ -149,6 +151,9 @@ void acid_synth_set_bank(acid_synth_t *s, const acid_bank_t *b);
 #define ACID_LOAD_LOW 0.75f
 #define ACID_LOAD_CALM 250 // 0.5 с блоками по 2 мс
 #define ACID_LOAD_AVG 8.0f
+#define ACID_LOAD_STEP 50 // блоков подряд выше порога на ступени 1 - ступень 2: слои приглушаются (за ~10 мс)
+#define ACID_DUCK_DOWN (1.0f / 480.0f)  // за сэмпл: 10 мс до тишины
+#define ACID_DUCK_UP (1.0f / 2400.0f)   // 50 мс назад
 void acid_synth_set_load(acid_synth_t *s, float load);
 void acid_synth_render(acid_synth_t *s, float *out, size_t n);
 // Рендер по частям (слот 1 на другом ядре): сырой выход слота k (сейчас только k = 1),

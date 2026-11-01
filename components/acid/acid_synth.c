@@ -180,7 +180,10 @@ void acid_synth_init(acid_synth_t *s, float sr)
     s->dl_tone = 83;
     acid_cym_init(&s->cym, sr);
     acid_perc_init(&s->perc, sr);
-    s->tight = s->calm = 0;
+    s->tight = s->calm = s->hot = 0;
+    for (int k = 0; k < ACID_SLOTS; k++) {
+        s->layer_duck[k] = 1.0f;
+    }
     s->load_avg = 0.0f;
     s->bank = NULL;
     for (int k = 0; k < 2; k++) {
@@ -237,15 +240,21 @@ void acid_synth_set_load(acid_synth_t *s, float load)
         s->calm = 0;
         if (!s->tight) {
             s->tight = 1;
+            s->hot = 0;
             acid_perc_set_limit(&s->perc, 1);
             acid_cym_set_limit(&s->cym, 1);
+        } else if (s->tight == 1 && ++s->hot >= ACID_LOAD_STEP) {
+            s->tight = 2; // одного голоса перкуссии не хватило: слои приглушаются (layer_add)
         }
     } else if (s->tight) {
+        s->hot = 0;
         s->calm = load < ACID_LOAD_LOW ? s->calm + 1 : 0;
         if (s->calm >= ACID_LOAD_CALM) {
-            s->tight = 0;
-            acid_perc_set_limit(&s->perc, ACID_PERC_SOUNDING);
-            acid_cym_set_limit(&s->cym, ACID_CYM_SLOTS - ACID_CYM_RESERVE);
+            s->calm = 0;
+            if (--s->tight == 0) { // назад по ступеням: сначала слои, потом перкуссия и тарелки
+                acid_perc_set_limit(&s->perc, ACID_PERC_SOUNDING);
+                acid_cym_set_limit(&s->cym, ACID_CYM_SLOTS - ACID_CYM_RESERVE);
+            }
         }
     }
 }
@@ -928,10 +937,21 @@ static inline float layer_add(acid_synth_t *s, int k, float y)
 {
     acid_slot_t *lv = &s->layer[k];
     slot_tick(s, lv);
-    if (layer_on(lv)) {
-        y += s->layer_gain[k] * slot_next(s, lv, lv->nheld > 0);
+    if (!layer_on(lv)) {
+        return y;
     }
-    return y;
+    // Защита на ступени 2: слой плавно уходит и, затихнув, не считается. Своя громкость у каждого слоя:
+    // слои на разных ядрах.
+    float *d = &s->layer_duck[k];
+    if (s->tight == 2) {
+        if (*d == 0.0f) {
+            return y;
+        }
+        *d = *d > ACID_DUCK_DOWN ? *d - ACID_DUCK_DOWN : 0.0f;
+    } else if (*d < 1.0f) {
+        *d = *d < 1.0f - ACID_DUCK_UP ? *d + ACID_DUCK_UP : 1.0f;
+    }
+    return y + s->layer_gain[k] * *d * slot_next(s, lv, lv->nheld > 0);
 }
 
 void acid_synth_render_slot(acid_synth_t *s, int k, float *out, size_t n)

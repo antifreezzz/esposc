@@ -302,7 +302,7 @@ static void synth_task(void *arg)
         int was_tight = s_synth.tight;
         acid_synth_set_load(&s_synth, BENCH ? 0.0f : (float)dt / (float)BLOCK_US);
         if (s_synth.tight != was_tight) {
-            ESP_LOGW(TAG, "overload guard %s (block %lld us)", s_synth.tight ? "on" : "off", dt);
+            ESP_LOGW(TAG, "overload guard step %d (block %lld us)", s_synth.tight, dt);
         }
 
         // Сменили тип синтеза: память ручек пишем, когда выход помолчит (flash стопорит кэш).
