@@ -29,6 +29,6 @@ foreach(src ${TEST_SRCS})
     add_test(NAME ${name} COMMAND ${name})
 endforeach()
 
-add_executable(acid_render render_wav.c wav.c bank_fixture.c ${ACID_SRCS})
-target_include_directories(acid_render PRIVATE ${ACID_DIR}/include)
+add_executable(acid_render render_wav.c wav.c bank_fixture.c ${ACID_SRCS} ${PL_SRCS})
+target_include_directories(acid_render PRIVATE ${ACID_DIR}/include ${PL_DIR}/include)
 target_link_libraries(acid_render plaits m)
