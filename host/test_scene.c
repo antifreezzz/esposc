@@ -48,6 +48,9 @@ static void run_to_end(void)
     }
 }
 
+// Кусков снятия «откуда» в начале перехода, до первой ручки.
+#define PREP ((ACID_PAGES * (ACID_KNOBS - 1) + ACID_SCENE_SCAN_PER_CHUNK - 1) / ACID_SCENE_SCAN_PER_CHUNK)
+
 static int knob(int page, int enc) { return acid_synth_knob(&s, page, enc); }
 static void set(int page, int enc, int v) { acid_synth_set_knob(&s, page, enc, v); }
 
@@ -75,6 +78,9 @@ TEST(test_per_chunk_limit)
         }
     }
     acid_scene_recall(&sc, 1, 0);
+    for (int i = 0; i < PREP; i++) {
+        step();
+    }
     static acid_synth_t before;
     before = s;
     step();
@@ -89,6 +95,27 @@ TEST(test_per_chunk_limit)
     for (int e = 1; e < ACID_KNOBS; e++) {
         CHECK(knob(0, e) == sc.knob[1][0][e]);
     }
+}
+
+TEST(test_scan_limit)
+{
+    reset();
+    set(9, 15, 70); // последняя позиция обхода
+    acid_scene_store(&sc, 0, &s, &c);
+    set(9, 15, 60);
+    acid_scene_recall(&sc, 0, 0);
+    for (int i = 0; i < PREP; i++) {
+        step();
+    }
+    CHECK(knob(9, 15) == 60); // снятие «откуда» ручек не ставит
+    step();
+    CHECK(knob(9, 15) == 60); // за кусок просмотрено не больше ACID_SCENE_SCAN_PER_CHUNK позиций
+    int steps = 1;
+    while (knob(9, 15) != 70 && steps < 10) {
+        step();
+        steps++;
+    }
+    CHECK(steps == PREP);
 }
 
 TEST(test_waits_for_bar)
@@ -107,7 +134,9 @@ TEST(test_waits_for_bar)
             at = t;
         }
     }
-    CHECK(at == 97); // первый тик после Start - доля 1, оборот такта на 97-м
+    // Первый тик после Start - доля 1, оборот такта на 97-м; снятие «откуда» раскладывается на 3 куска,
+    // первая ручка - в четвёртом (по куску на тик в тесте).
+    CHECK(at == 97 + PREP);
 }
 
 TEST(test_morph_linear)
@@ -138,6 +167,7 @@ TEST(test_list_jumps_at_start)
     tick(1);
     acid_scene_recall(&sc, 0, 4);
     tick(96);
+    tick(PREP + 2); // снятие, потом обход за блок: 3 куска
     CHECK(knob(8, 6) == 4);
 }
 
@@ -253,6 +283,7 @@ int main(void)
 {
     RUN(test_store_recall_instant_no_clock);
     RUN(test_per_chunk_limit);
+    RUN(test_scan_limit);
     RUN(test_waits_for_bar);
     RUN(test_morph_linear);
     RUN(test_list_jumps_at_start);

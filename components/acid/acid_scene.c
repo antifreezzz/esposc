@@ -60,18 +60,33 @@ static int is_list(const uint8_t page_raw[ACID_KNOBS], int p, int e)
     return lo != 0 || hi != 127;
 }
 
-// Черта такта: значения «откуда», у синта со сменой типа вся страница прыгает (память другого типа).
-static void begin(acid_scene_t *sc, acid_link_t *l, const acid_synth_t *s)
+// Черта такта: переход начинается со снятия значений «откуда» и какие ручки прыгают (списки; у синта
+// со сменой типа - вся страница, там память другого типа). Снятие - по ACID_SCENE_SCAN_PER_CHUNK позиций
+// за кусок: все 150 разом стоили ~160 мкс одного куска.
+static void begin(acid_scene_t *sc)
 {
-    for (int p = 0; p < ACID_PAGES; p++) {
-        for (int e = 1; e < ACID_KNOBS; e++) {
-            sc->from[p][e] = (uint8_t)acid_synth_knob(s, p, e);
-        }
-        sc->from[p][0] = 0;
+    sc->prep = 0;
+    sc->ticks = 0;
+    sc->cursor = 0;
+    sc->since_snap = 0;
+    sc->final_sweeps = 0;
+    sc->dirty = 1;
+    sc->state = 2;
+}
+
+// 1 - снятие закончено (тогда же встают значения слотов своих страниц).
+static int prepare(acid_scene_t *sc, acid_link_t *l, const acid_synth_t *s)
+{
+    const int n = ACID_PAGES * (ACID_KNOBS - 1);
+    for (int i = 0; i < ACID_SCENE_SCAN_PER_CHUNK && sc->prep < n; i++, sc->prep++) {
+        int p = sc->prep / (ACID_KNOBS - 1), e = 1 + sc->prep % (ACID_KNOBS - 1);
+        const uint8_t *to = sc->knob[sc->cur][p];
+        int retype = (p == PAGE_SYNTH1 || p == PAGE_SYNTH1 + 1) && acid_synth_knob(s, p, TYPE_ENC) != to[TYPE_ENC];
+        sc->from[p][e] = (uint8_t)acid_synth_knob(s, p, e);
+        sc->jump[p][e] = (uint8_t)(retype || is_list(to, p, e));
     }
-    for (int k = 0; k < 2; k++) {
-        int p = PAGE_SYNTH1 + k;
-        sc->from[p][0] = sc->from[p][TYPE_ENC] != sc->knob[sc->cur][p][TYPE_ENC]; // [0] - флаг прыжка
+    if (sc->prep < n) {
+        return 0;
     }
     acid_custom_t *c = l->custom;
     if (c) {
@@ -85,19 +100,14 @@ static void begin(acid_scene_t *sc, acid_link_t *l, const acid_synth_t *s)
         c->save = 1;
         l->custom_due = (1 << ACID_USER_PAGES) - 1;
     }
-    sc->ticks = 0;
-    sc->cursor = 0;
-    sc->since_snap = 0;
-    sc->final_sweeps = 0;
-    sc->dirty = 1;
-    sc->state = 2;
+    return 1;
 }
 
 static int want(const acid_scene_t *sc, int p, int e)
 {
     const uint8_t *to = sc->knob[sc->cur][p];
     int span = sc->bars * ACID_SCENE_BAR;
-    if (span == 0 || sc->from[p][0] || is_list(to, p, e)) {
+    if (span == 0 || sc->jump[p][e]) {
         return to[e];
     }
     int t = sc->ticks < span ? sc->ticks : span;
@@ -133,12 +143,16 @@ int acid_scene_step(acid_scene_t *sc, acid_link_t *l, acid_synth_t *s)
         if (noclock) {
             sc->bars = 0;
         }
-        begin(sc, l, s);
+        begin(sc);
     } else {
         sc->ticks += d;
         if (noclock) {
             sc->bars = 0; // клок пропал посреди перехода: доходим сразу
         }
+    }
+    if (sc->prep < ACID_PAGES * (ACID_KNOBS - 1)) {
+        prepare(sc, l, s); // в этом куске ручки не ставим: снятие и так полный кусок работы
+        return 0;
     }
     int budget = ACID_SCENE_PER_CHUNK;
     for (int k = 0; k < 2 && budget > 0; k++) {
@@ -150,7 +164,7 @@ int acid_scene_step(acid_scene_t *sc, acid_link_t *l, acid_synth_t *s)
     }
     const int n = ACID_PAGES * (ACID_KNOBS - 1);
     int done = sc->bars == 0 || sc->ticks >= sc->bars * ACID_SCENE_BAR;
-    for (int i = 0; i < n && budget > 0; i++) {
+    for (int i = 0; i < ACID_SCENE_SCAN_PER_CHUNK && budget > 0; i++) {
         int p = sc->cursor / (ACID_KNOBS - 1), e = 1 + sc->cursor % (ACID_KNOBS - 1);
         if (!is_type(p, e)) {
             int v = want(sc, p, e);

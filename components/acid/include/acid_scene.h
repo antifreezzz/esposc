@@ -12,7 +12,8 @@
 // ACID_SCENE_PER_CHUNK за кусок: обработка событий идёт в куске 666 мкс ядра 1.
 
 #define ACID_SCENES 8
-#define ACID_SCENE_PER_CHUNK 8
+#define ACID_SCENE_PER_CHUNK 4 // стенд: часть ручек стоит до 70 мкс (коэффициенты), 8 давали шаг до 170 мкс
+#define ACID_SCENE_SCAN_PER_CHUNK 50 // позиций обхода за кусок: полный круг за блок
 #define ACID_SCENE_NOCLOCK 750    // кусков без тика (0.5 с): клока нет
 #define ACID_SCENE_SNAP_EVERY 150 // кусков между снимками панели во время перехода (100 мс)
 #define ACID_SCENE_BAR 96         // тиков на такт
@@ -26,7 +27,9 @@ typedef struct {
     int cur;   // последняя вызванная сцена, -1 нет
     int state; // 0 нет, 1 ждём черту такта, 2 идёт
     int bars, ticks, last_phase, idle_chunks, cursor, since_snap, final_sweeps, dirty;
+    int prep; // снято позиций «откуда» в начале перехода
     uint8_t from[ACID_PAGES][ACID_KNOBS];
+    uint8_t jump[ACID_PAGES][ACID_KNOBS]; // ручка прыгает (список или страница со сменой типа), считается в начале
 } acid_scene_t;
 
 #define ACID_SCENE_BLOB (4 + 1 + sizeof(((acid_scene_t *)0)->knob) + sizeof(((acid_scene_t *)0)->user))
