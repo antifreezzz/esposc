@@ -229,3 +229,41 @@ int pl_knob_bipolar(int page, int enc, const uint8_t page_raw[16])
     }
 }
 
+const char *pl_page_summary(int page, const uint8_t page_raw[16], char buf[24])
+{
+    switch (page) {
+    case 0:
+        if (page_raw[11] != 64 && page_raw[11] != 0) {
+            snprintf(buf, 24, "DJF %s %d", page_raw[11] < 64 ? "LP" : "HP", (int)page_raw[11] - 64);
+            return buf;
+        }
+        return "LEVELS & DJF";
+    case 1: return "808 / 909";
+    case 2: return "CRASH & RIDE";
+    case 3:
+    case 4:
+    case 5:
+    case 6:
+    case 7: return pl_value_text(page, 1, page_raw[1], page_raw, buf);
+    case 8: {
+        const char *dt = DLY_TIME[page_raw[6] < N(DLY_TIME) ? page_raw[6] : 0];
+        if (page_raw[9] > 0 && page_raw[9] < N(STUTTER)) {
+            snprintf(buf, 24, "DLY %s ST %s", dt, STUTTER[page_raw[9]]);
+        } else {
+            snprintf(buf, 24, "DLY %s", dt);
+        }
+        return buf;
+    }
+    case 9:
+        if (page_raw[1] == 0) {
+            return "OFF";
+        }
+        snprintf(buf, 24, "%s %s", SCALE[page_raw[6] < N(SCALE) ? page_raw[6] : 0],
+                 ROOT[page_raw[7] < N(ROOT) ? page_raw[7] : 0]);
+        return buf;
+    default:
+        return "";
+    }
+}
+
+

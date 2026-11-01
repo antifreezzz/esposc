@@ -19,4 +19,7 @@ uint32_t pl_page_color(int page);
 uint32_t pl_knob_color(int page, int enc, const uint8_t page_raw[16]);
 // 1 - биполярная ручка с центром в 64 (панорама, DJ-фильтр, транспозиция, тон перегруза, огибающие Plaits).
 int pl_knob_bipolar(int page, int enc, const uint8_t page_raw[16]);
+// Краткая сводка состояния страницы для плитки меню и центра круга. Возвращает buf или константу.
+const char *pl_page_summary(int page, const uint8_t page_raw[16], char buf[24]);
+
 

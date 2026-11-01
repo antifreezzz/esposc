@@ -174,6 +174,29 @@ TEST(test_bipolar)
     CHECK(pl_knob_bipolar(9, 15, raw) == 1); // STEP 8
 }
 
+TEST(test_page_summary)
+{
+    uint8_t raw[16] = {0};
+    char buf[24];
+    raw[1] = 0;
+    CHECK(strcmp(pl_page_summary(6, raw, buf), "303") == 0);
+    raw[1] = 11;
+    CHECK(strcmp(pl_page_summary(7, raw, buf), "FM 2OP") == 0);
+    raw[1] = 3;
+    CHECK(strcmp(pl_page_summary(3, raw, buf), "MODAL") == 0);
+    // TONAL: выключен или лад и тоника.
+    raw[1] = 0;
+    CHECK(strcmp(pl_page_summary(9, raw, buf), "OFF") == 0);
+    raw[1] = 4;
+    raw[6] = 2; // MINOR
+    raw[7] = 9; // A
+    CHECK(strcmp(pl_page_summary(9, raw, buf), "MINOR A") == 0);
+    // FX: время дилэя.
+    raw[6] = 1; // 1/8
+    raw[9] = 0; // stutter off
+    CHECK(strcmp(pl_page_summary(8, raw, buf), "DLY 1/8") == 0);
+}
+
 int main(void)
 {
     RUN(test_labels_cover_synth);
@@ -183,6 +206,8 @@ int main(void)
     RUN(test_labels_depend);
     RUN(test_colors);
     RUN(test_bipolar);
+    RUN(test_page_summary);
     TEST_MAIN_END();
 }
+
 
