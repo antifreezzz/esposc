@@ -66,7 +66,8 @@ static int enc_of(int cc)
 
 static void type_check(acid_link_t *l, int page, int enc)
 {
-    if (enc == TYPE_ENC && (page == PAGE_SYNTH1 || page == PAGE_SYNTH1 + 1)) {
+    if (enc == TYPE_ENC && (page == PAGE_SYNTH1 || page == PAGE_SYNTH1 + 1 || page == ACID_PAGE_LAYER1 ||
+                            page == ACID_PAGE_LAYER1 + 1)) {
         l->snapshot_due = 1; // у каждого типа своя память ручек: вся страница новая
     }
 }

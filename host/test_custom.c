@@ -116,8 +116,17 @@ TEST(test_edit_sets_save)
     CHECK(c.save == 1);
 }
 
+TEST(test_custom_target_on_layer)
+{
+    acid_custom_init(&c);
+    CHECK(acid_custom_edit(&c, 0, 1, 0, ACID_PAGE_LAYER1, 2, 0, 127) == 1);
+    CHECK(acid_custom_edit(&c, 0, 2, 0, ACID_PAGE_LAYER1, 1, 0, 127) == 0);     // тип слоя - не цель
+    CHECK(acid_custom_edit(&c, 0, 2, 0, ACID_PAGE_LAYER1 + 1, 1, 0, 127) == 0);
+}
+
 int main(void)
 {
+    RUN(test_custom_target_on_layer);
     RUN(test_map_ends_and_inverse);
     RUN(test_edit_rejects_bad_targets);
     RUN(test_remove_shifts);

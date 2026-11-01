@@ -24,7 +24,8 @@ static int target_ok(int page, int enc, int lo, int hi)
     if (page < 0 || page >= ACID_PAGES || enc <= 0 || enc >= ACID_KNOBS) {
         return 0;
     }
-    if (enc == TYPE_ENC && (page == PAGE_SYNTH1 || page == PAGE_SYNTH1 + 1)) {
+    if (enc == TYPE_ENC && (page == PAGE_SYNTH1 || page == PAGE_SYNTH1 + 1 || page == ACID_PAGE_LAYER1 ||
+                             page == ACID_PAGE_LAYER1 + 1)) {
         return 0; // смена типа меняет смысл всей страницы
     }
     return lo >= 0 && lo <= 127 && hi >= 0 && hi <= 127;

@@ -25,15 +25,15 @@ static const char *const S303[16] = {NULL, "TYPE", "CUTOFF", "RESO", "ENV", "DEC
 static const char *const PLAITS[16] = {NULL, "TYPE", "HARMONICS", "TIMBRE", "MORPH", "DECAY", "LPG", "GLIDE",
                                        "TRANS", "T ENV", "M ENV", "P ENV", "ACCENT", "DRIVE", "TONE", "HOWL"};
 static const char *const FX[16] = {NULL, "CRUSH BITS", "CRUSH RATE", "DLY S1", "DLY S2", "DLY DRUMS", "DLY TIME",
-                                   "DLY FB", "DLY TONE", "STUTTER", "MOTION", "WIDTH"};
+                                   "DLY FB", "DLY TONE", "STUTTER", "MOTION", "WIDTH", "LYR1 VOL", "LYR2 VOL"};
 static const char *const TONAL[16] = {NULL, "STEP LEN", "STEPS", "ORDER", "TARGET", "HELD", "SCALE", "ROOT",
                                       "STEP 1", "STEP 2", "STEP 3", "STEP 4", "STEP 5", "STEP 6", "STEP 7", "STEP 8"};
 
 // Типы синта: 0 - наш 303, дальше модели Plaits по порядку движков.
-static const char *const TYPES[25] = {"303", "VA VCF", "PHASE DIST", "DX7 1", "DX7 2", "DX7 3", "TERRAIN",
+static const char *const TYPES[26] = {"303", "VA VCF", "PHASE DIST", "DX7 1", "DX7 2", "DX7 3", "TERRAIN",
                                       "STRINGS", "CHIP", "VA 2WAVE", "WAVESHAPE", "FM 2OP", "FORMANT",
                                       "ADDITIVE", "WAVETABLE", "CHORDS", "SPEECH", "SWARM", "NOISE",
-                                      "PARTICLE", "STRING", "MODAL", "BASS DRUM", "SNARE", "HI-HAT"};
+                                      "PARTICLE", "STRING", "MODAL", "BASS DRUM", "SNARE", "HI-HAT", "OFF"}; // OFF - только у слоя
 static const char *const PERC_MODEL[5] = {"ANALOG", "SQUARES", "FM", "MODAL", "NOISE"};
 static const char *const WAVE[2] = {"SAW", "SQR"};
 static const char *const DLY_TIME[5] = {"1/16", "1/8", "3/16", "1/4", "3/8"};
@@ -50,6 +50,25 @@ const char *pl_page_name(int page)
     return page >= 0 && page < N(PAGE_NAME) ? PAGE_NAME[page] : NULL;
 }
 
+#define LAYER1 10
+#define LAYER_OFF 25
+
+static int is_layer(int page)
+{
+    return page == LAYER1 || page == LAYER1 + 1;
+}
+
+// Слой подписан как страница его синта; выключенный слой пуст, кроме TYPE.
+static int as_synth(int page)
+{
+    return is_layer(page) ? page - LAYER1 + 6 : page;
+}
+
+static int layer_off(int page, const uint8_t *raw)
+{
+    return is_layer(page) && raw[1] == LAYER_OFF;
+}
+
 static int model(const uint8_t *raw, int n)
 {
     return raw[1] < n ? raw[1] : 0;
@@ -57,10 +76,10 @@ static int model(const uint8_t *raw, int n)
 
 const char *pl_knob_label(int page, int enc, const uint8_t page_raw[16])
 {
-    if (enc < 1 || enc > 15) {
+    if (enc < 1 || enc > 15 || (layer_off(page, page_raw) && enc > 1)) {
         return NULL;
     }
-    switch (page) {
+    switch (as_synth(page)) {
     case 0: return MIX[enc];
     case 1: return DRUMS[enc];
     case 2: return CYMBALS[enc];
@@ -84,6 +103,14 @@ static int list_of(int page, int enc, const uint8_t *raw, const char *const **wo
 {
     *words = NULL;
     *lo = 0;
+    if (is_layer(page) && enc == 1) {
+        *words = TYPES, *hi = LAYER_OFF;
+        return 1;
+    }
+    if (layer_off(page, raw)) {
+        return 0;
+    }
+    page = as_synth(page);
     int plaits = (page == 6 || page == 7) && model(raw, 25) != 0;
     if ((page == 6 || page == 7) && enc == 1) {
         *words = TYPES, *hi = 24;
@@ -146,7 +173,7 @@ const char *pl_value_text(int page, int enc, int v, const uint8_t page_raw[16], 
 
 int pl_labels_depend(int page)
 {
-    return page >= 3 && page <= 7;
+    return (page >= 3 && page <= 7) || is_layer(page);
 }
 
 static const uint32_t PAGE_COLOR[12] = {0x6fc3ff, 0xff6f7d, 0xffb84d, 0xff7b47, 0xff9457,
@@ -162,7 +189,7 @@ uint32_t pl_knob_color(int page, int enc, const uint8_t page_raw[16])
     if (!pl_knob_label(page, enc, page_raw)) {
         return 0;
     }
-    switch (page) {
+    switch (as_synth(page)) {
     case 0: // MIX: мастер/драйв, синты, ударка, пампинг/DJ-фильтр, панорама
         if (enc <= 2) return 0xffb547;
         if (enc <= 4) return 0x7be382;
@@ -191,7 +218,7 @@ uint32_t pl_knob_color(int page, int enc, const uint8_t page_raw[16])
     case 7: { // SYNTH 1 & 2
         int plaits = model(page_raw, 25) != 0;
         if (enc == 1) return 0xffd24d;
-        if (enc <= 6) return page == 6 ? 0xff9900 : 0x7be382;
+        if (enc <= 6) return as_synth(page) == 6 ? 0xff9900 : 0x7be382;
         if (enc <= (plaits ? 8 : 9)) return 0x6fc3ff;
         if (enc <= 12) return 0xc79bff;
         return 0xff5e6c;
@@ -215,7 +242,7 @@ int pl_knob_bipolar(int page, int enc, const uint8_t page_raw[16])
     if (!pl_knob_label(page, enc, page_raw)) {
         return 0;
     }
-    switch (page) {
+    switch (as_synth(page)) {
     case 0: return enc == 11 || enc == 13 || enc == 14;
     case 1: return enc >= 13 && enc <= 15;
     case 2: return enc == 3 || enc == 4 || enc == 7 || enc == 8;
@@ -248,7 +275,9 @@ const char *pl_page_summary(int page, const uint8_t page_raw[16], char buf[24])
     case 4:
     case 5:
     case 6:
-    case 7: return pl_value_text(page, 1, page_raw[1], page_raw, buf);
+    case 7:
+    case LAYER1:
+    case LAYER1 + 1: return pl_value_text(page, 1, page_raw[1], page_raw, buf);
     case 8: {
         const char *dt = DLY_TIME[page_raw[6] < N(DLY_TIME) ? page_raw[6] : 0];
         if (page_raw[9] > 0 && page_raw[9] < N(STUTTER)) {

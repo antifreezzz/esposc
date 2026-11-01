@@ -65,7 +65,7 @@ int pl_edit_knob(pl_edit_t *e, const pl_model_t *m, int enc, pl_custom_edit_t *o
     if (e->state != PL_EDIT_PICK_KNOB || enc <= 0 || enc >= PL_KNOBS) {
         return 0;
     }
-    if (enc == 1 && (e->page == 6 || e->page == 7)) {
+    if (enc == 1 && (e->page == 6 || e->page == 7 || e->page == 10 || e->page == 11)) { // и слои
         return 0; // тип синта меняет смысл всей страницы
     }
     if (!pl_knob_label(e->page, enc, m->raw[e->page])) {

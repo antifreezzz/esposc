@@ -316,8 +316,33 @@ TEST(test_scene_import_old_blob)
     CHECK(c.val[0][1] == 40);
 }
 
+TEST(test_scene_layer_type_jumps)
+{
+    reset();
+    set(ACID_PAGE_LAYER1, 1, 21); // слой синта 1 - modal
+    set(ACID_PAGE_LAYER1, 3, 99);
+    acid_scene_store(&sc, 0, &s, &c);
+    set(ACID_PAGE_LAYER1, 3, 5);
+    set(ACID_PAGE_LAYER1, 1, ACID_LAYER_OFF);
+    acid_scene_recall(&sc, 0, 4);
+    int mid = 0; // переход по тактам: тип прыгает, а не перебирает модели по пути
+    for (int i = 0; i < 4 * ACID_SCENE_BAR * 4; i++) {
+        if (i % 4 == 0) {
+            midi(ACID_MIDI_CLOCK);
+        }
+        step();
+        int t = s.layer[0].sel_type;
+        mid |= t != ACID_LAYER_OFF && t != 21;
+    }
+    run_to_end();
+    CHECK(!mid);
+    CHECK(s.layer[0].sel_type == 21);
+    CHECK(knob(ACID_PAGE_LAYER1, 3) == 99);
+}
+
 int main(void)
 {
+    RUN(test_scene_layer_type_jumps);
     RUN(test_scene_import_old_blob);
     RUN(test_store_recall_instant_no_clock);
     RUN(test_per_chunk_limit);

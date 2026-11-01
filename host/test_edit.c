@@ -152,8 +152,20 @@ TEST(test_back_steps)
     CHECK(e.state == PL_EDIT_TARGETS);
 }
 
+TEST(test_layer_type_not_pickable)
+{
+    setup();
+    pl_edit_start(&e, 0);
+    pl_edit_slot(&e, 1);
+    pl_edit_add(&e, &m);
+    pl_edit_page(&e, 10);
+    CHECK(pl_edit_knob(&e, &m, 1, &out) == 0);
+    CHECK(e.state == PL_EDIT_PICK_KNOB);
+}
+
 int main(void)
 {
+    RUN(test_layer_type_not_pickable);
     RUN(test_add_target_path);
     RUN(test_add_appends_after_existing);
     RUN(test_list_knob_default_range);

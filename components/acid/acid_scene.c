@@ -51,9 +51,15 @@ int acid_scene_recall(acid_scene_t *sc, int n, int bars)
     return 1;
 }
 
+// Страница с типом синтеза: синты и их слои.
+static int typed(int p)
+{
+    return p == PAGE_SYNTH1 || p == PAGE_SYNTH1 + 1 || p == ACID_PAGE_LAYER1 || p == ACID_PAGE_LAYER1 + 1;
+}
+
 static int is_type(int p, int e)
 {
-    return e == TYPE_ENC && (p == PAGE_SYNTH1 || p == PAGE_SYNTH1 + 1);
+    return e == TYPE_ENC && typed(p);
 }
 
 // Список (модель, время дилэя, транспозиция...) по значениям сцены: такие ручки прыгают.
@@ -85,7 +91,7 @@ static int prepare(acid_scene_t *sc, acid_link_t *l, const acid_synth_t *s)
     for (int i = 0; i < ACID_SCENE_SCAN_PER_CHUNK && sc->prep < n; i++, sc->prep++) {
         int p = sc->prep / (ACID_KNOBS - 1), e = 1 + sc->prep % (ACID_KNOBS - 1);
         const uint8_t *to = sc->knob[sc->cur][p];
-        int retype = (p == PAGE_SYNTH1 || p == PAGE_SYNTH1 + 1) && to[TYPE_ENC] != UNSET &&
+        int retype = typed(p) && to[TYPE_ENC] != UNSET &&
                      acid_synth_knob(s, p, TYPE_ENC) != to[TYPE_ENC];
         sc->from[p][e] = (uint8_t)acid_synth_knob(s, p, e);
         sc->jump[p][e] = (uint8_t)(retype || is_list(to, p, e));
@@ -163,8 +169,9 @@ int acid_scene_step(acid_scene_t *sc, acid_link_t *l, acid_synth_t *s)
         return 0;
     }
     int budget = ACID_SCENE_PER_CHUNK;
-    for (int k = 0; k < 2 && budget > 0; k++) {
-        int p = PAGE_SYNTH1 + k, to = sc->knob[sc->cur][p][TYPE_ENC];
+    static const int TYPED[4] = {PAGE_SYNTH1, PAGE_SYNTH1 + 1, ACID_PAGE_LAYER1, ACID_PAGE_LAYER1 + 1};
+    for (int k = 0; k < 4 && budget > 0; k++) {
+        int p = TYPED[k], to = sc->knob[sc->cur][p][TYPE_ENC];
         if (to != UNSET && acid_synth_knob(s, p, TYPE_ENC) != to) {
             put(l, s, p, TYPE_ENC, to); // тип первым: ручки дальше пишутся в память нового типа
             budget--;

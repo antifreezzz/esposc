@@ -418,8 +418,19 @@ TEST(test_bsp_layer_page)
     CHECK(s.page == ACID_PAGE_LAYER1 + 1);
 }
 
+TEST(test_link_layer_type_report)
+{
+    reset();
+    bsp(1, 16);
+    l.snapshot_due = 0;
+    bsp(2, 0); // TYPE слоя: у каждого типа своя память, панели нужна вся страница
+    CHECK(l.snapshot_due);
+    CHECK(acid_synth_knob(&s, ACID_PAGE_LAYER1, 1) == 0);
+}
+
 int main(void)
 {
+    RUN(test_link_layer_type_report);
     RUN(test_bsp_user_page_still_10);
     RUN(test_bsp_layer_page);
     RUN(test_pickup_blocks_until_cross);

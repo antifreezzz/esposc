@@ -123,10 +123,34 @@ void ui_tile_xy(int p, int *x, int *y)
 int ui_tile_at(int x, int y)
 {
     y -= TOP_H;
-    for (int p = 0; p < PL_PAGES; p++) {
+    for (int p = 0; p < 10; p++) { // сетка 2x5
         int tx, ty;
         ui_tile_xy(p, &tx, &ty);
         if (x >= tx && x < tx + UI_TILE_W && y >= ty && y < ty + UI_TILE_H) {
+            return p;
+        }
+    }
+    return -1;
+}
+
+// Меню страниц: 2x6 плиток пониже, слой - справа от своего синта.
+#define MENU_TILE_H 64
+static const uint8_t MENU_SLOT[PL_PAGES] = {0, 1, 2, 3, 4, 5, 6, 8, 10, 11, 7, 9}; // страница -> место
+
+static void menu_xy(int p, int *x, int *y)
+{
+    int k = MENU_SLOT[p];
+    *x = 12 + (k % 2) * 234;
+    *y = 6 + (k / 2) * 72;
+}
+
+static int menu_page_at(int x, int y)
+{
+    y -= TOP_H;
+    for (int p = 0; p < PL_PAGES; p++) {
+        int tx, ty;
+        menu_xy(p, &tx, &ty);
+        if (x >= tx && x < tx + UI_TILE_W && y >= ty && y < ty + MENU_TILE_H) {
             return p;
         }
     }
@@ -140,16 +164,15 @@ static void cell_xy(int i, int *x, int *y)
     *y = 6 + (i / 3) * 86;
 }
 
-static lv_obj_t *menu_tile(lv_obj_t *parent, int p, uint32_t pc, const char *num, const char *name, lv_obj_t **sub)
+static lv_obj_t *menu_tile(lv_obj_t *parent, int x, int y, int h, uint32_t pc, const char *num, const char *name,
+                           lv_obj_t **sub)
 {
-    int x, y;
-    ui_tile_xy(p, &x, &y);
-    lv_obj_t *t = ui_box(parent, x, y, UI_TILE_W, UI_TILE_H, C_TILE);
+    lv_obj_t *t = ui_box(parent, x, y, UI_TILE_W, h, C_TILE);
     lv_obj_set_style_radius(t, 10, 0);
     lv_obj_set_style_border_width(t, 1, 0);
     lv_obj_set_style_border_color(t, lv_color_hex(C_TILE_BRD), 0);
 
-    lv_obj_t *stripe = ui_box(t, 0, 12, 4, 50, pc);
+    lv_obj_t *stripe = ui_box(t, 0, 12, 4, h - 24, pc);
     lv_obj_set_style_radius(stripe, 2, 0);
 
     lv_obj_t *n = ui_label(t, &lv_font_montserrat_28, pc);
@@ -191,14 +214,18 @@ static void build(void)
     for (int p = 0; p < PL_PAGES; p++) {
         char num[4];
         snprintf(num, sizeof num, "%d", pl_page_bsp(p));
-        u.tile[p] = menu_tile(u.menu, p, pl_page_color(p), num, pl_page_name(p), &u.tile_sub[p]);
+        int x, y;
+        menu_xy(p, &x, &y);
+        u.tile[p] = menu_tile(u.menu, x, y, MENU_TILE_H, pl_page_color(p), num, pl_page_name(p), &u.tile_sub[p]);
     }
     // Второй экран меню: свои страницы 10..15 и сцены.
     u.menu2 = ui_box(scr, 0, TOP_H, W, W - TOP_H, C_BG);
     for (int p = 0; p < MENU2_TILES; p++) {
         char num[4];
         snprintf(num, sizeof num, p < PL_USER_PAGES ? "%d" : "S", pl_page_bsp(PL_USER_FIRST + p));
-        menu_tile(u.menu2, p, p < PL_USER_PAGES ? pl_view_page_color(PL_USER_FIRST + p) : C_ACCENT, num,
+        int x, y;
+        ui_tile_xy(p, &x, &y);
+        menu_tile(u.menu2, x, y, UI_TILE_H, p < PL_USER_PAGES ? pl_view_page_color(PL_USER_FIRST + p) : C_ACCENT, num,
                   p < PL_USER_PAGES ? pl_user_name(p) : "SCENES", &u.tile2_sub[p]);
     }
 
@@ -678,8 +705,8 @@ static void edit_input(pl_model_t *m, int ev, int down, int x, int y, int x0, in
         }
         break;
     case PL_EDIT_PICK_PAGE: {
-        int t = ui_tile_at(x0, y0);
-        if (tap && t >= 0 && t == ui_tile_at(x1, y1)) {
+        int t = menu_page_at(x0, y0);
+        if (tap && t >= 0 && t == menu_page_at(x1, y1)) {
             pl_edit_page(&u.ed, t);
         }
         break;
@@ -709,10 +736,11 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
             u.screen = u.ed.state == PL_EDIT_PICK_PAGE ? MENU : PAGE; // выбор страницы цели - на меню
         }
     } else if (u.screen == MENU || u.screen == MENU2) {
-        int t = ui_tile_at(x0, y0);
+        int (*at)(int, int) = u.screen == MENU ? menu_page_at : ui_tile_at;
+        int t = at(x0, y0);
         if (head && x0 >= 140 && x0 < 360) {
             u.screen = u.screen == MENU ? MENU2 : MENU;
-        } else if (tap && t >= 0 && t == ui_tile_at(x1, y1)) {
+        } else if (tap && t >= 0 && t == at(x1, y1)) {
             if (u.screen == MENU) {
                 send_page(m, t, ms);
             } else if (t < PL_USER_PAGES) {

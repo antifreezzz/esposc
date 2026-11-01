@@ -14,7 +14,9 @@ static int empty(int page, int enc, int type)
     case 5: return enc >= 14;
     case 6:
     case 7: return type == 0 && enc >= 10 && enc <= 12;
-    case 8: return enc >= 12;
+    case 10:
+    case 11: return type == 25 ? enc >= 2 : type == 0 && enc >= 10 && enc <= 12; // слой: как синт, OFF - пусто
+    case 8: return enc >= 14;
     default: return 0;
     }
 }
@@ -22,9 +24,9 @@ static int empty(int page, int enc, int type)
 TEST(test_labels_cover_synth)
 {
     uint8_t raw[16] = {0};
-    for (int page = 0; page < 10; page++) {
+    for (int page = 0; page < PL_PAGES; page++) {
         CHECK(pl_page_name(page) != NULL);
-        int variants = (page == 6 || page == 7) ? 25 : (page >= 3 && page <= 5) ? 5 : 1;
+        int variants = (page == 6 || page == 7) ? 25 : page >= 10 ? 26 : (page >= 3 && page <= 5) ? 5 : 1;
         for (int t = 0; t < variants; t++) {
             raw[1] = (uint8_t)t;
             CHECK(pl_knob_label(page, 0, raw) == NULL); // энкодер 1 - страница, на круге его нет
@@ -237,8 +239,41 @@ TEST(test_slot_label)
     CHECK(pl_user_name(6) == NULL && pl_user_name(-1) == NULL);
 }
 
+TEST(test_layer_labels)
+{
+    uint8_t raw[16] = {0};
+    raw[1] = 0;
+    CHECK(strcmp(pl_knob_label(10, 2, raw), "CUTOFF") == 0);
+    raw[1] = 21;
+    CHECK(strcmp(pl_knob_label(11, 2, raw), "HARMONICS") == 0);
+    raw[1] = 25;
+    CHECK(strcmp(pl_knob_label(10, 1, raw), "TYPE") == 0);
+    CHECK(pl_knob_label(10, 2, raw) == NULL);
+    char buf[12];
+    CHECK(strcmp(pl_value_text(10, 1, 25, raw, buf), "OFF") == 0);
+    CHECK(strcmp(pl_value_text(6, 1, 25, raw, buf), "OFF") != 0); // у синта OFF нет
+    int lo, hi;
+    pl_knob_range(10, 1, raw, &lo, &hi);
+    CHECK(lo == 0 && hi == 25);
+    pl_knob_range(6, 1, raw, &lo, &hi);
+    CHECK(lo == 0 && hi == 24);
+    CHECK(pl_labels_depend(10) && pl_labels_depend(11));
+    raw[1] = 0;
+    CHECK(pl_knob_color(10, 3, raw) == pl_knob_color(6, 3, raw) && pl_knob_color(10, 3, raw) != 0);
+}
+
+TEST(test_fx_layer_vol_labels)
+{
+    uint8_t raw[16] = {0};
+    CHECK(strcmp(pl_knob_label(8, 12, raw), "LYR1 VOL") == 0);
+    CHECK(strcmp(pl_knob_label(8, 13, raw), "LYR2 VOL") == 0);
+    CHECK(pl_knob_label(8, 14, raw) == NULL);
+}
+
 int main(void)
 {
+    RUN(test_layer_labels);
+    RUN(test_fx_layer_vol_labels);
     RUN(test_labels_cover_synth);
     RUN(test_ranges);
     RUN(test_value_text);
