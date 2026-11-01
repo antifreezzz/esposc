@@ -28,11 +28,12 @@ int pl_sector(int x, int y)
 
 int pl_grid_cell(int x, int y)
 {
-    if (x < 8 || x >= 8 + 4 * 116 || y < 44 || y >= 44 + 4 * 107) {
+    if (x < 6 || x >= 6 + 3 * 156 || y < 44 || y >= 44 + 5 * 86) {
         return -1;
     }
-    return ((y - 44) / 107) * 4 + (x - 8) / 116;
+    return ((y - 44) / 86) * 3 + (x - 6) / 156;
 }
+
 
 
 void pl_turn_begin(pl_turn_t *t, int x, int y, int v, int lo, int hi)

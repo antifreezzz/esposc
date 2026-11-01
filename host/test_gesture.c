@@ -157,15 +157,17 @@ TEST(test_press_smear_ends)
 
 TEST(test_grid_cell)
 {
-    CHECK(pl_grid_cell(100, 20) == -1); // шапка
-    CHECK(pl_grid_cell(2, 100) == -1);  // левое поле
-    CHECK(pl_grid_cell(476, 100) == -1);
-    CHECK(pl_grid_cell(50, 80) == 0);   // левый верх: энкодер 1 (PAGE)
-    CHECK(pl_grid_cell(170, 80) == 1);  // энкодер 2
-    CHECK(pl_grid_cell(420, 80) == 3);  // правый верх: энкодер 4
-    CHECK(pl_grid_cell(50, 200) == 4);  // 2-й ряд, 1-й столбец: энкодер 5
-    CHECK(pl_grid_cell(420, 430) == 15); // правый низ: энкодер 16
+    CHECK(pl_grid_cell(100, 20) == -1);  // шапка
+    CHECK(pl_grid_cell(2, 100) == -1);   // левое поле
+    CHECK(pl_grid_cell(476, 100) == -1); // правое поле
+    CHECK(pl_grid_cell(60, 70) == 0);    // левый верх: 1-я ручка (энкодер 2)
+    CHECK(pl_grid_cell(240, 70) == 1);   // середина верх: 2-я ручка (энкодер 3)
+    CHECK(pl_grid_cell(400, 70) == 2);   // правый верх: 3-я ручка (энкодер 4)
+    CHECK(pl_grid_cell(60, 155) == 3);   // 2-й ряд, 1-й столбец: 4-я ручка
+    CHECK(pl_grid_cell(240, 250) == 7);  // центр (3-й ряд, 2-й столбец): 8-я ручка
+    CHECK(pl_grid_cell(400, 440) == 14); // правый низ: 15-я ручка (энкодер 16)
 }
+
 
 int main(void)
 {

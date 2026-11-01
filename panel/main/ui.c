@@ -9,7 +9,7 @@
 #include "pl_gesture.h"
 #include "pl_labels.h"
 
-// Вариант Б: модульная сетка 4x4 (16 ячеек, как 16 энкодеров BSP) + круговой захват в центре.
+// Вариант Б: модульная сетка 3x5 (все 15 карточек - ручки E2..E16) + круговой захват в центре.
 
 #define W 480
 #define TOP_H 40    // верхняя полоса: меню и быстрое листание страниц
@@ -18,15 +18,15 @@
 #define KNOB_D 56   // дуга внутри карточки сетки
 #define BIG_BOX 244 // круглый диск подложки под большую дугу в центре
 #define BIG_D 210   // большая дуга захваченной ручки
-#define KNOBS 15    // энкодеры 2..16 (ячейки 1..15; ячейка 0 - энкодер 1 PAGE)
+#define KNOBS 15    // энкодеры 2..16 (ячейки 0..14)
 
 #define C_BG 0x0b0c0e
 #define C_BAR 0x14161b
 #define C_TILE 0x161922
 #define C_TILE_EMPTY 0x0f1116
 #define C_TILE_BRD 0x252a35
-#define C_DIM 0x9096a3
-#define C_MUTED 0x454a54
+#define C_DIM 0x9aa0ad
+#define C_MUTED 0x4a505c
 #define C_TEXT 0xeeeeee
 #define C_ACCENT 0xff9900
 #define C_TRACK 0x242832
@@ -49,7 +49,6 @@ static struct {
     int dirty; // сменился экран или страница: перестроить под локом
     lv_obj_t *bar_left, *bar_nav, *bar_right;
     lv_obj_t *menu, *grid;
-    lv_obj_t *page_card, *page_num, *page_title, *page_sub;
     lv_obj_t *tile[PL_PAGES], *tile_sub[PL_PAGES];
     int drawn_bsp_page;
     knob_t knob[KNOBS];
@@ -113,11 +112,11 @@ static void text(lv_obj_t *l, const char *s)
     }
 }
 
-// Координаты ячейки c (0..15) внутри контейнера u.grid (480 x 440).
-static void cell_xy(int c, int *x, int *y)
+// Координаты карточки i (0..14) в сетке 3x5 внутри контейнера u.grid (480 x 440).
+static void cell_xy(int i, int *x, int *y)
 {
-    *x = 11 + (c % 4) * 116;
-    *y = 6 + (c / 4) * 107;
+    *x = 9 + (i % 3) * 156;
+    *y = 6 + (i / 3) * 86;
 }
 
 static void build(void)
@@ -159,53 +158,34 @@ static void build(void)
         u.tile[p] = t;
     }
 
-    // Страница: сетка 4x4 (ячейка 0 - карточка страницы E1, ячейки 1..15 - ручки E2..E16).
+    // Страница: сетка 3x5 из 15 карточек ручек (энкодеры 2..16).
     u.grid = box(scr, 0, TOP_H, W, W - TOP_H, C_BG);
-    int px, py;
-    cell_xy(0, &px, &py);
-    u.page_card = box(u.grid, px, py, 110, 101, 0x1a1e29);
-    lv_obj_set_style_radius(u.page_card, 10, 0);
-    lv_obj_set_style_border_width(u.page_card, 2, 0);
-    lv_obj_set_style_border_color(u.page_card, lv_color_hex(C_ACCENT), 0);
-
-    lv_obj_t *e1 = label(u.page_card, &lv_font_montserrat_12, C_DIM);
-    lv_label_set_text(e1, "1  PAGE");
-    lv_obj_align(e1, LV_ALIGN_TOP_LEFT, 8, 5);
-
-    u.page_num = label(u.page_card, &lv_font_montserrat_28, C_ACCENT);
-    lv_obj_align(u.page_num, LV_ALIGN_LEFT_MID, 10, -2);
-    u.page_title = label(u.page_card, &lv_font_montserrat_14, C_TEXT);
-    lv_obj_align(u.page_title, LV_ALIGN_LEFT_MID, 34, -2);
-    u.page_sub = label(u.page_card, &lv_font_montserrat_12, C_DIM);
-    lv_obj_align(u.page_sub, LV_ALIGN_BOTTOM_MID, 0, -6);
-
     for (int i = 0; i < KNOBS; i++) {
         knob_t *k = &u.knob[i];
         int x, y;
-        cell_xy(i + 1, &x, &y);
-        k->card = box(u.grid, x, y, 110, 101, C_TILE);
+        cell_xy(i, &x, &y);
+        k->card = box(u.grid, x, y, 150, 80, C_TILE);
         lv_obj_set_style_radius(k->card, 10, 0);
         lv_obj_set_style_border_width(k->card, 1, 0);
         lv_obj_set_style_border_color(k->card, lv_color_hex(C_TILE_BRD), 0);
 
-        k->num = label(k->card, &lv_font_montserrat_12, C_MUTED);
-        lv_label_set_text_fmt(k->num, "%d", i + 2);
-        lv_obj_set_pos(k->num, 7, 4);
-
-        k->pdot = box(k->card, 96, 7, 7, 7, C_MUTED);
-        lv_obj_set_style_radius(k->pdot, 4, 0);
-
         k->arc = arc(k->card, KNOB_D, 6);
-        lv_obj_align(k->arc, LV_ALIGN_TOP_MID, 0, 14);
+        lv_obj_set_pos(k->arc, 8, 12);
         k->val = label(k->arc, &lv_font_montserrat_14, C_TEXT);
         lv_obj_align(k->val, LV_ALIGN_CENTER, 0, 0);
 
-        k->name = label(k->card, &lv_font_montserrat_12, C_DIM);
-        lv_obj_set_width(k->name, 104);
-        lv_obj_set_style_text_align(k->name, LV_TEXT_ALIGN_CENTER, 0);
-        lv_obj_align(k->name, LV_ALIGN_BOTTOM_MID, 0, -5);
+        k->num = label(k->card, &lv_font_montserrat_12, C_MUTED);
+        lv_label_set_text_fmt(k->num, "E%d", i + 2);
+        lv_obj_set_pos(k->num, 72, 14);
 
-        k->empty_dot = box(k->card, 52, 47, 6, 6, C_TRACK);
+        k->pdot = box(k->card, 134, 10, 7, 7, C_MUTED);
+        lv_obj_set_style_radius(k->pdot, 4, 0);
+
+        k->name = label(k->card, &lv_font_montserrat_12, C_DIM);
+        lv_obj_set_width(k->name, 74);
+        lv_obj_set_pos(k->name, 72, 36);
+
+        k->empty_dot = box(k->card, 72, 37, 6, 6, C_TRACK);
         lv_obj_set_style_radius(k->empty_dot, 3, 0);
         k->v = k->held = k->grabbed = -1;
         k->color = 0;
@@ -277,6 +257,7 @@ static void page_labels(const pl_model_t *m)
         lv_obj_set_style_bg_color(k->card, lv_color_hex(on ? C_TILE : C_TILE_EMPTY), 0);
         show(k->arc, on);
         show(k->name, on);
+        show(k->num, on);
         show(k->pdot, on);
         show(k->empty_dot, !on);
         if (on) {
@@ -297,18 +278,11 @@ static void page_labels(const pl_model_t *m)
     }
     u.drawn_grab = -1;
 
-    lv_obj_set_style_border_color(u.page_card, lv_color_hex(pc), 0);
-    char num[8];
-    snprintf(num, sizeof num, "%d", u.page);
-    text(u.page_num, num);
-    lv_obj_set_style_text_color(u.page_num, lv_color_hex(pc), 0);
-    text(u.page_title, pl_page_name(u.page));
-
     char nav[32];
     snprintf(nav, sizeof nav, LV_SYMBOL_LEFT "  %d %s  " LV_SYMBOL_RIGHT, u.page, pl_page_name(u.page));
     text(u.bar_nav, nav);
     lv_obj_set_style_text_color(u.bar_nav, lv_color_hex(pc), 0);
-    text(u.bar_left, LV_SYMBOL_LIST " MENU");
+    text(u.bar_left, LV_SYMBOL_LEFT " MENU");
     show(u.bar_nav, 1);
     u.drawn_type = raw[1];
 }
@@ -368,7 +342,6 @@ static void draw_page(const pl_model_t *m, uint32_t ms)
         page_labels(m);
     }
     char buf[24];
-    text(u.page_sub, pl_page_summary(u.page, raw, buf));
     for (int i = 0; i < KNOBS; i++) {
         knob_t *k = &u.knob[i];
         if (!k->label) {
@@ -513,10 +486,6 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
             u.screen = MENU;
             u.grab = -1;
         }
-    } else if (tap && pl_grid_cell(x0, y0) == 0 && pl_grid_cell(x1, y1) == 0) {
-        // Ячейка 0 (энкодер 1 BSP - PAGE): тап открывает меню страниц.
-        u.screen = MENU;
-        u.grab = -1;
     } else {
         knob_input(m, ev, down, x, y, x0, y0);
     }
@@ -528,10 +497,10 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
 
 static void knob_input(pl_model_t *m, int ev, int down, int x, int y, int x0, int y0)
 {
-    if (ev == PL_PRESS_HOLD && y0 >= TOP_H) {
-        int c = pl_grid_cell(x0, y0);
-        int i = c - 1; // ячейки 1..15 -> ручки 0..14
-        if (i >= 0 && i < KNOBS && u.knob[i].label && m->have) {
+    // Захват по удержанию 50 мс или сразу при начале сдвига пальца внутри рабочей области страницы.
+    if (down && u.grab < 0 && y0 >= TOP_H && (ev == PL_PRESS_HOLD || u.press.state == 2)) {
+        int i = pl_grid_cell(x0, y0);
+        if (i >= 0 && i < KNOBS && u.knob[i].label) {
             int lo, hi;
             pl_knob_range(u.page, i + 1, m->raw[u.page], &lo, &hi);
             pl_turn_begin(&u.turn, x, y - RING_DY, m->raw[u.page][i + 1], lo, hi);
@@ -539,7 +508,7 @@ static void knob_input(pl_model_t *m, int ev, int down, int x, int y, int x0, in
             u.sent = m->raw[u.page][i + 1];
         }
     }
-    if (ev == PL_PRESS_RELEASE) {
+    if (!down || ev == PL_PRESS_RELEASE || ev == PL_PRESS_END || ev == PL_PRESS_TAP) {
         u.grab = -1;
     }
     if (u.grab >= 0 && down) {
