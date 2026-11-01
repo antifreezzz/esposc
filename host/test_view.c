@@ -23,6 +23,7 @@ TEST(test_standard_cell)
     CHECK(strcmp(c.label, "DLY TIME") == 0);
     CHECK(c.v == 3 && c.lo == 0 && c.hi == 4 && strcmp(c.text, "1/4") == 0);
     CHECK(c.held == 1 && c.color == pl_knob_color(8, 6, m.raw[8]));
+    CHECK(c.src == NULL); // штатная страница: источник - она сама
     pl_view_cell(&m, 0, 15, &c);
     CHECK(c.label == NULL);
 }
@@ -66,6 +67,35 @@ TEST(test_user_cell_without_frame_empty)
     CHECK(c.label == NULL);
 }
 
+TEST(test_user_cell_source)
+{
+    setup();
+    m.user_t[0][4][0] = (pl_target_t){6 << 4 | 2, 0, 127};
+    pl_view_cell(&m, 10, 4, &c);
+    CHECK(c.src && strcmp(c.src, "SYNTH 1") == 0 && c.src_color == pl_page_color(6));
+    m.user_t[0][4][1] = (pl_target_t){6 << 4 | 3, 0, 60}; // макро на одной странице
+    pl_view_cell(&m, 10, 4, &c);
+    CHECK(c.src && strcmp(c.src, "SYNTH 1") == 0 && c.src_color == pl_page_color(6));
+    m.user_t[0][4][2] = (pl_target_t){8 << 4 | 3, 0, 60};
+    pl_view_cell(&m, 10, 4, &c);
+    CHECK(c.src && strcmp(c.src, "2 PAGES") == 0);
+}
+
+TEST(test_target_lookup)
+{
+    setup();
+    m.user_t[1][2][0] = (pl_target_t){6 << 4 | 2, 0, 127};
+    m.user_t[1][2][1] = (pl_target_t){8 << 4 | 3, 0, 60};
+    int e = -1;
+    CHECK(pl_view_target(&m, 11, 2, 0, &e) == 6 && e == 2);
+    CHECK(pl_view_target(&m, 11, 2, 1, &e) == 8 && e == 3);
+    CHECK(pl_view_target(&m, 11, 2, 2, &e) == -1);
+    CHECK(pl_view_target(&m, 11, 2, 4, &e) == -1);
+    CHECK(pl_view_target(&m, 6, 2, 0, &e) == -1); // штатная страница целей не имеет
+    m.user_have = 0;
+    CHECK(pl_view_target(&m, 11, 2, 0, &e) == -1);
+}
+
 TEST(test_page_names_and_colors)
 {
     CHECK(strcmp(pl_view_page_name(9), "TONAL") == 0);
@@ -91,6 +121,8 @@ int main(void)
     RUN(test_alias_cell_shows_target);
     RUN(test_macro_cell_own_value);
     RUN(test_user_cell_without_frame_empty);
+    RUN(test_user_cell_source);
+    RUN(test_target_lookup);
     RUN(test_page_names_and_colors);
     RUN(test_page_step_stays_in_group);
     TEST_MAIN_END();

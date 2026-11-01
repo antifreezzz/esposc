@@ -19,10 +19,45 @@ int pl_view_is_alias(const pl_model_t *m, int up, int enc)
     return user_count(m, up, enc) == 1 && t->lo == 0 && t->hi == 127;
 }
 
+int pl_view_target(const pl_model_t *m, int page, int enc, int i, int *tenc)
+{
+    int up = page - PL_USER_FIRST;
+    if (up < 0 || up >= PL_USER_PAGES || !(m->user_have >> up & 1) || enc <= 0 || enc >= PL_KNOBS || i < 0 ||
+        i >= user_count(m, up, enc)) {
+        return -1;
+    }
+    *tenc = m->user_t[up][enc][i].pe & 15;
+    return m->user_t[up][enc][i].pe >> 4;
+}
+
+// Откуда цели слота: одна страница - её имя и цвет, несколько - сколько их.
+static void user_src(const pl_model_t *m, int up, int enc, pl_cell_t *c)
+{
+    int n = user_count(m, up, enc), pages = 0;
+    for (int i = 0; i < n; i++) {
+        int p = m->user_t[up][enc][i].pe >> 4, seen = 0;
+        for (int j = 0; j < i; j++) {
+            seen |= (m->user_t[up][enc][j].pe >> 4) == p;
+        }
+        pages += !seen;
+    }
+    int p0 = m->user_t[up][enc][0].pe >> 4;
+    if (pages == 1 && p0 < PL_PAGES) {
+        c->src = pl_page_name(p0);
+        c->src_color = pl_page_color(p0);
+        return;
+    }
+    snprintf(c->sbuf, sizeof c->sbuf, "%d PAGES", pages);
+    c->src = c->sbuf;
+    c->src_color = USER_COLOR;
+}
+
 void pl_view_cell(const pl_model_t *m, int page, int enc, pl_cell_t *c)
 {
     c->label = NULL;
     c->text = "";
+    c->src = NULL;
+    c->src_color = 0;
     c->v = c->lo = c->bipolar = c->held = 0;
     c->hi = 127;
     c->color = 0;
@@ -51,6 +86,7 @@ void pl_view_cell(const pl_model_t *m, int page, int enc, pl_cell_t *c)
     const pl_target_t *t = &m->user_t[up][enc][0];
     int tp = t->pe >> 4, te = t->pe & 15;
     c->held = m->user_held[up][enc];
+    user_src(m, up, enc, c);
     if (pl_view_is_alias(m, up, enc)) {
         const uint8_t *raw = m->raw[tp];
         c->v = raw[te];
