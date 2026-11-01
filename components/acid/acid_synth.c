@@ -59,7 +59,10 @@ static const uint8_t PAN_DEFAULT[ACID_PANS] = {64, 64, 80, 48, 64};
 #define DRIVE_ENC 13   // энкодеры 14-16 страницы синта: перегруз, тон, вой (у 303 и Plaits одни)
 #define DRIVE_TONE 64  // тон и вой, пока их не трогали
 #define TYPE_ENC 1       // энкодер 2 на странице синта
-static const uint8_t BLOB_MAGIC[4] = {'A', 'S', '5', 2}; // 2: + ручки слоя тональности
+static const uint8_t BLOB_MAGIC[4] = {'A', 'S', '5', 3}; // 2: + ручки слоя тональности, 3: + слои синтов
+static const uint8_t BLOB_MAGIC_V2[4] = {'A', 'S', '5', 2};
+#define BLOB_V2 (4 + ACID_SLOTS * (1 + ACID_TYPES * ACID_KNOBS) + ACID_TONAL_KNOBS)
+#define LAYER_GAIN_RAW 100 // громкость слоя после включения (FX 13-14)
 
 // Сырые значения ручек после init для панели: CC, ближайшие к умолчаниям (обратные к lin/expo, округлено).
 // По индексу энкодера с 0; страницы 3-7 и 9 берут значения из своих knob[], здесь не используются.
@@ -67,7 +70,7 @@ static const uint8_t RAW_DEFAULT[ACID_PAGES][ACID_KNOBS] = {
     [0] = {0, 127, 54, 85, 85, 92, 53, 64, 68, 0, 60, 64, 0, 64, 64, 0},
     [1] = {0, 55, 42, 76, 35, 78, 64, 64, 55, 59, 48, 76, 54, 80, 48, 64},
     [2] = {0, 28, 127, 64, 64, 35, 127, 64, 64, 40, 100, 0, 0, 0, 0, 0},
-    [8] = {0, 0, 0, 0, 0, 0, 2, 53, 83, 0, 0, 127, 0, 0, 0, 0},
+    [8] = {0, 0, 0, 0, 0, 0, 2, 53, 83, 0, 0, 127, LAYER_GAIN_RAW, LAYER_GAIN_RAW, 0, 0},
     [9] = {0, 0, 4, 0, 0, 1, 0, 0, 64, 64, 64, 64, 64, 64, 64, 64},
 };
 // Нетронутые ручки синта по типу: 303 и Plaits (перегруз 0, тон 64, вой 0 у обоих).
@@ -119,7 +122,12 @@ void acid_synth_init(acid_synth_t *s, float sr)
     s->sr = sr;
     for (int k = 0; k < ACID_SLOTS; k++) {
         slot_init(&s->slot[k], sr, k == 1 ? SEQ2_TYPE : 0);
+        s->slot[k].idx = k;
         type_defaults(s, &s->slot[k]);
+        slot_init(&s->layer[k], sr, ACID_LAYER_OFF);
+        s->layer[k].idx = k;
+        type_defaults(s, &s->layer[k]);
+        s->layer_gain[k] = (float)LAYER_GAIN_RAW / 127.0f;
     }
     s->save = 0;
     acid_kick_init(&s->kick, sr);
@@ -270,8 +278,8 @@ static void voice_note(acid_synth_t *s, acid_slot_t *v, int note, int accent, in
 void acid_synth_notes_off(acid_synth_t *s)
 {
     // Звучащие ноты отпускаются, хвосты доигрывают без щелчка.
-    for (int k = 0; k < ACID_SLOTS; k++) {
-        acid_slot_t *v = &s->slot[k];
+    for (int k = 0; k < 2 * ACID_SLOTS; k++) {
+        acid_slot_t *v = k < ACID_SLOTS ? &s->slot[k] : &s->layer[k - ACID_SLOTS];
         v->nheld = 0;
         v->pend_note = -1;
         v->gliding = 0;
@@ -295,7 +303,7 @@ static void note_release(acid_synth_t *s, acid_slot_t *v, int note);
 // Нота BSP со сдвигом слоя тональности и транспозицией синта.
 static int slot_note(const acid_synth_t *s, const acid_slot_t *v, int note)
 {
-    if (acid_tonal_moves(&s->tonal, (int)(v - s->slot))) {
+    if (acid_tonal_moves(&s->tonal, v->idx)) {
         note = acid_tonal_note(&s->tonal, note);
     }
     return note + v->transpose;
@@ -389,8 +397,8 @@ static void page_mix(acid_synth_t *s, int slot, int v)
     switch (slot) {
     case 1: s->master = lin(v, 0.0f, 1.0f); break;
     case 2: s->drive = expo(v, 0.3f, 3.0f); break;
-    case 3: s->slot[0].gain = lin(v, 0.0f, 1.5f * SYNTH_GAIN); break;
-    case 4: s->slot[1].gain = lin(v, 0.0f, 1.5f * SYNTH_GAIN); break;
+    case 3:
+    case 4: s->slot[slot - 3].gain = s->layer[slot - 3].gain = lin(v, 0.0f, 1.5f * SYNTH_GAIN); break; // и слою
     case 5: s->kick_gain = lin(v, 0.0f, 2.0f); break;
     case 6: s->hat_gain = lin(v, 0.0f, 0.6f); break;
     case 7: s->clap_gain = lin(v, 0.0f, 1.2f); break;
@@ -527,7 +535,7 @@ static void knob_plaits(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
 
 static void knob_apply(acid_synth_t *s, acid_slot_t *v, int slot, int val)
 {
-    if (drive_knob(v, slot, val)) {
+    if (v->type == ACID_LAYER_OFF || drive_knob(v, slot, val)) {
         return;
     }
     if (v->type == 0) {
@@ -543,6 +551,9 @@ static void type_defaults(acid_synth_t *s, acid_slot_t *v)
     v->glide_coef = expf(-1.0f / (GLIDE_S * s->sr));
     v->transpose = 0;
     acid_drive_set(&v->drv, 0, DRIVE_TONE, 0);
+    if (v->type == ACID_LAYER_OFF) {
+        return; // слой выключен: ни модели, ни ручек
+    }
     if (v->type == 0) {
         v->cut_base = CUTOFF_HZ;
         v->env_hz = FENV_NORMAL_HZ;
@@ -610,6 +621,8 @@ static void page_fx(acid_synth_t *s, int slot, int v)
     case 9: acid_stutter_set(&s->stutter, v); break;
     case 10: acid_delay_set_motion(&s->delay, v, s->delay.width); break;
     case 11: acid_delay_set_motion(&s->delay, s->delay.motion, v); break;
+    case 12:
+    case 13: s->layer_gain[slot - 12] = lin(v, 0.0f, 1.0f); break;
     default: break;
     }
     if (slot >= 6 && slot <= 8) {
@@ -627,13 +640,14 @@ static int synth_knob_ok(int type, int slot, int v)
 }
 
 // Страница синта: энкодер 2 - тип синтеза, дальше ручки типа (запоминаются по типам).
-static void page_synth(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
+// layer - страница слоя: у типа есть ещё значение ACID_LAYER_OFF.
+static void page_synth(acid_synth_t *s, acid_slot_t *sl, int slot, int v, int layer)
 {
     if (slot == TYPE_ENC) {
-        if (v < ACID_TYPES) {
+        if (v < ACID_TYPES + layer) {
             type_request(sl, v); // значение на экране = номер типа, остальное игнор
         }
-    } else if (slot > TYPE_ENC && synth_knob_ok(sl->sel_type, slot, v)) {
+    } else if (slot > TYPE_ENC && sl->sel_type != ACID_LAYER_OFF && synth_knob_ok(sl->sel_type, slot, v)) {
         // Ручка - типу на экране. Если он ещё не зазвучал (уходит прежний), применится при переключении.
         sl->knob[sl->sel_type][slot] = (uint8_t)v;
         if (sl->sel_type == sl->type) {
@@ -673,7 +687,9 @@ static void apply_page(acid_synth_t *s, int page, int slot, int v)
         acid_tonal_set(&s->tonal, slot, v);
         s->save = 1; // квадрат - часть композиции, переживает перезагрузку
     } else if (page == PAGE_SYNTH1 || page == PAGE_SYNTH1 + 1) {
-        page_synth(s, &s->slot[page - PAGE_SYNTH1], slot, v);
+        page_synth(s, &s->slot[page - PAGE_SYNTH1], slot, v, 0);
+    } else if (page >= ACID_PAGE_LAYER1 && page < ACID_PAGE_LAYER1 + ACID_SLOTS) {
+        page_synth(s, &s->layer[page - ACID_PAGE_LAYER1], slot, v, 1);
     }
 }
 
@@ -713,10 +729,14 @@ int acid_synth_knob(const acid_synth_t *s, int page, int enc)
     if (page == PAGE_TONAL) {
         return s->tonal.knob[enc] != KNOB_NONE ? s->tonal.knob[enc] : RAW_DEFAULT[PAGE_TONAL][enc];
     }
-    if (page == PAGE_SYNTH1 || page == PAGE_SYNTH1 + 1) {
-        const acid_slot_t *sl = &s->slot[page - PAGE_SYNTH1];
+    int layer = page >= ACID_PAGE_LAYER1 && page < ACID_PAGE_LAYER1 + ACID_SLOTS;
+    if (page == PAGE_SYNTH1 || page == PAGE_SYNTH1 + 1 || layer) {
+        const acid_slot_t *sl = layer ? &s->layer[page - ACID_PAGE_LAYER1] : &s->slot[page - PAGE_SYNTH1];
         if (enc == TYPE_ENC) {
             return sl->sel_type;
+        }
+        if (sl->sel_type == ACID_LAYER_OFF) {
+            return 0;
         }
         uint8_t k = sl->knob[sl->sel_type][enc];
         return k != KNOB_NONE ? k : (sl->sel_type == 0 ? RAW_303 : RAW_PLAITS)[enc];
@@ -727,9 +747,9 @@ int acid_synth_knob(const acid_synth_t *s, int page, int enc)
 // Граница шага слоя: звучащие ноты синтов по режиму энкодера 6, свежая нота - сразу на новый шаг.
 static void tonal_boundary(acid_synth_t *s)
 {
-    for (int k = 0; k < ACID_SLOTS; k++) {
-        acid_slot_t *v = &s->slot[k];
-        if (v->nheld == 0 || !acid_tonal_moves(&s->tonal, k)) {
+    for (int i = 0; i < 2 * ACID_SLOTS; i++) {
+        acid_slot_t *v = i < ACID_SLOTS ? &s->slot[i] : &s->layer[i - ACID_SLOTS]; // слой - вслед за синтом
+        if (v->nheld == 0 || !acid_tonal_moves(&s->tonal, v->idx)) {
             continue;
         }
         int young = v->now - v->held_at[v->nheld - 1] < EARLY_NOTE;
@@ -754,6 +774,7 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
     case ACID_MIDI_NOTE_ON:
         if (ev->ch == BASS_CH || ev->ch == SEQ2_CH) {
             note_on(s, &s->slot[ev->ch == SEQ2_CH], ev->d1, ev->d2);
+            note_on(s, &s->layer[ev->ch == SEQ2_CH], ev->d1, ev->d2); // тот же стек нот, что у синта
         } else if (ev->ch == DRUM_CH) {
             drum_on(s, ev->d1, ev->d2);
         }
@@ -761,6 +782,7 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
     case ACID_MIDI_NOTE_OFF:
         if (ev->ch == BASS_CH || ev->ch == SEQ2_CH) {
             note_off(s, &s->slot[ev->ch == SEQ2_CH], ev->d1);
+            note_off(s, &s->layer[ev->ch == SEQ2_CH], ev->d1);
         }
         break;
     case ACID_MIDI_CC:
@@ -782,11 +804,7 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
         acid_tonal_start(&s->tonal);
         break;
     case ACID_MIDI_STOP:
-        for (int k = 0; k < ACID_SLOTS; k++) {
-            s->slot[k].nheld = 0; // защита от залипших нот
-            s->slot[k].pend_note = -1;
-            s->slot[k].gliding = 0;
-        }
+        acid_synth_notes_off(s); // защита от залипших нот
         break;
     default:
         break;
@@ -892,9 +910,26 @@ static float fade_step(acid_synth_t *s, acid_slot_t *v)
 // Сэмпл слота с громкостью: голос его типа, при смене типа - с уходом и приходом.
 static float slot_next(acid_synth_t *s, acid_slot_t *v, int gate)
 {
-    float y = v->type == 0 ? voice_next(s, v, gate) : plaits_next(v, gate);
+    float y = v->type == 0 ? voice_next(s, v, gate) : v->type == ACID_LAYER_OFF ? 0.0f : plaits_next(v, gate);
     if (v->fade != 0) {
         y *= fade_step(s, v);
+    }
+    return y;
+}
+
+// Слой звучит: тип не OFF или ещё идёт уход в OFF. Выключенный не считается и в смесь не попадает.
+static int layer_on(const acid_slot_t *lv)
+{
+    return lv->type != ACID_LAYER_OFF || lv->fade != 0;
+}
+
+// Сэмпл слоя синта k, добавить к y. Время слоя идёт всегда: стек нот совпадает с синтом.
+static inline float layer_add(acid_synth_t *s, int k, float y)
+{
+    acid_slot_t *lv = &s->layer[k];
+    slot_tick(s, lv);
+    if (layer_on(lv)) {
+        y += s->layer_gain[k] * slot_next(s, lv, lv->nheld > 0);
     }
     return y;
 }
@@ -904,7 +939,7 @@ void acid_synth_render_slot(acid_synth_t *s, int k, float *out, size_t n)
     acid_slot_t *v = &s->slot[k];
     for (size_t i = 0; i < n; i++) {
         slot_tick(s, v);
-        out[i] = slot_next(s, v, v->nheld > 0);
+        out[i] = layer_add(s, k, slot_next(s, v, v->nheld > 0));
     }
 }
 
@@ -924,7 +959,7 @@ void acid_synth_render_src(acid_synth_t *s, acid_synth_src_t *src, size_t n)
     ACID_PROF_T(t);
     for (size_t i = 0; i < n; i++) {
         slot_tick(s, v);
-        src->y[i] = slot_next(s, v, v->nheld > 0);
+        src->y[i] = layer_add(s, 0, slot_next(s, v, v->nheld > 0));
         s->clock_now++;
         ACID_PROF_ADD(ACID_PROF_SYNTH1, t);
         src->kick[i] = s->kick_gain * s->kick_vel * acid_kick_next(&s->kick);
@@ -1033,10 +1068,11 @@ size_t acid_synth_export(const acid_synth_t *s, void *buf, size_t cap)
     uint8_t *b = buf;
     memcpy(b, BLOB_MAGIC, sizeof BLOB_MAGIC);
     b += sizeof BLOB_MAGIC;
-    for (int k = 0; k < ACID_SLOTS; k++) {
-        *b++ = (uint8_t)s->slot[k].sel_type;
-        memcpy(b, s->slot[k].knob, sizeof s->slot[k].knob);
-        b += sizeof s->slot[k].knob;
+    for (int k = 0; k < 2 * ACID_SLOTS; k++) {
+        const acid_slot_t *v = k < ACID_SLOTS ? &s->slot[k] : &s->layer[k - ACID_SLOTS];
+        *b++ = (uint8_t)v->sel_type;
+        memcpy(b, v->knob, sizeof v->knob);
+        b += sizeof v->knob;
     }
     memcpy(b, s->tonal.knob, sizeof s->tonal.knob);
     return ACID_SYNTH_BLOB;
@@ -1045,13 +1081,16 @@ size_t acid_synth_export(const acid_synth_t *s, void *buf, size_t cap)
 int acid_synth_import(acid_synth_t *s, const void *buf, size_t len)
 {
     const uint8_t *b = buf;
-    if (len != ACID_SYNTH_BLOB || memcmp(b, BLOB_MAGIC, sizeof BLOB_MAGIC) != 0) {
+    // Версия 2 (до слоёв): только синты, слои остаются как после init.
+    int v2 = len == BLOB_V2 && memcmp(b, BLOB_MAGIC_V2, sizeof BLOB_MAGIC_V2) == 0;
+    if (!v2 && (len != ACID_SYNTH_BLOB || memcmp(b, BLOB_MAGIC, sizeof BLOB_MAGIC) != 0)) {
         return 0;
     }
     b += sizeof BLOB_MAGIC;
-    for (int k = 0; k < ACID_SLOTS; k++) {
-        acid_slot_t *v = &s->slot[k];
-        v->sel_type = b[0] < ACID_TYPES ? b[0] : 0;
+    for (int k = 0; k < (v2 ? 1 : 2) * ACID_SLOTS; k++) {
+        acid_slot_t *v = k < ACID_SLOTS ? &s->slot[k] : &s->layer[k - ACID_SLOTS];
+        int top = k < ACID_SLOTS ? ACID_TYPES : ACID_TYPES + 1; // у слоя есть OFF
+        v->sel_type = b[0] < top ? b[0] : (k < ACID_SLOTS ? 0 : ACID_LAYER_OFF);
         memcpy(v->knob, b + 1, sizeof v->knob);
         b += 1 + sizeof v->knob;
         v->type = v->next_type = v->sel_type;

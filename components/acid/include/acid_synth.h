@@ -17,6 +17,7 @@
 #include "acid_tonal.h"
 
 #define ACID_TYPES (1 + ACID_PLAITS_MODELS) // 0 - наш 303, 1..24 - модели Plaits
+#define ACID_LAYER_OFF ACID_TYPES          // тип слоя «выкл» (у синтов его нет)
 #define ACID_KNOBS 16
 // Страницы ручек внутри: 0-9 штатные, 10-11 слои синтов; свои страницы - следом (acid_custom.h).
 // На BSP номера другие: свои 10-15, слои 16-17 - перевод только на границе (энкодер 1).
@@ -28,6 +29,7 @@
 // Синт-слот: тип синтеза, голоса 303 и Plaits, ручки по типам, стек нот.
 // Слот 0 - синт 1 (SEQ1), слот 1 - синт 2 (SEQ2).
 typedef struct {
+    int idx;           // синт 0 или 1 (у слоя - его синт): тональность, каналы
     int type;          // звучащий тип
     int sel_type;      // выбранный тип (звучит после ухода текущего)
     int next_type;     // куда переходим после ухода звука
@@ -84,6 +86,10 @@ enum { ACID_PAN_SYNTH1, ACID_PAN_SYNTH2, ACID_PAN_HAT, ACID_PAN_CLAP, ACID_PAN_S
 typedef struct {
     float sr;
     acid_slot_t slot[ACID_SLOTS];
+    // Слои: второй голос каждого синта на его нотах, в его шине (панорама, посыл, громкость MIX - общие).
+    // Слой 0 считается с синтом 1 (ядро 1), слой 1 - с синтом 2 (ядро 0). Тип ACID_LAYER_OFF не считается.
+    acid_slot_t layer[ACID_SLOTS];
+    float layer_gain[ACID_SLOTS]; // FX энкодеры 13-14
     acid_kick_t kick;
     acid_hat_t hat;
     acid_clap_t clap;
@@ -127,7 +133,7 @@ typedef struct {
 } acid_synth_t;
 
 // Память ручек для flash: метка, типы и сырые ручки обоих синтов.
-#define ACID_SYNTH_BLOB (4 + ACID_SLOTS * (1 + ACID_TYPES * ACID_KNOBS) + ACID_TONAL_KNOBS)
+#define ACID_SYNTH_BLOB (4 + 2 * ACID_SLOTS * (1 + ACID_TYPES * ACID_KNOBS) + ACID_TONAL_KNOBS) // синты, слои
 
 // Умолчания всех ручек, тишина до первой ноты.
 void acid_synth_init(acid_synth_t *s, float sr);

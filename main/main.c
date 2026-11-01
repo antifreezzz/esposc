@@ -249,9 +249,10 @@ static void synth_task(void *arg)
     s_bank = samples_part_open();
     // blob - ручки пользователя: из flash и после каждого сохранения. Демо их не трогает.
     acid_synth_init(&s_synth, (float)SR);
-    int blob_ok = store_load(STORE_KNOBS, blob, sizeof blob) == ACID_SYNTH_BLOB &&
-                  acid_synth_import(&s_synth, blob, sizeof blob);
+    size_t bn = store_load(STORE_KNOBS, blob, sizeof blob); // прежняя версия короче: import её переносит
+    int blob_ok = bn > 0 && acid_synth_import(&s_synth, blob, bn);
     if (blob_ok) {
+        acid_synth_export(&s_synth, blob, sizeof blob); // дальше blob - в нынешнем формате (enter_mode)
         ESP_LOGI(TAG, "knobs restored");
     }
     int custom_pending = 0, scene_pending = 0;
