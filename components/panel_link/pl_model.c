@@ -118,8 +118,13 @@ void pl_model_hello_sent(pl_model_t *m, uint32_t ms)
 int pl_model_local_set(pl_model_t *m, int page, int enc, int v)
 {
     if (m->have && is_user(page) && enc > 0 && enc < PL_KNOBS && (m->user_have >> (page - PL_USER_FIRST) & 1)) {
+        const pl_target_t *t = m->user_t[page - PL_USER_FIRST][enc];
         m->user_val[page - PL_USER_FIRST][enc] = (uint8_t)v;
         m->user_held[page - PL_USER_FIRST][enc] = 1;
+        int alias = t[0].pe != PL_NONE && (t[1].pe == PL_NONE) && t[0].lo == 0 && t[0].hi == 127;
+        if (alias && (t[0].pe >> 4) < PL_PAGES) {
+            m->raw[t[0].pe >> 4][t[0].pe & 15] = (uint8_t)v; // псевдоним показывает цель: двигаем её сразу
+        }
         return 1;
     }
     if (!m->have || page < 0 || page >= PL_PAGES || enc <= 0 || enc >= PL_KNOBS) {

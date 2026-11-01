@@ -238,6 +238,19 @@ TEST(test_local_set_user_needs_frame)
     CHECK(pl_model_local_set(&m, 16, 2, 40) == 0);
 }
 
+TEST(test_local_set_alias_moves_target)
+{
+    pl_model_init(&m);
+    linked();
+    custom(1, 2, 6, 3, 0, 127, 0); // псевдоним на синт 1, энкодер 4
+    CHECK(pl_model_local_set(&m, 11, 2, 40) == 1);
+    CHECK(m.raw[6][3] == 40); // экран показывает цель сразу, без ответа синта
+    custom(1, 2, 6, 3, 10, 50, 0); // макро
+    m.raw[6][3] = 7;
+    CHECK(pl_model_local_set(&m, 11, 2, 90) == 1);
+    CHECK(m.raw[6][3] == 7 && m.user_val[1][2] == 90); // цели макро двигает синт
+}
+
 TEST(test_scene_state_applied)
 {
     pl_model_init(&m);
@@ -264,6 +277,7 @@ int main(void)
     RUN(test_custom_wrong_len_skipped);
     RUN(test_user_knob_and_page_change);
     RUN(test_local_set_user_needs_frame);
+    RUN(test_local_set_alias_moves_target);
     RUN(test_scene_state_applied);
     TEST_MAIN_END();
 }
