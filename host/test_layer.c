@@ -182,6 +182,7 @@ static void load_n(acid_synth_t *s, float load, int n)
 TEST(test_guard_steps)
 {
     init2();
+    acid_synth_set_knob(&b, ACID_PAGE_LAYER1, 1, 0); // ступень 2 - только когда есть что глушить
     load_n(&b, 1.0f, 30);
     CHECK(b.tight == 1); // сначала перкуссия и тарелки
     load_n(&b, 1.0f, ACID_LOAD_STEP);
@@ -196,6 +197,7 @@ TEST(test_guard_steps)
 TEST(test_guard_jumps_on_overrun)
 {
     init2();
+    acid_synth_set_knob(&b, ACID_PAGE_LAYER1, 1, 0); // ступень 2 - только когда есть что глушить
     load_n(&b, 0.8f, 100);
     int n = 0;
     while (b.tight < 2 && n < 100) {
@@ -210,6 +212,7 @@ TEST(test_guard_jumps_on_overrun)
 TEST(test_guard_backoff)
 {
     init2();
+    acid_synth_set_knob(&b, ACID_PAGE_LAYER1, 1, 0); // ступень 2 - только когда есть что глушить
     load_n(&b, 1.4f, 20);
     CHECK(b.tight == 2);
     load_n(&b, 0.5f, ACID_LOAD_CALM + 10);
@@ -225,6 +228,16 @@ TEST(test_guard_backoff)
     load_n(&b, 1.4f, 20); // после полного успокоения - снова с обычного ожидания
     load_n(&b, 0.5f, ACID_LOAD_CALM + 10);
     CHECK(b.tight == 1);
+}
+
+// Слоёв нет: ступень 2 ничего не даёт, перкуссия возвращается как раньше через 0.5 с.
+TEST(test_guard_no_layers_stays_step1)
+{
+    init2();
+    load_n(&a, 1.4f, 100);
+    CHECK(a.tight == 1);
+    load_n(&a, 0.5f, ACID_LOAD_CALM + 10);
+    CHECK(a.tight == 0);
 }
 
 // Выход слоя (b минус a) и его худший скачок между соседними сэмплами.
@@ -285,6 +298,7 @@ TEST(test_layer_on_mid_note)
 
 int main(void)
 {
+    RUN(test_guard_no_layers_stays_step1);
     RUN(test_guard_jumps_on_overrun);
     RUN(test_guard_backoff);
     RUN(test_layer_on_mid_note);

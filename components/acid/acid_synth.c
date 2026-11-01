@@ -232,6 +232,8 @@ void acid_synth_set_bank(acid_synth_t *s, const acid_bank_t *b)
     s->bank = b;
 }
 
+static int layer_on(const acid_slot_t *lv);
+
 void acid_synth_set_load(acid_synth_t *s, float load)
 {
     // Одиночный тяжёлый блок буфер выхода переживёт, лавину даёт устойчивый перегруз: смотрим на среднее.
@@ -245,7 +247,8 @@ void acid_synth_set_load(acid_synth_t *s, float load)
             acid_perc_set_limit(&s->perc, 1);
             acid_cym_set_limit(&s->cym, 1);
         }
-        if (s->tight == 1 && (load >= ACID_LOAD_OVER || ++s->hot >= ACID_LOAD_STEP)) {
+        int layers = layer_on(&s->layer[0]) || layer_on(&s->layer[1]); // без слоёв ступени 2 нечего глушить
+        if (s->tight == 1 && layers && (load >= ACID_LOAD_OVER || ++s->hot >= ACID_LOAD_STEP)) {
             // Одного голоса перкуссии не хватило (или и ждать нечего): слои приглушаются (layer_add).
             // Повтор без полного успокоения - слои возвращались зря: ждать вдвое дольше, без качелей.
             s->tight = 2;
