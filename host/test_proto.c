@@ -159,6 +159,31 @@ TEST(test_bad_header_resyncs_now)
     }
 }
 
+TEST(test_new_frame_sizes)
+{
+    CHECK(sizeof(pl_custom_t) == 198);
+    CHECK(sizeof(pl_custom_edit_t) == 6);
+    CHECK(sizeof(pl_scene_t) == 3);
+    CHECK(sizeof(pl_scene_state_t) == 3);
+    static pl_custom_t c;
+    memset(&c, PL_NONE, sizeof c);
+    c.up = 4;
+    c.val[14] = 99;
+    uint8_t f[PL_FRAME_MAX];
+    start();
+    feed(f, pl_encode(PL_CUSTOM, &c, sizeof c, f));
+    CHECK(frames == 1 && got_type == PL_CUSTOM && got_len == sizeof c);
+    CHECK(got_pl[0] == 4 && memcmp(got_pl, &c, sizeof c) == 0);
+    pl_custom_edit_t e = {1, 2, 0, 6 << 4 | 2, 0, 127};
+    pl_scene_t sc = {1, 7, 4};
+    pl_scene_state_t st = {0x81, 7, 2};
+    start();
+    feed(f, pl_encode(PL_CUSTOM_EDIT, &e, sizeof e, f));
+    feed(f, pl_encode(PL_SCENE, &sc, sizeof sc, f));
+    feed(f, pl_encode(PL_SCENE_STATE, &st, sizeof st, f));
+    CHECK(frames == 3 && got_type == PL_SCENE_STATE && got_pl[0] == 0x81);
+}
+
 int main(void)
 {
     RUN(test_roundtrip);
@@ -168,5 +193,6 @@ int main(void)
     RUN(test_back_to_back);
     RUN(test_swallowed_two_frames);
     RUN(test_bad_header_resyncs_now);
+    RUN(test_new_frame_sizes);
     TEST_MAIN_END();
 }

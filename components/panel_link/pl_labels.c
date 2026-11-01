@@ -269,3 +269,27 @@ const char *pl_page_summary(int page, const uint8_t page_raw[16], char buf[24])
         return "";
     }
 }
+
+const char *pl_user_name(int up)
+{
+    static const char *const NAME[PL_USER_PAGES] = {"USER 1", "USER 2", "USER 3", "USER 4", "USER 5", "USER 6"};
+    return up >= 0 && up < PL_USER_PAGES ? NAME[up] : NULL;
+}
+
+const char *pl_slot_label(const pl_target_t t[PL_TARGETS], const uint8_t raw[PL_PAGES][PL_KNOBS], char buf[20])
+{
+    int n = 0;
+    while (n < PL_TARGETS && t[n].pe != PL_NONE) {
+        n++;
+    }
+    int page = t[0].pe >> 4, enc = t[0].pe & 15;
+    const char *first = n && page < PL_PAGES ? pl_knob_label(page, enc, raw[page]) : NULL;
+    if (!first) {
+        return NULL;
+    }
+    if (n == 1) {
+        return first;
+    }
+    snprintf(buf, 20, "%s +%d", first, n - 1);
+    return buf;
+}

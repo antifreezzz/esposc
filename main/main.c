@@ -4,6 +4,7 @@
 #include "acid_demo.h"
 #include "acid_link.h"
 #include "acid_prof.h"
+#include "acid_scene.h"
 #include "audio_out.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -32,6 +33,8 @@ static acid_synth_t s_synth;
 static acid_demo_t s_demo;
 static volatile int s_demo_on; // играет демо: события от него, MIDI от BSP не слушаем
 static acid_link_t s_link;      // панель: подхват BSP, глушение ручек демо
+static acid_custom_t s_custom;  // свои страницы: переживают смену демо <-> live
+static acid_scene_t s_scene;    // сцены: так же
 static const acid_bank_t *s_bank; // тарелки из флэша, NULL - молчат
 
 // Ядро 0 на каждый кусок c: тарелки и перкуссия куска c (ядро 1 тем временем считает синт 1 и ударку c),
@@ -73,6 +76,50 @@ static void slot1_task(void *arg)
 
 // Блок кусками по CHUNK, события MIDI (BSP или демо) перед каждым куском. Пока ядро 0 занято, ядро 1 трогает
 // только своё состояние (синт 1, ударка, потом смесь и эффекты); к концу куска ядро 0 свободно.
+// Событие связки панели и следом цели слота своей страницы.
+static void to_panel(int n, acid_link_ev_t *lev)
+{
+    if (n) {
+        panel_uart_send_knob(lev);
+        while (acid_link_take(&s_link, lev)) {
+            panel_uart_send_knob(lev);
+        }
+    }
+}
+
+// Правки своих страниц и сцены с панели, шаг перехода сцены. Перед каждым куском, как события MIDI.
+static void custom_and_scenes(void)
+{
+    static uint8_t last_used, last_state;
+    static int last_cur = -1;
+    pl_custom_edit_t ed;
+    while (panel_uart_receive_edit(&ed)) {
+        int page = ed.pe == PL_NONE ? ACID_CUSTOM_NONE : ed.pe >> 4;
+        acid_link_custom_edit(&s_link, ed.up, ed.enc, ed.idx, page, ed.pe & 15, ed.lo, ed.hi);
+    }
+    pl_scene_t sq;
+    while (panel_uart_receive_scene(&sq)) {
+        if (sq.op == PL_SCENE_STORE) {
+            acid_scene_store(&s_scene, sq.n, &s_synth, &s_custom);
+        } else {
+            acid_scene_recall(&s_scene, sq.n, sq.bars);
+        }
+    }
+    if (acid_scene_step(&s_scene, &s_link, &s_synth)) {
+        panel_uart_snapshot_due(); // переход: снимок не чаще 100 мс и в конце
+    }
+    if (s_link.custom_due) {
+        panel_uart_custom_due(s_link.custom_due);
+        s_link.custom_due = 0;
+    }
+    if (s_scene.used != last_used || s_scene.cur != last_cur || s_scene.state != last_state) {
+        last_used = s_scene.used;
+        last_cur = s_scene.cur;
+        last_state = (uint8_t)s_scene.state;
+        panel_uart_scene_due();
+    }
+}
+
 static void render_block(float *l, float *r)
 {
     static acid_midi_event_t demo_ev[DEMO_EVENTS];
@@ -81,31 +128,28 @@ static void render_block(float *l, float *r)
         acid_midi_event_t ev;
         acid_link_ev_t lev;
         while (midi_in_receive(&ev)) {
-            if (!s_demo_on && acid_link_midi(&s_link, &s_synth, &ev, ACID_SRC_BSP, &lev)) {
-                panel_uart_send_knob(&lev);
+            if (!s_demo_on) {
+                to_panel(acid_link_midi(&s_link, &s_synth, &ev, ACID_SRC_BSP, &lev), &lev);
             }
         }
         if (s_demo_on) {
             int n = acid_demo_events(&s_demo, demo_ev, DEMO_EVENTS);
             for (int i = 0; i < n; i++) {
-                if (acid_link_midi(&s_link, &s_synth, &demo_ev[i], ACID_SRC_DEMO, &lev)) {
-                    panel_uart_send_knob(&lev);
-                }
+                to_panel(acid_link_midi(&s_link, &s_synth, &demo_ev[i], ACID_SRC_DEMO, &lev), &lev);
             }
         }
         pl_set_t set;
         while (panel_uart_receive(&set)) {
-            if (acid_link_panel_set(&s_link, &s_synth, set.page, set.enc, set.value, &lev)) {
-                panel_uart_send_knob(&lev);
-            }
+            to_panel(acid_link_panel_set(&s_link, &s_synth, set.page, set.enc, set.value, &lev), &lev);
         }
         int page;
         while (panel_uart_receive_page(&page)) {
             // В демо страницы листает само демо: экран их не трогает, иначе ручки демо ушли бы не туда.
-            if (!s_demo_on && acid_link_panel_page(&s_link, &s_synth, page, &lev)) {
-                panel_uart_send_knob(&lev);
+            if (!s_demo_on) {
+                to_panel(acid_link_panel_page(&s_link, &s_synth, page, &lev), &lev);
             }
         }
+        custom_and_scenes();
         if (s_link.snapshot_due) {
             s_link.snapshot_due = 0; // сменился тип синта: у типа своя память, страница новая целиком
             panel_uart_snapshot_due();
@@ -155,7 +199,27 @@ static void enter_mode(int live, const uint8_t *blob, int blob_ok)
         s_demo_on = 1;
     }
     acid_link_init(&s_link);
+    acid_link_use_custom(&s_link, &s_custom);
+    s_scene.state = 0; // переход прежнего режима не доигрываем: синт с нуля
     panel_uart_snapshot_due(); // синт с нуля: панели всё заново
+}
+
+static uint8_t s_cblob[ACID_CUSTOM_BLOB];
+static uint8_t s_sblob[ACID_SCENE_BLOB];
+
+// До старта связи с панелью: она шлёт кадры своих страниц из s_custom.
+static void load_user_data(void)
+{
+    acid_custom_init(&s_custom);
+    acid_scene_init(&s_scene);
+    if (store_load(STORE_CUSTOM, s_cblob, sizeof s_cblob) == ACID_CUSTOM_BLOB &&
+        acid_custom_import(&s_custom, s_cblob, sizeof s_cblob)) {
+        ESP_LOGI(TAG, "custom pages restored");
+    }
+    if (store_load(STORE_SCENES, s_sblob, sizeof s_sblob) == ACID_SCENE_BLOB &&
+        acid_scene_import(&s_scene, s_sblob, sizeof s_sblob)) {
+        ESP_LOGI(TAG, "scenes restored (%02x)", s_scene.used);
+    }
 }
 
 static void synth_task(void *arg)
@@ -176,10 +240,12 @@ static void synth_task(void *arg)
     s_bank = samples_part_open();
     // blob - ручки пользователя: из flash и после каждого сохранения. Демо их не трогает.
     acid_synth_init(&s_synth, (float)SR);
-    int blob_ok = store_load(blob, sizeof blob) == ACID_SYNTH_BLOB && acid_synth_import(&s_synth, blob, sizeof blob);
+    int blob_ok = store_load(STORE_KNOBS, blob, sizeof blob) == ACID_SYNTH_BLOB &&
+                  acid_synth_import(&s_synth, blob, sizeof blob);
     if (blob_ok) {
         ESP_LOGI(TAG, "knobs restored");
     }
+    int custom_pending = 0, scene_pending = 0;
     enter_mode(0, blob, blob_ok);
     if (BENCH) {
         ESP_LOGW(TAG, "STRESS BENCH build: stress song, BSP ignored, overload guard off");
@@ -229,11 +295,25 @@ static void synth_task(void *arg)
         // Сменили тип синтеза: память ручек пишем, когда выход помолчит (flash стопорит кэш).
         // Ручки демо не сохраняем.
         save_pending |= acid_synth_take_save(&s_synth) && live;
+        // Свои страницы и сцены - действия пользователя, пишутся и в демо.
+        custom_pending |= s_custom.save;
+        scene_pending |= s_scene.save;
+        s_custom.save = s_scene.save = 0;
         quiet = block_peak(out_l, out_r) < QUIET_PEAK ? quiet + 1 : 0;
-        if (save_pending && quiet >= QUIET_BLOCKS) {
-            store_save(blob, acid_synth_export(&s_synth, blob, sizeof blob));
-            blob_ok = 1;
-            save_pending = 0;
+        if (quiet >= QUIET_BLOCKS) {
+            if (save_pending) {
+                store_save(STORE_KNOBS, blob, acid_synth_export(&s_synth, blob, sizeof blob));
+                blob_ok = 1;
+                save_pending = 0;
+            }
+            if (custom_pending) {
+                store_save(STORE_CUSTOM, s_cblob, acid_custom_export(&s_custom, s_cblob, sizeof s_cblob));
+                custom_pending = 0;
+            }
+            if (scene_pending) {
+                store_save(STORE_SCENES, s_sblob, acid_scene_export(&s_scene, s_sblob, sizeof s_sblob));
+                scene_pending = 0;
+            }
         }
 
         if (audio_out_write(pcm, BLOCK, 50) == 0) {
@@ -279,9 +359,10 @@ static void synth_task(void *arg)
 void app_main(void)
 {
     ESP_ERROR_CHECK(store_start());
+    load_user_data();
     usb_host_start();
     ESP_ERROR_CHECK(midi_in_start());
     ESP_ERROR_CHECK(audio_out_start());
-    ESP_ERROR_CHECK(panel_uart_start(&s_synth, &s_link, &s_demo_on));
+    ESP_ERROR_CHECK(panel_uart_start(&s_synth, &s_link, &s_custom, &s_scene, &s_demo_on));
     xTaskCreatePinnedToCore(synth_task, "synth", 4096, NULL, 6, &s_synth_task, 1);
 }

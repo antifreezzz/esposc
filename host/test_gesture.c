@@ -168,6 +168,18 @@ TEST(test_grid_cell)
     CHECK(pl_grid_cell(400, 440) == 14); // правый низ: 15-я ручка (энкодер 16)
 }
 
+TEST(test_press_tap_includes_long_press)
+{
+    // Палец дольше PL_HOLD_MS - это захват, но для кнопок и плиток отпускание после него - тоже тап.
+    pl_press_t p = {0};
+    pl_press_step(&p, 1, 100, 100, 0);
+    CHECK(pl_press_step(&p, 1, 100, 100, PL_HOLD_MS + 10) == PL_PRESS_HOLD);
+    int ev = pl_press_step(&p, 0, 0, 0, 200);
+    CHECK(ev == PL_PRESS_RELEASE && pl_press_tap(ev));
+    CHECK(pl_press_tap(PL_PRESS_TAP) && pl_press_tap(PL_PRESS_END));
+    CHECK(!pl_press_tap(PL_PRESS_NONE) && !pl_press_tap(PL_PRESS_HOLD));
+}
+
 int main(void)
 {
     RUN(test_sector_clock);
@@ -181,5 +193,6 @@ int main(void)
     RUN(test_press_tap);
     RUN(test_press_smear_ends);
     RUN(test_grid_cell);
+    RUN(test_press_tap_includes_long_press);
     TEST_MAIN_END();
 }

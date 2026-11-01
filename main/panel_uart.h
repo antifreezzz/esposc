@@ -1,5 +1,6 @@
 #pragma once
 #include "acid_link.h"
+#include "acid_scene.h"
 #include "esp_err.h"
 #include "pl_proto.h"
 
@@ -8,7 +9,9 @@
 
 // Синт и связку задача читает без лока для снимка: устаревшая цифра на экране до следующего события, звук не трогает.
 // demo_on - режим для снимка (1 демо).
-esp_err_t panel_uart_start(const acid_synth_t *s, const acid_link_t *l, const volatile int *demo_on);
+// Свои страницы и сцены (c, sc) - так же для кадров PL_CUSTOM и PL_SCENE_STATE.
+esp_err_t panel_uart_start(const acid_synth_t *s, const acid_link_t *l, const acid_custom_t *c, const acid_scene_t *sc,
+                           const volatile int *demo_on);
 // Правка с панели: 1 если есть (без ожидания).
 int panel_uart_receive(pl_set_t *out);
 // На панели открыли страницу: 1 если есть (без ожидания).
@@ -17,3 +20,11 @@ int panel_uart_receive_page(int *page);
 void panel_uart_send_knob(const acid_link_ev_t *ev);
 // Отправить панели снимок при первой возможности.
 void panel_uart_snapshot_due(void);
+// Правка цели своей страницы с панели: 1 если есть (без ожидания).
+int panel_uart_receive_edit(pl_custom_edit_t *out);
+// Вызов или запись сцены с панели: 1 если есть (без ожидания).
+int panel_uart_receive_scene(pl_scene_t *out);
+// Отправить кадры PL_CUSTOM своих страниц из маски (бит up) при первой возможности.
+void panel_uart_custom_due(unsigned mask);
+// Отправить состояние сцен при первой возможности.
+void panel_uart_scene_due(void);

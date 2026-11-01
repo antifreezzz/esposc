@@ -11,6 +11,10 @@
 #define PL_KNOBS 16
 #define PL_PAYLOAD_MAX 255
 #define PL_FRAME_MAX (PL_PAYLOAD_MAX + 4)
+#define PL_USER_PAGES 6 // свои страницы 10..15
+#define PL_USER_FIRST 10
+#define PL_TARGETS 4
+#define PL_NONE 0xFF
 
 enum {
     PL_SNAPSHOT = 1, // синт -> панель: всё состояние
@@ -18,6 +22,10 @@ enum {
     PL_SET = 3,      // панель -> синт: поставить ручку
     PL_HELLO = 4,    // панель -> синт: пришли снимок
     PL_PAGE = 5,     // панель -> синт: открыта страница, энкодеры BSP крутят её (1 байт)
+    PL_CUSTOM = 6,      // синт -> панель: определения и значения одной своей страницы
+    PL_CUSTOM_EDIT = 7, // панель -> синт: поставить или убрать цель слота
+    PL_SCENE = 8,       // панель -> синт: вызвать или записать сцену
+    PL_SCENE_STATE = 9, // синт -> панель: занятые слоты, текущая сцена, переход
 };
 
 // Нагрузки - только байты, без выравнивания.
@@ -36,6 +44,31 @@ typedef struct {
 typedef struct {
     uint8_t page, enc, value;
 } pl_set_t;
+
+// Цель слота своей страницы: pe = страница << 4 | энкодер (с 0), PL_NONE - пусто.
+typedef struct {
+    uint8_t pe, lo, hi;
+} pl_target_t;
+
+typedef struct {
+    uint8_t up;                              // своя страница 0..5
+    pl_target_t t[PL_KNOBS - 1][PL_TARGETS]; // слоты энкодеров 1..15 (индексы)
+    uint8_t val[PL_KNOBS - 1];               // значение слота (у псевдонима - цели)
+    uint8_t held[2];                         // бит enc - 1: слот ждёт подхвата BSP
+} pl_custom_t;
+
+typedef struct {
+    uint8_t up, enc, idx, pe, lo, hi; // pe PL_NONE - убрать цель idx
+} pl_custom_edit_t;
+
+enum { PL_SCENE_RECALL, PL_SCENE_STORE };
+typedef struct {
+    uint8_t op, n, bars;
+} pl_scene_t;
+
+typedef struct {
+    uint8_t used, cur, state; // cur PL_NONE - не вызывали; state 0 нет, 1 ждём такт, 2 идёт
+} pl_scene_state_t;
 
 // Кадр в out (не меньше 4 + len), возвращает его длину; len больше PL_PAYLOAD_MAX - 0.
 size_t pl_encode(uint8_t type, const void *payload, size_t len, uint8_t *out);

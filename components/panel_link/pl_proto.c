@@ -38,6 +38,10 @@ static int payload_len(uint8_t type)
     case PL_SET: return (int)sizeof(pl_set_t);
     case PL_HELLO: return 0;
     case PL_PAGE: return 1;
+    case PL_CUSTOM: return (int)sizeof(pl_custom_t);
+    case PL_CUSTOM_EDIT: return (int)sizeof(pl_custom_edit_t);
+    case PL_SCENE: return (int)sizeof(pl_scene_t);
+    case PL_SCENE_STATE: return (int)sizeof(pl_scene_state_t);
     default: return -1;
     }
 }

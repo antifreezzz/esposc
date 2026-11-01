@@ -118,3 +118,8 @@ void pl_press_last(const pl_press_t *p, int *x, int *y)
     *x = p->x1;
     *y = p->y1;
 }
+
+int pl_press_tap(int ev)
+{
+    return ev == PL_PRESS_TAP || ev == PL_PRESS_END || ev == PL_PRESS_RELEASE;
+}
