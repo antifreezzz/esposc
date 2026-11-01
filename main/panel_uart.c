@@ -74,6 +74,15 @@ void panel_uart_send_knob(const acid_link_ev_t *ev)
     }
 }
 
+static pl_load_t s_load;
+static volatile int s_load_due;
+
+void panel_uart_send_load(const pl_load_t *l)
+{
+    s_load = *l; // 6 байт, рваное значение - одна неверная цифра на полсекунды
+    s_load_due = 1;
+}
+
 void panel_uart_snapshot_due(void)
 {
     s_snapshot_due = 1;
@@ -171,6 +180,11 @@ static void link_task(void *arg)
         if (s_scene_due) {
             s_scene_due = 0;
             send_scene_state();
+        }
+        if (s_load_due) {
+            s_load_due = 0;
+            pl_load_t l = s_load;
+            send(PL_LOAD, &l, sizeof l);
         }
         acid_link_ev_t ev;
         while (xQueueReceive(s_knob_q, &ev, 0) == pdTRUE) {

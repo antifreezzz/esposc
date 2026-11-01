@@ -1,4 +1,5 @@
 #include <math.h>
+#include <string.h>
 
 #include "acid.h"
 #include "acid_demo.h"
@@ -13,6 +14,7 @@
 #include "freertos/task.h"
 #include "midi_in.h"
 #include "panel_uart.h"
+#include "pl_load.h"
 #include "samples_part.h"
 #include "store.h"
 #include "usb_host_task.h"
@@ -47,6 +49,7 @@ static TaskHandle_t s_synth_task;
 static TaskHandle_t s_slot1_task;
 static int64_t s_slot1_worst_us;
 static int64_t s_slot1_sum_us;
+static pl_load_acc_t s_load; // период индикатора загрузки панели: ядро 0 копит в slot1_task, ядро 1 - в цикле
 
 // Стенд замеров (сборка с -DESPOSC_STRESS=1): вместо демо стресс-песня, BSP не слушаем, защита от перегруза
 // выключена, чтобы видеть полную цену худшего случая.
@@ -70,6 +73,9 @@ static void slot1_task(void *arg)
         int64_t dt = esp_timer_get_time() - t0;
         s_slot1_worst_us = dt > s_slot1_worst_us ? dt : s_slot1_worst_us;
         s_slot1_sum_us += dt;
+        s_load.c0_sum_us += (uint32_t)dt;
+        s_load.c0_worst_us = (uint32_t)dt > s_load.c0_worst_us ? (uint32_t)dt : s_load.c0_worst_us;
+        s_load.chunks++;
         xTaskNotifyGive(s_synth_task);
     }
 }
@@ -233,6 +239,8 @@ static void synth_task(void *arg)
     int64_t worst_us = 0, sum_us = 0;
     int blocks = 0;
     int64_t next_stats = esp_timer_get_time() + STATS_PERIOD_US;
+    int64_t next_load = esp_timer_get_time() + PL_LOAD_MS * 1000;
+    uint32_t load_underruns = 0;
     int live = 0;
     int fade = 0; // блоков ухода громкости до смены режима
     int save_pending = 0;
@@ -286,6 +294,9 @@ static void synth_task(void *arg)
         worst_us = dt > worst_us ? dt : worst_us;
         sum_us += dt;
         blocks++;
+        s_load.c1_sum_us += (uint32_t)dt;
+        s_load.c1_worst_us = (uint32_t)dt > s_load.c1_worst_us ? (uint32_t)dt : s_load.c1_worst_us;
+        s_load.blocks++;
         // Защита от лавины: тяжёлый блок - перкуссия и тарелки на одном голосе, пока не отпустит.
         int was_tight = s_synth.tight;
         acid_synth_set_load(&s_synth, BENCH ? 0.0f : (float)dt / (float)BLOCK_US);
@@ -322,6 +333,17 @@ static void synth_task(void *arg)
             vTaskDelay(pdMS_TO_TICKS(10));
         }
 
+        if (t0 >= next_load) {
+            // Панели - загрузка за полсекунды. Счётчики ядра 0 сбрасываются между его кусками: ядро 0 сейчас ждёт.
+            uint32_t u = audio_out_underruns();
+            s_load.underruns = u - load_underruns;
+            load_underruns = u;
+            pl_load_t l;
+            pl_load_pack(&l, &s_load, s_synth.tight);
+            panel_uart_send_load(&l);
+            memset(&s_load, 0, sizeof s_load);
+            next_load = t0 + PL_LOAD_MS * 1000;
+        }
         if (t0 >= next_stats) {
             uint32_t u = audio_out_underruns();
             int64_t mean_us = blocks ? sum_us / blocks : 0;

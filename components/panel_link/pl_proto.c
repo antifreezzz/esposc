@@ -1,5 +1,7 @@
 #include "pl_proto.h"
 
+#include "pl_load.h"
+
 #include <string.h>
 
 static uint8_t crc8(uint8_t c, const uint8_t *p, size_t n)
@@ -42,6 +44,7 @@ static int payload_len(uint8_t type)
     case PL_CUSTOM_EDIT: return (int)sizeof(pl_custom_edit_t);
     case PL_SCENE: return (int)sizeof(pl_scene_t);
     case PL_SCENE_STATE: return (int)sizeof(pl_scene_state_t);
+    case PL_LOAD: return (int)sizeof(pl_load_t);
     default: return -1;
     }
 }

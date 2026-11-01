@@ -2,6 +2,7 @@
 #include "acid_link.h"
 #include "acid_scene.h"
 #include "esp_err.h"
+#include "pl_load.h"
 #include "pl_proto.h"
 
 // Связь с панелью Guition по UART1 (IO17 TX, IO18 RX, 1 Мбод): кадры pl_proto, своя задача на ядре 0.
@@ -28,3 +29,5 @@ int panel_uart_receive_scene(pl_scene_t *out);
 void panel_uart_custom_due(unsigned mask);
 // Отправить состояние сцен при первой возможности.
 void panel_uart_scene_due(void);
+// Загрузка ядер для панели: последнее значение уходит при следующем обороте задачи связи (новое затирает).
+void panel_uart_send_load(const pl_load_t *l);
