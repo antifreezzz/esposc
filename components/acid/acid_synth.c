@@ -62,6 +62,19 @@ static const uint8_t PAN_DEFAULT[ACID_PANS] = {64, 64, 80, 48, 64};
 #define TYPE_ENC 1       // энкодер 2 на странице синта
 static const uint8_t BLOB_MAGIC[4] = {'A', 'S', '5', 2}; // 2: + ручки слоя тональности
 
+// Сырые значения ручек после init для панели: CC, ближайшие к умолчаниям (обратные к lin/expo, округлено).
+// По индексу энкодера с 0; страницы 3-7 и 9 берут значения из своих knob[], здесь не используются.
+static const uint8_t RAW_DEFAULT[PAGES][ACID_KNOBS] = {
+    [0] = {0, 127, 54, 85, 85, 92, 53, 64, 68, 0, 60, 64, 0, 64, 64, 0},
+    [1] = {0, 55, 42, 76, 35, 78, 64, 64, 55, 59, 48, 76, 54, 80, 48, 64},
+    [2] = {0, 28, 127, 64, 64, 35, 127, 64, 64, 40, 100, 0, 0, 0, 0, 0},
+    [8] = {0, 0, 0, 0, 0, 0, 2, 53, 83, 0, 0, 127, 0, 0, 0, 0},
+    [9] = {0, 0, 4, 0, 0, 1, 0, 0, 64, 64, 64, 64, 64, 64, 64, 64},
+};
+// Нетронутые ручки синта по типу: 303 и Plaits (перегруз 0, тон 64, вой 0 у обоих).
+static const uint8_t RAW_303[ACID_KNOBS] = {0, 0, 69, 111, 64, 60, 51, 0, 67, 64, 0, 0, 0, 0, 64, 0};
+static const uint8_t RAW_PLAITS[ACID_KNOBS] = {0, 0, 64, 64, 64, 38, 64, 67, 64, 64, 64, 64, 68, 0, 64, 0};
+
 static void type_defaults(acid_synth_t *s, acid_slot_t *v);
 
 static void slot_init(acid_slot_t *v, float sr, int type)
@@ -171,6 +184,7 @@ void acid_synth_init(acid_synth_t *s, float sr)
     for (int w = 0; w < ACID_CYM_N; w++) {
         s->cym.gain[w] = CYM_GAIN_MAX * (float)CYM_KNOB[w] / 127.0f;
     }
+    memcpy(s->raw, RAW_DEFAULT, sizeof s->raw);
     s->page = PAGE_SYNTH1;
 }
 
@@ -572,6 +586,15 @@ static void page_fx(acid_synth_t *s, int slot, int v)
     }
 }
 
+// Списки синта: значение вне списка звук не меняет и не запоминается (зеркало панели показывает действующее).
+static int synth_knob_ok(int type, int slot, int v)
+{
+    if (slot == (type == 0 ? 9 : 8)) {
+        return v >= 52 && v <= 76; // transpose
+    }
+    return !(type == 0 && slot == 7 && v > 1); // wave 303
+}
+
 // Страница синта: энкодер 2 - тип синтеза, дальше ручки типа (запоминаются по типам).
 static void page_synth(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
 {
@@ -579,12 +602,47 @@ static void page_synth(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
         if (v < ACID_TYPES) {
             type_request(sl, v); // значение на экране = номер типа, остальное игнор
         }
-    } else if (slot > TYPE_ENC) {
+    } else if (slot > TYPE_ENC && synth_knob_ok(sl->sel_type, slot, v)) {
         // Ручка - типу на экране. Если он ещё не зазвучал (уходит прежний), применится при переключении.
         sl->knob[sl->sel_type][slot] = (uint8_t)v;
         if (sl->sel_type == sl->type) {
             knob_apply(s, sl, slot, v);
         }
+    }
+}
+
+// Списки страниц 0-2 и 8: значение вне списка ручку не меняет.
+static int raw_ok(int page, int slot, int v)
+{
+    if (page == PAGE_FX) {
+        return !((slot == 6 || slot == 9) && v > 4) && !(slot == 10 && v > 2);
+    }
+    return 1;
+}
+
+// Энкодер slot (с 1) на странице page, как будто BSP стоит на ней.
+static void apply_page(acid_synth_t *s, int page, int slot, int v)
+{
+    if (page <= PAGE_DRUMS2 || page == PAGE_FX) {
+        if (raw_ok(page, slot, v)) {
+            s->raw[page][slot] = (uint8_t)v;
+        }
+    }
+    if (page == 0) {
+        page_mix(s, slot, v);
+    } else if (page == 1) {
+        page_drums(s, slot, v);
+    } else if (page == PAGE_DRUMS2) {
+        page_drums2(s, slot, v);
+    } else if (page >= PAGE_TOMS && page <= PAGE_COW) {
+        acid_perc_set(&s->perc, page - PAGE_TOMS, slot - 1, v); // энкодер 2 - первая ручка
+    } else if (page == PAGE_FX) {
+        page_fx(s, slot, v);
+    } else if (page == PAGE_TONAL) {
+        acid_tonal_set(&s->tonal, slot, v);
+        s->save = 1; // квадрат - часть композиции, переживает перезагрузку
+    } else {
+        page_synth(s, &s->slot[page - PAGE_SYNTH1], slot, v);
     }
 }
 
@@ -600,22 +658,38 @@ static void control_change(acid_synth_t *s, int num, int v)
         if (v < PAGES) {
             s->page = v; // значение на экране BSP - номер страницы, остальное не страница
         }
-    } else if (s->page == 0) {
-        page_mix(s, slot, v);
-    } else if (s->page == 1) {
-        page_drums(s, slot, v);
-    } else if (s->page == PAGE_DRUMS2) {
-        page_drums2(s, slot, v);
-    } else if (s->page >= PAGE_TOMS && s->page <= PAGE_COW) {
-        acid_perc_set(&s->perc, s->page - PAGE_TOMS, slot - 1, v); // энкодер 2 - первая ручка
-    } else if (s->page == PAGE_FX) {
-        page_fx(s, slot, v);
-    } else if (s->page == PAGE_TONAL) {
-        acid_tonal_set(&s->tonal, slot, v);
-        s->save = 1; // квадрат - часть композиции, переживает перезагрузку
-    } else {
-        page_synth(s, &s->slot[s->page - PAGE_SYNTH1], slot, v);
+    } else if (slot > 0) {
+        apply_page(s, s->page, slot, v);
     }
+}
+
+void acid_synth_set_knob(acid_synth_t *s, int page, int enc, int v)
+{
+    if (page >= 0 && page < PAGES && enc > 0 && enc < ACID_KNOBS && v >= 0 && v <= 127) {
+        apply_page(s, page, enc, v);
+    }
+}
+
+int acid_synth_knob(const acid_synth_t *s, int page, int enc)
+{
+    if (page < 0 || page >= PAGES || enc < 0 || enc >= ACID_KNOBS) {
+        return 0;
+    }
+    if (page >= PAGE_TOMS && page <= PAGE_COW) {
+        return enc > 0 ? s->perc.inst[page - PAGE_TOMS].knob[enc - 1] : 0;
+    }
+    if (page == PAGE_TONAL) {
+        return s->tonal.knob[enc] != KNOB_NONE ? s->tonal.knob[enc] : RAW_DEFAULT[PAGE_TONAL][enc];
+    }
+    if (page == PAGE_SYNTH1 || page == PAGE_SYNTH1 + 1) {
+        const acid_slot_t *sl = &s->slot[page - PAGE_SYNTH1];
+        if (enc == TYPE_ENC) {
+            return sl->sel_type;
+        }
+        uint8_t k = sl->knob[sl->sel_type][enc];
+        return k != KNOB_NONE ? k : (sl->sel_type == 0 ? RAW_303 : RAW_PLAITS)[enc];
+    }
+    return s->raw[page][enc];
 }
 
 // Граница шага слоя: звучащие ноты синтов по режиму энкодера 6, свежая нота - сразу на новый шаг.
