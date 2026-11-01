@@ -295,6 +295,29 @@ TEST(test_custom_edit_marks_due)
     CHECK(acid_link_custom_edit(&l, 2, 3, 0, 6, 1, 0, 127) == 0);
 }
 
+TEST(test_targets_do_not_toast)
+{
+    reset_custom();
+    acid_custom_edit(&c, 0, 2, 0, 6, 2, 0, 127);
+    acid_custom_edit(&c, 0, 2, 1, 0, 1, 0, 127);
+    bsp(1, 10);
+    bsp(3, 50);
+    CHECK(ev.page == 10 && ev.src == ACID_SRC_BSP); // всплывашка - слот своей страницы
+    while (take()) {
+        CHECK(ev.src != ACID_SRC_BSP); // цели - отражение, не поворот на их странице
+    }
+}
+
+TEST(test_rejected_edit_resyncs_panel)
+{
+    reset_custom();
+    CHECK(acid_link_custom_edit(&l, 3, 2, 2, 0, 1, 0, 127) == 0); // idx 2 при пустом слоте
+    CHECK(l.custom_due == (1 << 3)); // панели правду, иначе её редактор застрянет на чужой картине
+    l.custom_due = 0;
+    CHECK(acid_link_custom_edit(&l, 9, 2, 0, 0, 1, 0, 127) == 0);
+    CHECK(l.custom_due == 0);
+}
+
 int main(void)
 {
     RUN(test_pickup_blocks_until_cross);
@@ -317,5 +340,7 @@ int main(void)
     RUN(test_link_init_keeps_custom);
     RUN(test_page_reports_user);
     RUN(test_custom_edit_marks_due);
+    RUN(test_targets_do_not_toast);
+    RUN(test_rejected_edit_resyncs_panel);
     TEST_MAIN_END();
 }

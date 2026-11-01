@@ -95,6 +95,9 @@ static int prepare(acid_scene_t *sc, acid_link_t *l, const acid_synth_t *s)
                 if (!acid_custom_is_alias(c, u, e)) {
                     c->val[u][e] = sc->user[sc->cur][u][e]; // цели и так из сцены: макро их не двигает
                 }
+                if (acid_custom_count(c, u, e)) {
+                    l->held[ACID_USER_FIRST + u][e] = 1; // BSP стоит иначе: подхват, как у штатных ручек
+                }
             }
         }
         c->save = 1;

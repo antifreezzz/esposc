@@ -39,11 +39,12 @@ int acid_link_page(const acid_link_t *l, const acid_synth_t *s)
 
 int acid_link_custom_edit(acid_link_t *l, int up, int enc, int idx, int page, int tenc, int lo, int hi)
 {
-    if (!l->custom || !acid_custom_edit(l->custom, up, enc, idx, page, tenc, lo, hi)) {
+    if (!l->custom || up < 0 || up >= ACID_USER_PAGES) {
         return 0;
     }
-    l->custom_due |= (uint8_t)(1 << up);
-    return 1;
+    int ok = acid_custom_edit(l->custom, up, enc, idx, page, tenc, lo, hi);
+    l->custom_due |= (uint8_t)(1 << up); // и при отказе: у панели устаревшая картина, ей нужна правда
+    return ok;
 }
 
 static int is_user(const acid_link_t *l, int page)
@@ -92,7 +93,7 @@ static int report(const acid_link_t *l, const acid_synth_t *s, int page, int enc
 
 // Слот своей страницы: псевдоним - прямо в цель, макро - своё значение и отображение в каждую цель.
 // События целей - в pend.
-static void user_apply(acid_link_t *l, acid_synth_t *s, int up, int enc, int v, int src)
+static void user_apply(acid_link_t *l, acid_synth_t *s, int up, int enc, int v)
 {
     acid_custom_t *c = l->custom;
     l->npend = l->pend_at = 0;
@@ -105,7 +106,8 @@ static void user_apply(acid_link_t *l, acid_synth_t *s, int up, int enc, int v, 
     for (int i = 0; i < n; i++) {
         const acid_target_t *t = &c->t[up][enc][i];
         acid_synth_set_knob(s, t->page, t->enc, alias ? v : acid_custom_map(t, v));
-        report(l, s, t->page, t->enc, src, &l->pend[l->npend++]);
+        // Цель - отражение поворота слота, не поворот на её странице: всплывашка остаётся за слотом.
+        report(l, s, t->page, t->enc, ACID_SRC_PANEL, &l->pend[l->npend++]);
     }
 }
 
@@ -147,7 +149,7 @@ int acid_link_midi(acid_link_t *l, acid_synth_t *s, const acid_midi_event_t *ev,
         }
     }
     if (l->user >= 0) {
-        user_apply(l, s, l->user, enc, ev->d2, src);
+        user_apply(l, s, l->user, enc, ev->d2);
         return report(l, s, page, enc, src, out);
     }
     acid_synth_midi(s, ev);
@@ -162,7 +164,7 @@ int acid_link_panel_set(acid_link_t *l, acid_synth_t *s, int page, int enc, int 
         return 0;
     }
     if (page >= ACID_USER_FIRST) {
-        user_apply(l, s, page - ACID_USER_FIRST, enc, v, ACID_SRC_PANEL);
+        user_apply(l, s, page - ACID_USER_FIRST, enc, v);
     } else {
         l->npend = l->pend_at = 0;
         acid_synth_set_knob(s, page, enc, v);

@@ -279,6 +279,18 @@ TEST(test_blob_roundtrip_and_reject)
     CHECK(d.used == 0);
 }
 
+TEST(test_recall_holds_user_slots)
+{
+    reset();
+    acid_custom_edit(&c, 0, 2, 0, 0, 1, 0, 50); // макро
+    acid_custom_edit(&c, 0, 3, 0, 6, 2, 0, 127); // псевдоним
+    acid_scene_store(&sc, 0, &s, &c);
+    acid_scene_recall(&sc, 0, 0);
+    run_to_end();
+    CHECK(l.held[10][2] == 1 && l.held[10][3] == 1); // BSP подхватывает и свои слоты
+    CHECK(l.held[10][4] == 0); // пустой слот не держим
+}
+
 int main(void)
 {
     RUN(test_store_recall_instant_no_clock);
@@ -293,5 +305,6 @@ int main(void)
     RUN(test_snap_rate);
     RUN(test_user_values_restored);
     RUN(test_blob_roundtrip_and_reject);
+    RUN(test_recall_holds_user_slots);
     TEST_MAIN_END();
 }
