@@ -16,15 +16,19 @@ typedef struct {
     int want[2];      // где палец
     int sent[2];      // последнее отправленное, -1 - не слали
     uint32_t at[2];   // когда отправлено
+    int lo[2], hi[2]; // ход оси: у псевдонима - ход цели, иначе 0..127
 } pl_xy_t;
 
 void pl_xy_init(pl_xy_t *p, int x0, int y0, int w, int h);
 int pl_xy_inside(const pl_xy_t *p, int x, int y);
-// Координата экрана px по оси -> 0..127.
+// Координата экрана px по оси -> положение 0..127.
 int pl_xy_value(const pl_xy_t *p, int axis, int px);
-// Где рисовать точку для значений осей.
+void pl_xy_range(pl_xy_t *p, int axis, int lo, int hi);
+// Значение оси в её ходе -> положение 0..127 на поле.
+int pl_xy_pos(const pl_xy_t *p, int axis, int v);
+// Где рисовать точку для положений 0..127.
 void pl_xy_point(const pl_xy_t *p, int vx, int vy, int *x, int *y);
-// Каждый опрос, пока палец на пэде. cur - живые значения слотов, -1 - слот пуст. Маска осей к отправке
+// Каждый опрос, пока палец на пэде. cur - живые значения слотов в их ходе, -1 - слот пуст. Маска осей к отправке
 // (бит 0 - X, бит 1 - Y), значения в out.
 int pl_xy_touch(pl_xy_t *p, int x, int y, const int cur[2], uint32_t ms, int out[2]);
 // Палец отпущен: маска осей к отправке, значения в out (HOLD выкл - стартовые, вкл - недосланные).

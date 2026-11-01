@@ -108,6 +108,18 @@ TEST(test_release_without_touch)
     CHECK(pl_xy_release(&p, out) == 0);
 }
 
+TEST(test_alias_range)
+{
+    reset();
+    pl_xy_range(&p, 0, 0, 4); // псевдоним на список: ход цели
+    cur[0] = 2;
+    CHECK(touch(X0, Y0, 100) == 3 && out[0] == 0);
+    CHECK(touch(X0 + W - 1, Y0, 200) == 1 && out[0] == 4);
+    CHECK(touch(X0 + W / 2, Y0, 300) == 1 && out[0] == 2);
+    CHECK(pl_xy_pos(&p, 0, 4) == 127 && pl_xy_pos(&p, 0, 0) == 0 && pl_xy_pos(&p, 0, 2) == 64);
+    CHECK(pl_xy_pos(&p, 1, 127) == 127); // у Y ход по умолчанию 0..127
+}
+
 int main(void)
 {
     RUN(test_corners_and_edge);
@@ -119,5 +131,6 @@ int main(void)
     RUN(test_release_returns_without_hold);
     RUN(test_release_with_hold_flushes_last);
     RUN(test_release_without_touch);
+    RUN(test_alias_range);
     TEST_MAIN_END();
 }

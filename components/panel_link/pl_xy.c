@@ -2,7 +2,29 @@
 
 void pl_xy_init(pl_xy_t *p, int x0, int y0, int w, int h)
 {
-    *p = (pl_xy_t){.x0 = x0, .y0 = y0, .w = w, .h = h};
+    *p = (pl_xy_t){.x0 = x0, .y0 = y0, .w = w, .h = h, .hi = {127, 127}};
+}
+
+void pl_xy_range(pl_xy_t *p, int axis, int lo, int hi)
+{
+    p->lo[axis] = lo;
+    p->hi[axis] = hi > lo ? hi : lo;
+}
+
+int pl_xy_pos(const pl_xy_t *p, int axis, int v)
+{
+    int n = p->hi[axis] - p->lo[axis];
+    if (n <= 0) {
+        return 0;
+    }
+    int d = v - p->lo[axis];
+    d = d < 0 ? 0 : d > n ? n : d;
+    return (d * 127 + n / 2) / n;
+}
+
+static int scale(const pl_xy_t *p, int axis, int pos)
+{
+    return p->lo[axis] + (pos * (p->hi[axis] - p->lo[axis]) + 63) / 127;
 }
 
 int pl_xy_inside(const pl_xy_t *p, int x, int y)
@@ -41,8 +63,8 @@ int pl_xy_touch(pl_xy_t *p, int x, int y, const int cur[2], uint32_t ms, int out
             p->sent[a] = -1;
         }
     }
-    p->want[0] = pl_xy_value(p, 0, x);
-    p->want[1] = pl_xy_value(p, 1, y);
+    p->want[0] = scale(p, 0, pl_xy_value(p, 0, x));
+    p->want[1] = scale(p, 1, pl_xy_value(p, 1, y));
     int mask = 0;
     for (int a = 0; a < 2; a++) {
         if (p->start[a] < 0 || p->want[a] == p->sent[a]) {
