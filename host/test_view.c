@@ -1,0 +1,97 @@
+// Вид ячейки сетки для любой страницы 0..15: штатные - как подписи, свои - псевдоним и макро.
+#include <string.h>
+
+#include "pl_view.h"
+#include "test.h"
+
+static pl_model_t m;
+static pl_cell_t c;
+
+static void setup(void)
+{
+    pl_model_init(&m);
+    m.have = 1;
+    m.user_have = 0x3F;
+}
+
+TEST(test_standard_cell)
+{
+    setup();
+    m.raw[8][6] = 3;
+    m.held[8][6] = 1;
+    pl_view_cell(&m, 8, 6, &c);
+    CHECK(strcmp(c.label, "DLY TIME") == 0);
+    CHECK(c.v == 3 && c.lo == 0 && c.hi == 4 && strcmp(c.text, "1/4") == 0);
+    CHECK(c.held == 1 && c.color == pl_knob_color(8, 6, m.raw[8]));
+    pl_view_cell(&m, 0, 15, &c);
+    CHECK(c.label == NULL);
+}
+
+TEST(test_alias_cell_shows_target)
+{
+    setup();
+    m.raw[6][2] = 88;
+    m.user_t[0][4][0] = (pl_target_t){6 << 4 | 2, 0, 127};
+    m.user_val[0][4] = 88;
+    m.user_held[0][4] = 1;
+    pl_view_cell(&m, 10, 4, &c);
+    CHECK(strcmp(c.label, "CUTOFF") == 0);
+    CHECK(c.v == 88 && c.lo == 0 && c.hi == 127 && strcmp(c.text, "88") == 0);
+    CHECK(c.held == 1 && c.color == pl_knob_color(6, 2, m.raw[6]));
+    m.raw[6][2] = 20; // цель двинули на родной странице: псевдоним за ней
+    pl_view_cell(&m, 10, 4, &c);
+    CHECK(c.v == 20);
+}
+
+TEST(test_macro_cell_own_value)
+{
+    setup();
+    m.raw[6][2] = 88;
+    m.user_t[1][2][0] = (pl_target_t){6 << 4 | 2, 0, 127};
+    m.user_t[1][2][1] = (pl_target_t){8 << 4 | 3, 0, 60};
+    m.user_val[1][2] = 40;
+    pl_view_cell(&m, 11, 2, &c);
+    CHECK(strcmp(c.label, "CUTOFF +1") == 0);
+    CHECK(c.v == 40 && c.lo == 0 && c.hi == 127 && strcmp(c.text, "40") == 0 && c.bipolar == 0);
+    pl_view_cell(&m, 11, 3, &c);
+    CHECK(c.label == NULL);
+}
+
+TEST(test_user_cell_without_frame_empty)
+{
+    setup();
+    m.user_have = 0;
+    m.user_t[0][1][0] = (pl_target_t){0 << 4 | 1, 0, 127};
+    pl_view_cell(&m, 10, 1, &c);
+    CHECK(c.label == NULL);
+}
+
+TEST(test_page_names_and_colors)
+{
+    CHECK(strcmp(pl_view_page_name(9), "TONAL") == 0);
+    CHECK(strcmp(pl_view_page_name(10), "USER 1") == 0);
+    CHECK(strcmp(pl_view_page_name(15), "USER 6") == 0);
+    CHECK(pl_view_page_name(16) == NULL);
+    CHECK(pl_view_page_color(3) == pl_page_color(3));
+    CHECK(pl_view_page_color(12) != 0);
+}
+
+TEST(test_page_step_stays_in_group)
+{
+    CHECK(pl_view_page_step(9, 1) == 0);
+    CHECK(pl_view_page_step(0, -1) == 9);
+    CHECK(pl_view_page_step(15, 1) == 10);
+    CHECK(pl_view_page_step(10, -1) == 15);
+    CHECK(pl_view_page_step(12, 1) == 13);
+}
+
+int main(void)
+{
+    RUN(test_standard_cell);
+    RUN(test_alias_cell_shows_target);
+    RUN(test_macro_cell_own_value);
+    RUN(test_user_cell_without_frame_empty);
+    RUN(test_page_names_and_colors);
+    RUN(test_page_step_stays_in_group);
+    TEST_MAIN_END();
+}
