@@ -129,7 +129,11 @@ const char *pl_value_text(int page, int enc, int v, const uint8_t page_raw[16], 
             return w[v - lo];
         }
         if (lo == 52) {
-            snprintf(buf, 12, v > 64 ? "+%d" : "%d", v - 64);
+            int d = v - 64;
+            if (page == 9 && page_raw[6] != 0) {
+                d = d > 7 ? 7 : d < -7 ? -7 : d; // в ладу синт зажимает шаг до 7 ступеней
+            }
+            snprintf(buf, 12, d > 0 ? "+%d" : "%d", d);
             return buf;
         }
         if (page == 9 && enc == 1 && v == 0) {
@@ -233,8 +237,8 @@ const char *pl_page_summary(int page, const uint8_t page_raw[16], char buf[24])
 {
     switch (page) {
     case 0:
-        if (page_raw[11] != 64 && page_raw[11] != 0) {
-            snprintf(buf, 24, "DJF %s %d", page_raw[11] < 64 ? "LP" : "HP", (int)page_raw[11] - 64);
+        if (page_raw[11] != 64) {
+            snprintf(buf, 24, "DJF %s %+d", page_raw[11] < 64 ? "LP" : "HP", (int)page_raw[11] - 64);
             return buf;
         }
         return "LEVELS & DJF";
@@ -265,5 +269,3 @@ const char *pl_page_summary(int page, const uint8_t page_raw[16], char buf[24])
         return "";
     }
 }
-
-
