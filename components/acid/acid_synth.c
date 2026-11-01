@@ -988,6 +988,13 @@ void acid_synth_render_slot(acid_synth_t *s, int k, float *out, size_t n)
     }
 }
 
+void acid_synth_render_layer(acid_synth_t *s, int k, float *out, size_t n)
+{
+    for (size_t i = 0; i < n; i++) {
+        out[i] = layer_add(s, k, 0.0f);
+    }
+}
+
 void acid_synth_render_side(acid_synth_t *s, acid_synth_side_t *side, size_t n)
 {
     // Тарелки и перкуссия кусками: голос за голосом быстрее.
@@ -1004,7 +1011,7 @@ void acid_synth_render_src(acid_synth_t *s, acid_synth_src_t *src, size_t n)
     ACID_PROF_T(t);
     for (size_t i = 0; i < n; i++) {
         slot_tick(s, v);
-        src->y[i] = layer_add(s, 0, slot_next(s, v, v->nheld > 0));
+        src->y[i] = slot_next(s, v, v->nheld > 0);
         s->clock_now++;
         ACID_PROF_ADD(ACID_PROF_SYNTH1, t);
         src->kick[i] = s->kick_gain * s->kick_vel * acid_kick_next(&s->kick);
@@ -1015,14 +1022,14 @@ void acid_synth_render_src(acid_synth_t *s, acid_synth_src_t *src, size_t n)
     }
 }
 
-void acid_synth_render_mix_lr(acid_synth_t *s, float *l, float *r, size_t n, const float *slot1,
+void acid_synth_render_mix_lr(acid_synth_t *s, float *l, float *r, size_t n, const float *slot1, const float *layer0,
                               const acid_synth_src_t *src, const acid_synth_side_t *side)
 {
     ACID_PROF_T(t);
     // Стерео: панорамы по источникам, бочка в центре.
     const float *pl = s->pan_l, *pr = s->pan_r;
     for (size_t i = 0; i < n; i++) {
-        float y = src->y[i], kick = src->kick[i], hat = src->hat[i], clap = src->clap[i], snare = src->snare[i];
+        float y = layer0 ? src->y[i] + layer0[i] : src->y[i], kick = src->kick[i], hat = src->hat[i], clap = src->clap[i], snare = src->snare[i];
         float s1 = slot1[i];
         float cl = side->cyl[i], cr = side->cyr[i]; // уже стерео с балансом
         float ql = side->pcl[i], qr = side->pcr[i]; // перкуссия, уже с панорамой
@@ -1056,11 +1063,13 @@ void acid_synth_render_with_lr(acid_synth_t *s, float *l, float *r, size_t n, co
 {
     acid_synth_side_t side;
     acid_synth_src_t src;
+    float layer0[ACID_SPLIT_MAX];
     for (size_t off = 0; off < n; off += ACID_SPLIT_MAX) {
         size_t m = n - off < ACID_SPLIT_MAX ? n - off : ACID_SPLIT_MAX;
+        acid_synth_render_layer(s, 0, layer0, m);
         acid_synth_render_src(s, &src, m);
         acid_synth_render_side(s, &side, m);
-        acid_synth_render_mix_lr(s, l + off, r + off, m, slot1 + off, &src, &side);
+        acid_synth_render_mix_lr(s, l + off, r + off, m, slot1 + off, layer0, &src, &side);
     }
 }
 

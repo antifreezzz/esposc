@@ -40,9 +40,10 @@ static acid_scene_t s_scene;    // сцены: так же
 static const acid_bank_t *s_bank; // тарелки из флэша, NULL - молчат
 
 // Ядро 0 на каждый кусок c: тарелки и перкуссия куска c (ядро 1 тем временем считает синт 1 и ударку c),
-// затем синт 2 на кусок вперёд (c + 1, пока ядро 1 сводит c). События MIDI до синта 2 доходят на кусок
+// затем синт 2 и оба слоя на кусок вперёд (c + 1, пока ядро 1 сводит c). События MIDI до синта 2 и слоёв доходят на кусок
 // позже (0.67 мс). Тарелки и перкуссия - тот же кусок: звучат вместе с остальной ударкой.
 static float s_slot1[2][CHUNK];
+static float s_layer0[2][CHUNK]; // слой синта 1: тоже на ядре 0 и на кусок вперёд (на ядре 1 запаса нет)
 static int s_slot1_next; // какой буфер считает ядро 0
 static acid_synth_side_t s_side;
 static TaskHandle_t s_synth_task;
@@ -77,6 +78,7 @@ static void slot1_task(void *arg)
         acid_synth_render_side(&s_synth, &s_side, CHUNK);
         xTaskNotifyGive(s_synth_task);
         acid_synth_render_slot(&s_synth, 1, s_slot1[s_slot1_next], CHUNK);
+        acid_synth_render_layer(&s_synth, 0, s_layer0[s_slot1_next], CHUNK);
         int64_t dt = esp_timer_get_time() - t0;
         s_slot1_worst_us = dt > s_slot1_worst_us ? dt : s_slot1_worst_us;
         s_slot1_sum_us += dt;
@@ -173,7 +175,7 @@ static void render_block(float *l, float *r)
         xTaskNotifyGive(s_slot1_task);
         acid_synth_render_src(&s_synth, &src, CHUNK);
         ulTaskNotifyTake(pdFALSE, portMAX_DELAY); // тарелки и перкуссия готовы
-        acid_synth_render_mix_lr(&s_synth, l + off, r + off, CHUNK, s_slot1[ready], &src, &s_side);
+        acid_synth_render_mix_lr(&s_synth, l + off, r + off, CHUNK, s_slot1[ready], s_layer0[ready], &src, &s_side);
         ulTaskNotifyTake(pdFALSE, portMAX_DELAY); // синт 2 следующего куска готов, ядро 0 свободно
     }
 }

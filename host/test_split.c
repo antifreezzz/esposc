@@ -18,6 +18,7 @@ static int same_as_whole(const acid_demo_song_t *song, int seconds)
     static acid_midi_event_t ev[96];
     static acid_synth_side_t side;
     static acid_synth_src_t src;
+    static float ly[CH];
     float la[CH], ra[CH], lb[CH], rb[CH], s1[CH];
     acid_synth_init(&a, SR);
     acid_synth_init(&b, SR);
@@ -36,9 +37,10 @@ static int same_as_whole(const acid_demo_song_t *song, int seconds)
         acid_synth_render_slot(&a, 1, s1, CH);
         acid_synth_render_with_lr(&a, la, ra, CH, s1);
         acid_synth_render_slot(&b, 1, s1, CH);
+        acid_synth_render_layer(&b, 0, ly, CH); // слой синта 1 - на ядре 0, как синт 2
         acid_synth_render_src(&b, &src, CH);
         acid_synth_render_side(&b, &side, CH);
-        acid_synth_render_mix_lr(&b, lb, rb, CH, s1, &src, &side);
+        acid_synth_render_mix_lr(&b, lb, rb, CH, s1, ly, &src, &side);
         same &= memcmp(la, lb, sizeof la) == 0 && memcmp(ra, rb, sizeof ra) == 0;
     }
     return same;

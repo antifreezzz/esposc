@@ -87,7 +87,8 @@ typedef struct {
     float sr;
     acid_slot_t slot[ACID_SLOTS];
     // Слои: второй голос каждого синта на его нотах, в его шине (панорама, посыл, громкость MIX - общие).
-    // Слой 0 считается с синтом 1 (ядро 1), слой 1 - с синтом 2 (ядро 0). Тип ACID_LAYER_OFF не считается.
+    // Оба слоя считаются на ядре 0 с синтом 2 (там запас): слой 1 - в его буфере, слой 0 - своим буфером,
+    // сводится в шину синта 1. Тип ACID_LAYER_OFF не считается.
     acid_slot_t layer[ACID_SLOTS];
     float layer_gain[ACID_SLOTS]; // FX энкодеры 13-14
     acid_kick_t kick;
@@ -177,8 +178,11 @@ typedef struct {
 } acid_synth_src_t;
 void acid_synth_render_side(acid_synth_t *s, acid_synth_side_t *side, size_t n);
 void acid_synth_render_src(acid_synth_t *s, acid_synth_src_t *src, size_t n);
-void acid_synth_render_mix_lr(acid_synth_t *s, float *l, float *r, size_t n, const float *slot1,
+// layer0 - слой синта 1 (acid_synth_render_layer), NULL - нет.
+void acid_synth_render_mix_lr(acid_synth_t *s, float *l, float *r, size_t n, const float *slot1, const float *layer0,
                               const acid_synth_src_t *src, const acid_synth_side_t *side);
+// Слой синта k отдельно, уже с громкостью (k = 0: слой синта 1 на ядре 0 рядом с синтом 2).
+void acid_synth_render_layer(acid_synth_t *s, int k, float *out, size_t n);
 float acid_synth_pitch_hz(const acid_synth_t *s); // высота слота 0
 // 1 и сброс флага, если с прошлого вызова сменили тип синтеза (пора записать память во flash).
 int acid_synth_take_save(acid_synth_t *s);

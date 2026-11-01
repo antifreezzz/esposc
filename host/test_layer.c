@@ -84,6 +84,28 @@ TEST(test_layer2_on_slot_render)
     CHECK(d > 1.0f); // слой 2 считается вместе с синтом 2 (ядро 0)
 }
 
+// Оба слоя - на ядре 0: слой синта 1 отдельным буфером (сводится в шину синта 1), в render_src его нет.
+TEST(test_layer1_rendered_apart)
+{
+    init2();
+    acid_synth_set_knob(&b, ACID_PAGE_LAYER1, 1, 0);
+    both_note(4, 1, 45);
+    static acid_synth_src_t sa, sb;
+    static float ly[ACID_SPLIT_MAX];
+    float d = 0.0f, e = 0.0f;
+    for (int k = 0; k < 100; k++) {
+        acid_synth_render_layer(&b, 0, ly, ACID_SPLIT_MAX);
+        acid_synth_render_src(&a, &sa, ACID_SPLIT_MAX);
+        acid_synth_render_src(&b, &sb, ACID_SPLIT_MAX);
+        for (int i = 0; i < ACID_SPLIT_MAX; i++) {
+            d += fabsf(sb.y[i] - sa.y[i]);
+            e += fabsf(ly[i]);
+        }
+    }
+    CHECK(d == 0.0f);
+    CHECK(e > 1.0f);
+}
+
 TEST(test_layer_type_switch_no_click)
 {
     init2();
@@ -298,6 +320,7 @@ TEST(test_layer_on_mid_note)
 
 int main(void)
 {
+    RUN(test_layer1_rendered_apart);
     RUN(test_guard_no_layers_stays_step1);
     RUN(test_guard_jumps_on_overrun);
     RUN(test_guard_backoff);
