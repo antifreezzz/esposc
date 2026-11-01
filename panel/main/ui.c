@@ -28,10 +28,11 @@
 enum { MENU, MENU2, PAGE, SCENES };
 
 typedef struct {
-    lv_obj_t *card, *num, *arc, *val, *name, *pdot, *empty_dot;
+    lv_obj_t *card, *num, *arc, *val, *name, *src, *pdot, *empty_dot;
     int v, held, grabbed; // нарисовано
     int lo, hi, bipolar;
-    uint32_t color;
+    uint32_t color, src_color;
+    char srcs[12]; // строка-источник своей страницы, "" - нет
     char lab[20]; // подпись карточки, "" - пустой слот
 } knob_t;
 
@@ -50,7 +51,9 @@ static struct {
     uint32_t big_color, nav_color;
     int big_sym;
     lv_obj_t *toast, *toast_name, *toast_val;
+    lv_obj_t *chip_page[PL_TARGETS], *chip_val[PL_TARGETS]; // цели макро во всплывашке
     uint32_t toast_color;
+    int toast_tall;
     int drawn_grab;
 } u;
 
@@ -216,6 +219,13 @@ static void build(void)
         lv_obj_set_width(k->name, 74);
         lv_obj_set_pos(k->name, 72, 36);
 
+        k->src = ui_label(k->card, &lv_font_montserrat_12, C_MUTED);
+        lv_obj_set_size(k->src, 74, 16);
+        lv_label_set_long_mode(k->src, LV_LABEL_LONG_MODE_DOTS);
+        lv_obj_set_pos(k->src, 72, 56);
+        ui_show(k->src, 0);
+        k->srcs[0] = 0;
+
         k->empty_dot = ui_box(k->card, 72, 37, 6, 6, C_TRACK);
         lv_obj_set_style_radius(k->empty_dot, 3, 0);
         k->v = k->held = k->grabbed = -1;
@@ -258,6 +268,16 @@ static void build(void)
     lv_obj_align(u.toast_name, LV_ALIGN_LEFT_MID, 16, 0);
     u.toast_val = ui_label(u.toast, &lv_font_montserrat_28, C_ACCENT);
     lv_obj_align(u.toast_val, LV_ALIGN_RIGHT_MID, -16, 0);
+    for (int i = 0; i < PL_TARGETS; i++) {
+        int cw = (W - 40 - 32) / PL_TARGETS;
+        u.chip_page[i] = ui_label(u.toast, &lv_font_montserrat_12, C_DIM);
+        lv_obj_set_pos(u.chip_page[i], 16 + i * cw, 46);
+        u.chip_val[i] = ui_label(u.toast, &lv_font_montserrat_14, C_TEXT);
+        lv_obj_set_size(u.chip_val[i], cw - 6, 18);
+        lv_label_set_long_mode(u.chip_val[i], LV_LABEL_LONG_MODE_DOTS);
+        lv_obj_set_pos(u.chip_val[i], 16 + i * cw, 64);
+    }
+    u.toast_tall = 1; // первая отрисовка уложит в низкую
 
     u.screen = MENU;
     u.grab = -1;
@@ -298,6 +318,13 @@ static void card_setup(knob_t *k, const pl_cell_t *c)
         }
         ui_text(k->name, k->lab);
     }
+    snprintf(k->srcs, sizeof k->srcs, "%s", on && c->src ? c->src : "");
+    ui_show(k->src, k->srcs[0] != 0);
+    if (k->srcs[0]) {
+        ui_text(k->src, k->srcs);
+        lv_obj_set_style_text_color(k->src, lv_color_hex(c->src_color), 0);
+    }
+    k->src_color = c->src_color;
     k->color = c->color;
     k->lo = c->lo, k->hi = c->hi, k->bipolar = c->bipolar;
     k->v = k->held = -1;
@@ -427,7 +454,8 @@ static void draw_page(const pl_model_t *m)
         int enc = i + 1;
         pl_view_cell(m, page, enc, &cell);
         if (strcmp(k->lab, cell.label ? cell.label : "") != 0 || k->color != cell.color || k->lo != cell.lo ||
-            k->hi != cell.hi || k->bipolar != cell.bipolar) {
+            k->hi != cell.hi || k->bipolar != cell.bipolar || strcmp(k->srcs, cell.src ? cell.src : "") != 0 ||
+            k->src_color != cell.src_color) {
             card_setup(k, &cell);
         }
         if (!k->lab[0]) {
@@ -482,7 +510,11 @@ static void draw_page(const pl_model_t *m)
     }
     ui_text(u.big_val, cell.text);
     char head[40];
-    snprintf(head, sizeof head, "E%d  %s", enc + 1, u.knob[g].lab);
+    if (cell.src && pl_view_is_alias(m, page - PL_USER_FIRST, enc)) {
+        snprintf(head, sizeof head, "E%d  %s / %s", enc + 1, cell.src, u.knob[g].lab); // откуда псевдоним
+    } else {
+        snprintf(head, sizeof head, "E%d  %s", enc + 1, u.knob[g].lab);
+    }
     ui_text(u.big_name, head);
     int held = cell.held && m->bsp_pos[enc] != 0xFF;
     ui_show(u.bsp_mark, held);
@@ -505,23 +537,77 @@ static void draw_status(const pl_model_t *m, uint32_t ms)
     lv_obj_set_style_text_color(u.bar_right, lv_color_hex(c), 0);
 }
 
+static void toast_shape(int tall)
+{
+    if (u.toast_tall == tall) {
+        return;
+    }
+    u.toast_tall = tall;
+    int h = tall ? 96 : 68;
+    lv_obj_set_pos(u.toast, 20, W - 14 - h);
+    lv_obj_set_height(u.toast, h);
+    lv_obj_align(u.toast_name, tall ? LV_ALIGN_TOP_LEFT : LV_ALIGN_LEFT_MID, 16, tall ? 8 : 0);
+    lv_obj_align(u.toast_val, tall ? LV_ALIGN_TOP_RIGHT : LV_ALIGN_RIGHT_MID, -16, tall ? 2 : 0);
+    for (int i = 0; i < PL_TARGETS; i++) {
+        ui_show(u.chip_page[i], tall);
+        ui_show(u.chip_val[i], tall);
+    }
+}
+
+// Цели макро: страница и подпись с живым значением, как они стоят на родной странице.
+static void draw_chips(const pl_model_t *m, int page, int enc)
+{
+    for (int i = 0; i < PL_TARGETS; i++) {
+        int te, tp = pl_view_target(m, page, enc, i, &te);
+        pl_cell_t t;
+        if (tp < 0) {
+            ui_text(u.chip_page[i], "");
+            ui_text(u.chip_val[i], "");
+            continue;
+        }
+        pl_view_cell(m, tp, te, &t);
+        char line[28];
+        snprintf(line, sizeof line, "%s %s", t.label ? t.label : "?", t.text);
+        ui_text(u.chip_page[i], pl_view_page_name(tp));
+        ui_text(u.chip_val[i], line);
+        lv_obj_set_style_text_color(u.chip_val[i], lv_color_hex(pl_page_color(tp)), 0);
+    }
+}
+
+// Всплывашка: поворот на BSP, а у макро ещё и захват на экране - видно, что именно он двигает.
 static void draw_toast(const pl_model_t *m, uint32_t ms)
 {
+    int page = m->toast_page, enc = m->toast_enc;
     int on = m->toast_until_ms && (int32_t)(m->toast_until_ms - ms) > 0;
-    ui_show(u.toast, on);
+    int vp = view_page();
+    if (u.screen == PAGE && u.grab >= 0 && vp >= PL_USER_FIRST && !pl_view_is_alias(m, vp - PL_USER_FIRST, u.grab + 1)) {
+        page = vp, enc = u.grab + 1, on = 1;
+    }
+    pl_cell_t cell;
     if (on) {
-        uint32_t pc = pl_view_page_color(m->toast_page);
-        if (u.toast_color != pc) {
-            lv_obj_set_style_border_color(u.toast, lv_color_hex(pc), 0);
-            lv_obj_set_style_text_color(u.toast_val, lv_color_hex(pc), 0);
-            u.toast_color = pc;
-        }
-        pl_cell_t cell;
-        pl_view_cell(m, m->toast_page, m->toast_enc, &cell);
-        char line[40];
-        snprintf(line, sizeof line, "%s / %s", pl_view_page_name(m->toast_page), cell.label ? cell.label : "?");
-        ui_text(u.toast_name, line);
-        ui_text(u.toast_val, cell.text);
+        pl_view_cell(m, page, enc, &cell);
+        on = cell.label != NULL;
+    }
+    ui_show(u.toast, on);
+    if (!on) {
+        return;
+    }
+    int up = page - PL_USER_FIRST;
+    int user = page >= PL_USER_FIRST, alias = user && pl_view_is_alias(m, up, enc);
+    int te, tp = alias ? pl_view_target(m, page, enc, 0, &te) : -1;
+    uint32_t pc = pl_view_page_color(tp >= 0 ? tp : page);
+    if (u.toast_color != pc) {
+        lv_obj_set_style_border_color(u.toast, lv_color_hex(pc), 0);
+        lv_obj_set_style_text_color(u.toast_val, lv_color_hex(pc), 0);
+        u.toast_color = pc;
+    }
+    toast_shape(user && !alias);
+    char line[48];
+    snprintf(line, sizeof line, "%s / %s", tp >= 0 ? pl_view_page_name(tp) : pl_view_page_name(page), cell.label);
+    ui_text(u.toast_name, line);
+    ui_text(u.toast_val, cell.text);
+    if (user && !alias) {
+        draw_chips(m, page, enc);
     }
 }
 
