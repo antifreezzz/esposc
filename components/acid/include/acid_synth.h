@@ -18,7 +18,12 @@
 
 #define ACID_TYPES (1 + ACID_PLAITS_MODELS) // 0 - наш 303, 1..24 - модели Plaits
 #define ACID_KNOBS 16
-#define ACID_PAGES 10
+// Страницы ручек внутри: 0-9 штатные, 10-11 слои синтов; свои страницы - следом (acid_custom.h).
+// На BSP номера другие: свои 10-15, слои 16-17 - перевод только на границе (энкодер 1).
+#define ACID_PAGES 12
+#define ACID_PAGE_LAYER1 10
+#define ACID_BSP_USER_FIRST 10
+#define ACID_BSP_LAYER1 16
 
 // Синт-слот: тип синтеза, голоса 303 и Plaits, ручки по типам, стек нот.
 // Слот 0 - синт 1 (SEQ1), слот 1 - синт 2 (SEQ2).
@@ -126,6 +131,9 @@ typedef struct {
 
 // Умолчания всех ручек, тишина до первой ноты.
 void acid_synth_init(acid_synth_t *s, float sr);
+// Номер страницы на экране BSP -> страница внутри и обратно; не страница - -1.
+int acid_page_from_bsp(int v);
+int acid_page_to_bsp(int page);
 // Набор сэмплов тарелок; init сбрасывает в NULL, после init ставить заново.
 void acid_synth_set_bank(acid_synth_t *s, const acid_bank_t *b);
 // Нагрузка прошлого блока (время рендера / бюджет блока), звать между блоками. Среднее (~ACID_LOAD_AVG блоков) выше ACID_LOAD_HIGH

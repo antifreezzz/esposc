@@ -215,15 +215,15 @@ TEST(test_user_knob_and_page_change)
     pl_model_init(&m);
     linked();
     custom(0, 2, 6, 2, 0, 50, 0);
-    knob(10, 2, 70, 0, 70, 0, 100);
+    knob(PL_USER_FIRST, 2, 70, 0, 70, 0, 100);
     CHECK(m.user_val[0][2] == 70 && m.user_held[0][2] == 0 && m.bsp_pos[2] == 70);
-    CHECK(m.toast_page == 10 && m.toast_enc == 2 && m.toast_until_ms == 100 + PL_TOAST_MS);
-    knob(10, 0, 12, 0, 0, 0, 110); // BSP открыл свою страницу 3
-    CHECK(m.bsp_page == 12 && m.goto_page == 12);
-    knob(16, 2, 1, 0, 0, 0, 120); // нет такой страницы
+    CHECK(m.toast_page == PL_USER_FIRST && m.toast_enc == 2 && m.toast_until_ms == 100 + PL_TOAST_MS);
+    knob(PL_USER_FIRST, 0, PL_USER_FIRST + 2, 0, 0, 0, 110); // BSP открыл свою страницу 3
+    CHECK(m.bsp_page == PL_USER_FIRST + 2 && m.goto_page == PL_USER_FIRST + 2);
+    knob(PL_USER_FIRST + PL_USER_PAGES, 2, 1, 0, 0, 0, 120); // нет такой страницы
     CHECK(m.user_val[0][2] == 70);
     m.toast_until_ms = 0;
-    knob(10, 5, 9, 0, 9, 0, 130); // пустой слот не всплывает
+    knob(PL_USER_FIRST, 5, 9, 0, 9, 0, 130); // пустой слот не всплывает
     CHECK(m.user_val[0][5] == 9 && m.toast_until_ms == 0);
 }
 
@@ -231,11 +231,11 @@ TEST(test_local_set_user_needs_frame)
 {
     pl_model_init(&m);
     linked();
-    CHECK(pl_model_local_set(&m, 11, 2, 40) == 0); // определений ещё нет
+    CHECK(pl_model_local_set(&m, PL_USER_FIRST + 1, 2, 40) == 0); // определений ещё нет
     custom(1, 2, 0, 1, 0, 127, 0);
-    CHECK(pl_model_local_set(&m, 11, 2, 40) == 1);
+    CHECK(pl_model_local_set(&m, PL_USER_FIRST + 1, 2, 40) == 1);
     CHECK(m.user_val[1][2] == 40 && m.user_held[1][2] == 1);
-    CHECK(pl_model_local_set(&m, 16, 2, 40) == 0);
+    CHECK(pl_model_local_set(&m, PL_USER_FIRST + PL_USER_PAGES, 2, 40) == 0);
 }
 
 TEST(test_local_set_alias_moves_target)
@@ -243,11 +243,11 @@ TEST(test_local_set_alias_moves_target)
     pl_model_init(&m);
     linked();
     custom(1, 2, 6, 3, 0, 127, 0); // псевдоним на синт 1, энкодер 4
-    CHECK(pl_model_local_set(&m, 11, 2, 40) == 1);
+    CHECK(pl_model_local_set(&m, PL_USER_FIRST + 1, 2, 40) == 1);
     CHECK(m.raw[6][3] == 40); // экран показывает цель сразу, без ответа синта
     custom(1, 2, 6, 3, 10, 50, 0); // макро
     m.raw[6][3] = 7;
-    CHECK(pl_model_local_set(&m, 11, 2, 90) == 1);
+    CHECK(pl_model_local_set(&m, PL_USER_FIRST + 1, 2, 90) == 1);
     CHECK(m.raw[6][3] == 7 && m.user_val[1][2] == 90); // цели макро двигает синт
 }
 

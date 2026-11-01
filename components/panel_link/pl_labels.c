@@ -4,8 +4,8 @@
 
 #define N(a) ((int)(sizeof(a) / sizeof((a)[0])))
 
-static const char *const PAGE_NAME[10] = {"MIX", "DRUMS", "CYMBALS", "TOMS", "RIM", "COWBELL",
-                                          "SYNTH 1", "SYNTH 2", "FX", "TONAL"};
+static const char *const PAGE_NAME[12] = {"MIX", "DRUMS", "CYMBALS", "TOMS", "RIM", "COWBELL",
+                                          "SYNTH 1", "SYNTH 2", "FX", "TONAL", "LAYER 1", "LAYER 2"};
 
 // По индексу энкодера с 0; NULL - пусто.
 static const char *const MIX[16] = {NULL, "MASTER", "DRIVE", "SYNTH 1", "SYNTH 2", "KICK", "HATS", "CLAP",
@@ -149,8 +149,8 @@ int pl_labels_depend(int page)
     return page >= 3 && page <= 7;
 }
 
-static const uint32_t PAGE_COLOR[10] = {0x6fc3ff, 0xff6f7d, 0xffb84d, 0xff7b47, 0xff9457,
-                                        0xffd24d, 0xff9900, 0x7be382, 0xc79bff, 0x5fd3e6};
+static const uint32_t PAGE_COLOR[12] = {0x6fc3ff, 0xff6f7d, 0xffb84d, 0xff7b47, 0xff9457,
+                                        0xffd24d, 0xff9900, 0x7be382, 0xc79bff, 0x5fd3e6, 0xff9900, 0x7be382}; // слои - цветом своего синта
 
 uint32_t pl_page_color(int page)
 {

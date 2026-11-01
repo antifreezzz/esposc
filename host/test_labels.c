@@ -39,7 +39,7 @@ TEST(test_labels_cover_synth)
             }
         }
     }
-    CHECK(pl_page_name(10) == NULL);
+    CHECK(pl_page_name(PL_PAGES) == NULL);
 }
 
 static void range(int page, int enc, int type, int lo, int hi)
@@ -156,7 +156,7 @@ TEST(test_colors)
         }
     }
     CHECK(pl_page_color(-1) == 0);
-    CHECK(pl_page_color(10) == 0);
+    CHECK(pl_page_color(PL_PAGES) == 0);
     // На странице MIX мастер, синты, ударка, фильтр и панорама различаются по цвету групп.
     CHECK(pl_knob_color(0, 1, raw) != pl_knob_color(0, 3, raw));
     CHECK(pl_knob_color(0, 3, raw) != pl_knob_color(0, 5, raw));

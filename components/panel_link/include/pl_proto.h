@@ -7,12 +7,12 @@
 // Длина у каждого типа своя: заголовок с чужой длиной - не кадр, отбрасывается сразу.
 
 #define PL_SYNC 0xA5
-#define PL_PAGES 10
+#define PL_PAGES 12 // 0-9 штатные, 10-11 слои синтов
 #define PL_KNOBS 16
 #define PL_PAYLOAD_MAX 255
 #define PL_FRAME_MAX (PL_PAYLOAD_MAX + 4)
-#define PL_USER_PAGES 6 // свои страницы 10..15
-#define PL_USER_FIRST 10
+#define PL_USER_PAGES 6 // свои страницы 12..17 (на BSP 10..15)
+#define PL_USER_FIRST 12
 #define PL_TARGETS 4
 #define PL_NONE 0xFF
 
@@ -72,6 +72,9 @@ typedef struct {
 } pl_scene_state_t;
 
 // Кадр в out (не меньше 4 + len), возвращает его длину; len больше PL_PAYLOAD_MAX - 0.
+// Номер страницы, как на экране BSP: свои 10-15, слои 16-17 (номера страниц в кадрах - внутренние).
+int pl_page_bsp(int page);
+
 size_t pl_encode(uint8_t type, const void *payload, size_t len, uint8_t *out);
 
 typedef struct {

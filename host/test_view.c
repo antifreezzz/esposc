@@ -35,12 +35,12 @@ TEST(test_alias_cell_shows_target)
     m.user_t[0][4][0] = (pl_target_t){6 << 4 | 2, 0, 127};
     m.user_val[0][4] = 88;
     m.user_held[0][4] = 1;
-    pl_view_cell(&m, 10, 4, &c);
+    pl_view_cell(&m, PL_USER_FIRST, 4, &c);
     CHECK(strcmp(c.label, "CUTOFF") == 0);
     CHECK(c.v == 88 && c.lo == 0 && c.hi == 127 && strcmp(c.text, "88") == 0);
     CHECK(c.held == 1 && c.color == pl_knob_color(6, 2, m.raw[6]));
     m.raw[6][2] = 20; // цель двинули на родной странице: псевдоним за ней
-    pl_view_cell(&m, 10, 4, &c);
+    pl_view_cell(&m, PL_USER_FIRST, 4, &c);
     CHECK(c.v == 20);
 }
 
@@ -51,10 +51,10 @@ TEST(test_macro_cell_own_value)
     m.user_t[1][2][0] = (pl_target_t){6 << 4 | 2, 0, 127};
     m.user_t[1][2][1] = (pl_target_t){8 << 4 | 3, 0, 60};
     m.user_val[1][2] = 40;
-    pl_view_cell(&m, 11, 2, &c);
+    pl_view_cell(&m, PL_USER_FIRST + 1, 2, &c);
     CHECK(strcmp(c.label, "CUTOFF +1") == 0);
     CHECK(c.v == 40 && c.lo == 0 && c.hi == 127 && strcmp(c.text, "40") == 0 && c.bipolar == 0);
-    pl_view_cell(&m, 11, 3, &c);
+    pl_view_cell(&m, PL_USER_FIRST + 1, 3, &c);
     CHECK(c.label == NULL);
 }
 
@@ -63,7 +63,7 @@ TEST(test_user_cell_without_frame_empty)
     setup();
     m.user_have = 0;
     m.user_t[0][1][0] = (pl_target_t){0 << 4 | 1, 0, 127};
-    pl_view_cell(&m, 10, 1, &c);
+    pl_view_cell(&m, PL_USER_FIRST, 1, &c);
     CHECK(c.label == NULL);
 }
 
@@ -71,13 +71,13 @@ TEST(test_user_cell_source)
 {
     setup();
     m.user_t[0][4][0] = (pl_target_t){6 << 4 | 2, 0, 127};
-    pl_view_cell(&m, 10, 4, &c);
+    pl_view_cell(&m, PL_USER_FIRST, 4, &c);
     CHECK(c.src && strcmp(c.src, "SYNTH 1") == 0 && c.src_color == pl_page_color(6));
     m.user_t[0][4][1] = (pl_target_t){6 << 4 | 3, 0, 60}; // макро на одной странице
-    pl_view_cell(&m, 10, 4, &c);
+    pl_view_cell(&m, PL_USER_FIRST, 4, &c);
     CHECK(c.src && strcmp(c.src, "SYNTH 1") == 0 && c.src_color == pl_page_color(6));
     m.user_t[0][4][2] = (pl_target_t){8 << 4 | 3, 0, 60};
-    pl_view_cell(&m, 10, 4, &c);
+    pl_view_cell(&m, PL_USER_FIRST, 4, &c);
     CHECK(c.src && strcmp(c.src, "2 PAGES") == 0);
 }
 
@@ -87,36 +87,48 @@ TEST(test_target_lookup)
     m.user_t[1][2][0] = (pl_target_t){6 << 4 | 2, 0, 127};
     m.user_t[1][2][1] = (pl_target_t){8 << 4 | 3, 0, 60};
     int e = -1;
-    CHECK(pl_view_target(&m, 11, 2, 0, &e) == 6 && e == 2);
-    CHECK(pl_view_target(&m, 11, 2, 1, &e) == 8 && e == 3);
-    CHECK(pl_view_target(&m, 11, 2, 2, &e) == -1);
-    CHECK(pl_view_target(&m, 11, 2, 4, &e) == -1);
+    CHECK(pl_view_target(&m, PL_USER_FIRST + 1, 2, 0, &e) == 6 && e == 2);
+    CHECK(pl_view_target(&m, PL_USER_FIRST + 1, 2, 1, &e) == 8 && e == 3);
+    CHECK(pl_view_target(&m, PL_USER_FIRST + 1, 2, 2, &e) == -1);
+    CHECK(pl_view_target(&m, PL_USER_FIRST + 1, 2, 4, &e) == -1);
     CHECK(pl_view_target(&m, 6, 2, 0, &e) == -1); // штатная страница целей не имеет
     m.user_have = 0;
-    CHECK(pl_view_target(&m, 11, 2, 0, &e) == -1);
+    CHECK(pl_view_target(&m, PL_USER_FIRST + 1, 2, 0, &e) == -1);
 }
 
 TEST(test_page_names_and_colors)
 {
     CHECK(strcmp(pl_view_page_name(9), "TONAL") == 0);
-    CHECK(strcmp(pl_view_page_name(10), "USER 1") == 0);
-    CHECK(strcmp(pl_view_page_name(15), "USER 6") == 0);
-    CHECK(pl_view_page_name(16) == NULL);
+    CHECK(strcmp(pl_view_page_name(10), "LAYER 1") == 0);
+    CHECK(strcmp(pl_view_page_name(11), "LAYER 2") == 0);
+    CHECK(pl_view_page_color(10) == pl_page_color(6) && pl_view_page_color(11) == pl_page_color(7));
+    CHECK(strcmp(pl_view_page_name(PL_USER_FIRST), "USER 1") == 0);
+    CHECK(strcmp(pl_view_page_name(PL_USER_FIRST + 5), "USER 6") == 0);
+    CHECK(pl_view_page_name(PL_USER_FIRST + 6) == NULL);
     CHECK(pl_view_page_color(3) == pl_page_color(3));
     CHECK(pl_view_page_color(12) != 0);
 }
 
 TEST(test_page_step_stays_in_group)
 {
-    CHECK(pl_view_page_step(9, 1) == 0);
-    CHECK(pl_view_page_step(0, -1) == 9);
-    CHECK(pl_view_page_step(15, 1) == 10);
-    CHECK(pl_view_page_step(10, -1) == 15);
-    CHECK(pl_view_page_step(12, 1) == 13);
+    CHECK(pl_view_page_step(9, 1) == 10); // за штатными - слои
+    CHECK(pl_view_page_step(11, 1) == 0);
+    CHECK(pl_view_page_step(0, -1) == 11);
+    CHECK(pl_view_page_step(PL_USER_FIRST + 5, 1) == PL_USER_FIRST);
+    CHECK(pl_view_page_step(PL_USER_FIRST, -1) == PL_USER_FIRST + 5);
+    CHECK(pl_view_page_step(PL_USER_FIRST + 2, 1) == PL_USER_FIRST + 3);
+}
+
+TEST(test_page_bsp_numbers)
+{
+    CHECK(pl_page_bsp(0) == 0 && pl_page_bsp(9) == 9);
+    CHECK(pl_page_bsp(10) == 16 && pl_page_bsp(11) == 17);
+    CHECK(pl_page_bsp(PL_USER_FIRST) == 10 && pl_page_bsp(PL_USER_FIRST + 5) == 15);
 }
 
 int main(void)
 {
+    RUN(test_page_bsp_numbers);
     RUN(test_standard_cell);
     RUN(test_alias_cell_shows_target);
     RUN(test_macro_cell_own_value);

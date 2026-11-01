@@ -9,7 +9,7 @@
 // значение цели), иначе макро: своё значение, цели получают lo + (hi - lo) * v / 127.
 
 #define ACID_USER_PAGES 6
-#define ACID_USER_FIRST 10
+#define ACID_USER_FIRST ACID_PAGES // своя страница up - страница ACID_USER_FIRST + up
 #define ACID_USER_TARGETS 4
 #define ACID_CUSTOM_NONE 0xFF
 

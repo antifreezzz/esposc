@@ -105,3 +105,14 @@ int pl_rx_feed(pl_rx_t *r, uint8_t byte, uint8_t *type, const uint8_t **payload,
     r->buf[r->n++] = byte; // буфер не переполнится: кадр решается не позже PL_FRAME_MAX байт
     return pl_rx_next(r, type, payload, len);
 }
+
+int pl_page_bsp(int page)
+{
+    if (page >= PL_PAGES - 2 && page < PL_PAGES) {
+        return 16 + page - (PL_PAGES - 2); // слои
+    }
+    if (page >= PL_USER_FIRST) {
+        return 10 + page - PL_USER_FIRST;
+    }
+    return page;
+}

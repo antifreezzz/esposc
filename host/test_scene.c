@@ -100,7 +100,7 @@ TEST(test_per_chunk_limit)
 TEST(test_scan_limit)
 {
     reset();
-    set(9, 15, 70); // последняя позиция обхода
+    set(9, 15, 70); // последняя штатная позиция обхода (дальше слои)
     acid_scene_store(&sc, 0, &s, &c);
     set(9, 15, 60);
     acid_scene_recall(&sc, 0, 0);
@@ -115,7 +115,7 @@ TEST(test_scan_limit)
         step();
         steps++;
     }
-    CHECK(steps == PREP);
+    CHECK(steps == (9 * (ACID_KNOBS - 1) + 14) / ACID_SCENE_SCAN_PER_CHUNK + 1);
 }
 
 TEST(test_waits_for_bar)
@@ -287,12 +287,38 @@ TEST(test_recall_holds_user_slots)
     acid_scene_store(&sc, 0, &s, &c);
     acid_scene_recall(&sc, 0, 0);
     run_to_end();
-    CHECK(l.held[10][2] == 1 && l.held[10][3] == 1); // BSP подхватывает и свои слоты
+    CHECK(l.held[ACID_USER_FIRST][2] == 1 && l.held[ACID_USER_FIRST][3] == 1); // BSP подхватывает и свои слоты
     CHECK(l.held[10][4] == 0); // пустой слот не держим
+}
+
+// Blob сцен до этапа 14: 10 штатных страниц, метка версии 1.
+TEST(test_scene_import_old_blob)
+{
+    static uint8_t old[4 + 1 + 8 * 10 * 16 + 8 * 6 * 16];
+    memset(old, 0, sizeof old);
+    memcpy(old, "SCN\x01", 4);
+    old[4] = 1;
+    uint8_t *kb = old + 5, *user = old + 5 + 8 * 10 * 16;
+    reset();
+    for (int p = 0; p < 10; p++) {
+        for (int e = 1; e < 16; e++) {
+            kb[p * 16 + e] = (uint8_t)acid_synth_knob(&s, p, e);
+        }
+    }
+    kb[6 * 16 + 2] = 77;   // сцена 0: синт 1, энкодер 3
+    user[0 * 16 + 1] = 40;   // USER 1, энкодер 2
+    CHECK(acid_scene_import(&sc, old, sizeof old) == 1);
+    CHECK(sc.used == 1);
+    CHECK(sc.knob[0][ACID_PAGE_LAYER1][2] == 0xFF); // слоёв в старой сцене нет: не трогать
+    CHECK(acid_scene_recall(&sc, 0, 0) == 1);
+    run_to_end();
+    CHECK(knob(6, 2) == 77);
+    CHECK(c.val[0][1] == 40);
 }
 
 int main(void)
 {
+    RUN(test_scene_import_old_blob);
     RUN(test_store_recall_instant_no_clock);
     RUN(test_per_chunk_limit);
     RUN(test_scan_limit);

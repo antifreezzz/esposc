@@ -65,7 +65,7 @@ TEST(test_type_and_empty_not_pickable)
     CHECK(pl_edit_knob(&e, &m, 0, &out) == 0);
     CHECK(e.state == PL_EDIT_PICK_KNOB);
     pl_edit_back(&e);
-    pl_edit_page(&e, 10); // своя страница целью не бывает
+    pl_edit_page(&e, PL_USER_FIRST); // своя страница целью не бывает
     CHECK(e.state == PL_EDIT_PICK_PAGE);
 }
 

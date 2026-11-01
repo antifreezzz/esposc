@@ -41,7 +41,6 @@ static const uint8_t CYM_KNOB[ACID_CYM_N] = {28, 35, 40};
 #define SYNTH_GAIN 0.9f // общая громкость синтов: на 10% тише прежнего (просьба пользователя)
 // Панорамы после включения: синты в центре, ударка немного разведена.
 static const uint8_t PAN_DEFAULT[ACID_PANS] = {64, 64, 80, 48, 64};
-#define PAGES 10
 #define PAGE_DRUMS2 2 // ударка 2: тарелки
 #define PAGE_TOMS 3   // перкуссия: томы, рим, ковбелл
 #define PAGE_COW 5
@@ -64,7 +63,7 @@ static const uint8_t BLOB_MAGIC[4] = {'A', 'S', '5', 2}; // 2: + ручки сл
 
 // Сырые значения ручек после init для панели: CC, ближайшие к умолчаниям (обратные к lin/expo, округлено).
 // По индексу энкодера с 0; страницы 3-7 и 9 берут значения из своих knob[], здесь не используются.
-static const uint8_t RAW_DEFAULT[PAGES][ACID_KNOBS] = {
+static const uint8_t RAW_DEFAULT[ACID_PAGES][ACID_KNOBS] = {
     [0] = {0, 127, 54, 85, 85, 92, 53, 64, 68, 0, 60, 64, 0, 64, 64, 0},
     [1] = {0, 55, 42, 76, 35, 78, 64, 64, 55, 59, 48, 76, 54, 80, 48, 64},
     [2] = {0, 28, 127, 64, 64, 35, 127, 64, 64, 40, 100, 0, 0, 0, 0, 0},
@@ -186,6 +185,34 @@ void acid_synth_init(acid_synth_t *s, float sr)
     }
     memcpy(s->raw, RAW_DEFAULT, sizeof s->raw);
     s->page = PAGE_SYNTH1;
+}
+
+int acid_page_from_bsp(int v)
+{
+    if (v >= 0 && v < ACID_BSP_USER_FIRST) {
+        return v;
+    }
+    if (v >= ACID_BSP_USER_FIRST && v < ACID_BSP_LAYER1) {
+        return ACID_PAGES + v - ACID_BSP_USER_FIRST;
+    }
+    if (v >= ACID_BSP_LAYER1 && v < ACID_BSP_LAYER1 + ACID_SLOTS) {
+        return ACID_PAGE_LAYER1 + v - ACID_BSP_LAYER1;
+    }
+    return -1;
+}
+
+int acid_page_to_bsp(int page)
+{
+    if (page >= 0 && page < ACID_PAGE_LAYER1) {
+        return page;
+    }
+    if (page >= ACID_PAGE_LAYER1 && page < ACID_PAGES) {
+        return ACID_BSP_LAYER1 + page - ACID_PAGE_LAYER1;
+    }
+    if (page >= ACID_PAGES && page < ACID_PAGES + ACID_BSP_LAYER1 - ACID_BSP_USER_FIRST) {
+        return ACID_BSP_USER_FIRST + page - ACID_PAGES;
+    }
+    return -1;
 }
 
 void acid_synth_set_bank(acid_synth_t *s, const acid_bank_t *b)
@@ -645,7 +672,7 @@ static void apply_page(acid_synth_t *s, int page, int slot, int v)
     } else if (page == PAGE_TONAL) {
         acid_tonal_set(&s->tonal, slot, v);
         s->save = 1; // квадрат - часть композиции, переживает перезагрузку
-    } else {
+    } else if (page == PAGE_SYNTH1 || page == PAGE_SYNTH1 + 1) {
         page_synth(s, &s->slot[page - PAGE_SYNTH1], slot, v);
     }
 }
@@ -659,8 +686,9 @@ static void control_change(acid_synth_t *s, int num, int v)
         }
     }
     if (slot == 0) {
-        if (v < PAGES) {
-            s->page = v; // значение на экране BSP - номер страницы, остальное не страница
+        int p = acid_page_from_bsp(v);
+        if (p >= 0 && p < ACID_PAGES) {
+            s->page = p; // значение на экране BSP - номер страницы, остальное (и свои страницы) не наше
         }
     } else if (slot > 0) {
         apply_page(s, s->page, slot, v);
@@ -669,14 +697,14 @@ static void control_change(acid_synth_t *s, int num, int v)
 
 void acid_synth_set_knob(acid_synth_t *s, int page, int enc, int v)
 {
-    if (page >= 0 && page < PAGES && enc > 0 && enc < ACID_KNOBS && v >= 0 && v <= 127) {
+    if (page >= 0 && page < ACID_PAGES && enc > 0 && enc < ACID_KNOBS && v >= 0 && v <= 127) {
         apply_page(s, page, enc, v);
     }
 }
 
 int acid_synth_knob(const acid_synth_t *s, int page, int enc)
 {
-    if (page < 0 || page >= PAGES || enc < 0 || enc >= ACID_KNOBS) {
+    if (page < 0 || page >= ACID_PAGES || enc < 0 || enc >= ACID_KNOBS) {
         return 0;
     }
     if (page >= PAGE_TOMS && page <= PAGE_COW) {

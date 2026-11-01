@@ -117,8 +117,24 @@ TEST(test_pcm_lr)
     }
 }
 
+TEST(test_bsp_page_mapping)
+{
+    // На BSP: 0-9 штатные, 10-15 свои, 16-17 слои. Внутри: 0-9, слои 10-11, свои 12-17.
+    static const int bsp[] = {0, 9, 10, 15, 16, 17};
+    static const int page[] = {0, 9, 12, 17, 10, 11};
+    for (int i = 0; i < 6; i++) {
+        CHECK(acid_page_from_bsp(bsp[i]) == page[i]);
+        CHECK(acid_page_to_bsp(page[i]) == bsp[i]);
+    }
+    CHECK(acid_page_from_bsp(18) == -1);
+    CHECK(acid_page_from_bsp(127) == -1);
+    CHECK(acid_page_from_bsp(-1) == -1);
+    CHECK(acid_page_to_bsp(18) == -1);
+}
+
 int main(void)
 {
+    RUN(test_bsp_page_mapping);
     RUN(test_synth_demo_finite_and_peak);
     RUN(test_synth_stress_peak);
     RUN(test_render_mono_is_mean);

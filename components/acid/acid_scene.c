@@ -7,7 +7,11 @@
 #define TYPE_ENC 1
 #define PAGE_SYNTH1 6
 
-static const uint8_t MAGIC[4] = {'S', 'C', 'N', 1};
+static const uint8_t MAGIC[4] = {'S', 'C', 'N', 2}; // 2: 12 страниц (слои)
+static const uint8_t MAGIC_V1[4] = {'S', 'C', 'N', 1};
+#define V1_PAGES 10
+#define V1_BLOB (4 + 1 + ACID_SCENES * V1_PAGES * ACID_KNOBS + sizeof(((acid_scene_t *)0)->user))
+#define UNSET 0xFF // ручка в сцене не задана (старая сцена без слоёв): вызов её не трогает
 
 void acid_scene_init(acid_scene_t *sc)
 {
@@ -81,7 +85,8 @@ static int prepare(acid_scene_t *sc, acid_link_t *l, const acid_synth_t *s)
     for (int i = 0; i < ACID_SCENE_SCAN_PER_CHUNK && sc->prep < n; i++, sc->prep++) {
         int p = sc->prep / (ACID_KNOBS - 1), e = 1 + sc->prep % (ACID_KNOBS - 1);
         const uint8_t *to = sc->knob[sc->cur][p];
-        int retype = (p == PAGE_SYNTH1 || p == PAGE_SYNTH1 + 1) && acid_synth_knob(s, p, TYPE_ENC) != to[TYPE_ENC];
+        int retype = (p == PAGE_SYNTH1 || p == PAGE_SYNTH1 + 1) && to[TYPE_ENC] != UNSET &&
+                     acid_synth_knob(s, p, TYPE_ENC) != to[TYPE_ENC];
         sc->from[p][e] = (uint8_t)acid_synth_knob(s, p, e);
         sc->jump[p][e] = (uint8_t)(retype || is_list(to, p, e));
     }
@@ -160,7 +165,7 @@ int acid_scene_step(acid_scene_t *sc, acid_link_t *l, acid_synth_t *s)
     int budget = ACID_SCENE_PER_CHUNK;
     for (int k = 0; k < 2 && budget > 0; k++) {
         int p = PAGE_SYNTH1 + k, to = sc->knob[sc->cur][p][TYPE_ENC];
-        if (acid_synth_knob(s, p, TYPE_ENC) != to) {
+        if (to != UNSET && acid_synth_knob(s, p, TYPE_ENC) != to) {
             put(l, s, p, TYPE_ENC, to); // тип первым: ручки дальше пишутся в память нового типа
             budget--;
         }
@@ -169,7 +174,7 @@ int acid_scene_step(acid_scene_t *sc, acid_link_t *l, acid_synth_t *s)
     int done = sc->bars == 0 || sc->ticks >= sc->bars * ACID_SCENE_BAR;
     for (int i = 0; i < ACID_SCENE_SCAN_PER_CHUNK && budget > 0; i++) {
         int p = sc->cursor / (ACID_KNOBS - 1), e = 1 + sc->cursor % (ACID_KNOBS - 1);
-        if (!is_type(p, e)) {
+        if (!is_type(p, e) && sc->knob[sc->cur][p][e] != UNSET) {
             int v = want(sc, p, e);
             if (acid_synth_knob(s, p, e) != v) {
                 put(l, s, p, e, v);
@@ -209,14 +214,34 @@ size_t acid_scene_export(const acid_scene_t *sc, void *buf, size_t cap)
     return ACID_SCENE_BLOB;
 }
 
+// Старый blob (10 страниц): штатные страницы как были, слои не заданы.
+static int import_v1(acid_scene_t *sc, const uint8_t *b)
+{
+    for (size_t i = 5; i < V1_BLOB; i++) {
+        if (b[i] > 127) {
+            return 0;
+        }
+    }
+    sc->used = b[4];
+    memset(sc->knob, UNSET, sizeof sc->knob);
+    for (int n = 0; n < ACID_SCENES; n++) {
+        memcpy(sc->knob[n], b + 5 + n * V1_PAGES * ACID_KNOBS, V1_PAGES * ACID_KNOBS);
+    }
+    memcpy(sc->user, b + 5 + ACID_SCENES * V1_PAGES * ACID_KNOBS, sizeof sc->user);
+    return 1;
+}
+
 int acid_scene_import(acid_scene_t *sc, const void *buf, size_t len)
 {
     const uint8_t *b = buf;
+    if (len == V1_BLOB && memcmp(b, MAGIC_V1, sizeof MAGIC_V1) == 0) {
+        return import_v1(sc, b);
+    }
     if (len != ACID_SCENE_BLOB || memcmp(b, MAGIC, sizeof MAGIC) != 0) {
         return 0;
     }
     for (size_t i = 5; i < len; i++) {
-        if (b[i] > 127) {
+        if (b[i] > 127 && !(i < 5 + sizeof sc->knob && b[i] == UNSET)) {
             return 0;
         }
     }

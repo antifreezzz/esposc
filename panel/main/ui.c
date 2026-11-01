@@ -190,14 +190,14 @@ static void build(void)
     u.menu = ui_box(scr, 0, TOP_H, W, W - TOP_H, C_BG);
     for (int p = 0; p < PL_PAGES; p++) {
         char num[4];
-        snprintf(num, sizeof num, "%d", p);
+        snprintf(num, sizeof num, "%d", pl_page_bsp(p));
         u.tile[p] = menu_tile(u.menu, p, pl_page_color(p), num, pl_page_name(p), &u.tile_sub[p]);
     }
     // Второй экран меню: свои страницы 10..15 и сцены.
     u.menu2 = ui_box(scr, 0, TOP_H, W, W - TOP_H, C_BG);
     for (int p = 0; p < MENU2_TILES; p++) {
         char num[4];
-        snprintf(num, sizeof num, p < PL_USER_PAGES ? "%d" : "S", PL_USER_FIRST + p);
+        snprintf(num, sizeof num, p < PL_USER_PAGES ? "%d" : "S", pl_page_bsp(PL_USER_FIRST + p));
         menu_tile(u.menu2, p, p < PL_USER_PAGES ? pl_view_page_color(PL_USER_FIRST + p) : C_ACCENT, num,
                   p < PL_USER_PAGES ? pl_user_name(p) : "SCENES", &u.tile2_sub[p]);
     }
@@ -405,7 +405,7 @@ static void draw_bar(const pl_model_t *m)
         ui_text(u.bar_left, LV_SYMBOL_LEFT " MENU");
         ui_text(u.bar_edit, u.ed.state == PL_EDIT_SLOTS ? "DONE" : "BACK");
     } else if (u.screen == PAGE) {
-        snprintf(nav, sizeof nav, LV_SYMBOL_LEFT "  %d %s  " LV_SYMBOL_RIGHT, u.page, pl_view_page_name(u.page));
+        snprintf(nav, sizeof nav, LV_SYMBOL_LEFT "  %d %s  " LV_SYMBOL_RIGHT, pl_page_bsp(u.page), pl_view_page_name(u.page));
         nc = pl_view_page_color(u.page);
         ui_text(u.bar_left, LV_SYMBOL_LEFT " MENU");
         ui_text(u.bar_edit, user && (m->user_have >> (u.page - PL_USER_FIRST) & 1) ? "EDIT" : "");

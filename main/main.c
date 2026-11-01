@@ -223,8 +223,8 @@ static void load_user_data(void)
         acid_custom_import(&s_custom, s_cblob, sizeof s_cblob)) {
         ESP_LOGI(TAG, "custom pages restored");
     }
-    if (store_load(STORE_SCENES, s_sblob, sizeof s_sblob) == ACID_SCENE_BLOB &&
-        acid_scene_import(&s_scene, s_sblob, sizeof s_sblob)) {
+    size_t sn = store_load(STORE_SCENES, s_sblob, sizeof s_sblob); // старый blob короче: import его переносит
+    if (sn > 0 && acid_scene_import(&s_scene, s_sblob, sn)) {
         ESP_LOGI(TAG, "scenes restored (%02x)", s_scene.used);
     }
 }

@@ -169,12 +169,13 @@ int acid_link_midi(acid_link_t *l, acid_synth_t *s, const acid_midi_event_t *ev,
     }
     if (enc == 0) {
         acid_synth_midi(s, ev);
-        if (is_user(l, ev->d2)) {
-            l->user = ev->d2 - ACID_USER_FIRST; // синт её проигнорировал, штатная s->page прежняя
-            *out = (acid_link_ev_t){.page = ev->d2, .enc = 0, .value = ev->d2, .src = (uint8_t)src};
+        int p = acid_page_from_bsp(ev->d2); // на экране BSP свои номера страниц
+        if (is_user(l, p)) {
+            l->user = p - ACID_USER_FIRST; // синт её проигнорировал, штатная s->page прежняя
+            *out = (acid_link_ev_t){.page = (uint8_t)p, .enc = 0, .value = (uint8_t)p, .src = (uint8_t)src};
             return 1;
         }
-        if (ev->d2 >= ACID_PAGES) {
+        if (p < 0 || p >= ACID_PAGES) {
             return 0; // не страница: синт её проигнорировал, экран не дёргаем
         }
         l->user = -1;

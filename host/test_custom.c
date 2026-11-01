@@ -26,7 +26,7 @@ TEST(test_map_ends_and_inverse)
 TEST(test_edit_rejects_bad_targets)
 {
     acid_custom_init(&c);
-    CHECK(acid_custom_edit(&c, 0, 1, 0, 10, 2, 0, 127) == 0);   // своя страница целью
+    CHECK(acid_custom_edit(&c, 0, 1, 0, ACID_USER_FIRST, 2, 0, 127) == 0);   // своя страница целью
     CHECK(acid_custom_edit(&c, 0, 1, 0, 6, 1, 0, 127) == 0);    // тип синта 1
     CHECK(acid_custom_edit(&c, 0, 1, 0, 7, 1, 0, 127) == 0);    // тип синта 2
     CHECK(acid_custom_edit(&c, 0, 1, 0, 0, 0, 0, 127) == 0);    // энкодер страницы
@@ -110,7 +110,7 @@ TEST(test_edit_sets_save)
 {
     acid_custom_init(&c);
     CHECK(c.save == 0);
-    acid_custom_edit(&c, 0, 1, 0, 10, 2, 0, 127);
+    acid_custom_edit(&c, 0, 1, 0, ACID_USER_FIRST, 2, 0, 127);
     CHECK(c.save == 0);
     acid_custom_edit(&c, 0, 1, 0, 6, 2, 0, 127);
     CHECK(c.save == 1);

@@ -159,7 +159,7 @@ TEST(test_panel_page)
     CHECK(knob(8, 3) == 90);
     bsp(1, 2); // энкодер 1 - снова страница с BSP
     CHECK(s.page == 2);
-    CHECK(acid_link_panel_page(&l, &s, 10, &ev) == 0); // не страница
+    CHECK(acid_link_panel_page(&l, &s, ACID_USER_FIRST, &ev) == 0); // своя без определений - не страница
     CHECK(s.page == 2);
 }
 
@@ -181,10 +181,10 @@ TEST(test_user_page_macro_from_bsp)
     acid_custom_edit(&c, 0, 2, 0, 6, 2, 0, 127);
     acid_custom_edit(&c, 0, 2, 1, 0, 1, 127, 0);
     CHECK(bsp(1, 10) == 1);
-    CHECK(ev.page == 10 && ev.enc == 0 && ev.value == 10);
+    CHECK(ev.page == ACID_USER_FIRST && ev.enc == 0 && ev.value == ACID_USER_FIRST);
     int master = knob(0, 2);
     CHECK(bsp(3, 127) == 1);
-    CHECK(ev.page == 10 && ev.enc == 2 && ev.value == 127);
+    CHECK(ev.page == ACID_USER_FIRST && ev.enc == 2 && ev.value == 127);
     CHECK(take() == 0);
     CHECK(knob(0, 2) == master); // цели макро - в следующем шаге связки, не в этом событии
     CHECK(step() == 1 && ev.page == 6 && ev.enc == 2 && ev.value == 127);
@@ -201,7 +201,7 @@ TEST(test_user_page_alias_from_bsp)
     bsp(1, 10);
     bsp(3, 40);
     CHECK(knob(6, 3) == 40);
-    CHECK(ev.page == 10 && ev.value == 40);
+    CHECK(ev.page == ACID_USER_FIRST && ev.value == 40);
 }
 
 TEST(test_user_page_empty_slot)
@@ -246,12 +246,12 @@ TEST(test_user_page_pickup)
     acid_custom_edit(&c, 0, 2, 0, 6, 2, 0, 127);
     bsp(1, 10);
     bsp(3, 90);
-    CHECK(panel(10, 3, 30) == 1);
-    CHECK(ev.page == 10 && ev.held == 1 && knob(6, 3) == 30);
+    CHECK(panel(ACID_USER_FIRST, 3, 30) == 1);
+    CHECK(ev.page == ACID_USER_FIRST && ev.held == 1 && knob(6, 3) == 30);
     while (take()) {
     }
     bsp(3, 80);
-    CHECK(knob(6, 3) == 30 && ev.held == 1 && ev.page == 10);
+    CHECK(knob(6, 3) == 30 && ev.held == 1 && ev.page == ACID_USER_FIRST);
     bsp(3, 29);
     CHECK(knob(6, 3) == 29 && ev.held == 0);
 }
@@ -260,21 +260,21 @@ TEST(test_user_panel_set_macro)
 {
     reset_custom();
     acid_custom_edit(&c, 1, 4, 0, 8, 3, 0, 100);
-    CHECK(panel(11, 5, 127) == 1);
-    CHECK(c.val[1][4] == 127 && l.held[11][4] == 1);
+    CHECK(panel(ACID_USER_FIRST + 1, 5, 127) == 1);
+    CHECK(c.val[1][4] == 127 && l.held[ACID_USER_FIRST + 1][4] == 1);
     CHECK(step() == 1 && ev.page == 8 && ev.enc == 3 && ev.value == 100);
     CHECK(knob(8, 4) == 100);
-    CHECK(panel(16, 5, 1) == 0);
+    CHECK(panel(ACID_USER_FIRST + 6, 5, 1) == 0);
 }
 
 TEST(test_user_panel_page)
 {
     reset_custom();
-    CHECK(acid_link_panel_page(&l, &s, 13, &ev) == 1);
-    CHECK(l.user == 3 && ev.value == 13 && acid_link_page(&l, &s) == 13);
+    CHECK(acid_link_panel_page(&l, &s, ACID_USER_FIRST + 3, &ev) == 1);
+    CHECK(l.user == 3 && ev.value == ACID_USER_FIRST + 3 && acid_link_page(&l, &s) == ACID_USER_FIRST + 3);
     CHECK(acid_link_panel_page(&l, &s, 2, &ev) == 1);
     CHECK(l.user == -1 && s.page == 2);
-    CHECK(acid_link_panel_page(&l, &s, 16, &ev) == 0);
+    CHECK(acid_link_panel_page(&l, &s, ACID_USER_FIRST + 6, &ev) == 0);
 }
 
 TEST(test_link_init_keeps_custom)
@@ -289,7 +289,7 @@ TEST(test_page_reports_user)
 {
     reset_custom();
     bsp(1, 11);
-    CHECK(acid_link_page(&l, &s) == 11);
+    CHECK(acid_link_page(&l, &s) == ACID_USER_FIRST + 1);
 }
 
 TEST(test_custom_edit_marks_due)
@@ -307,7 +307,7 @@ TEST(test_targets_do_not_toast)
     acid_custom_edit(&c, 0, 2, 1, 0, 1, 0, 127);
     bsp(1, 10);
     bsp(3, 50);
-    CHECK(ev.page == 10 && ev.src == ACID_SRC_BSP); // всплывашка - слот своей страницы
+    CHECK(ev.page == ACID_USER_FIRST && ev.src == ACID_SRC_BSP); // всплывашка - слот своей страницы
     CHECK(step() == 1 && ev.src != ACID_SRC_BSP);
     while (take()) {
         CHECK(ev.src != ACID_SRC_BSP); // цели - отражение, не поворот на их странице
@@ -346,8 +346,8 @@ static int drain(void)
 TEST(test_macro_targets_limited_per_step)
 {
     two_macros();
-    panel(10, 2, 100);
-    panel(10, 3, 100);
+    panel(ACID_USER_FIRST, 2, 100);
+    panel(ACID_USER_FIRST, 3, 100);
     CHECK(drain() == ACID_LINK_PER_CHUNK);
     CHECK(drain() == 8 - ACID_LINK_PER_CHUNK);
     CHECK(drain() == 0);
@@ -359,9 +359,9 @@ TEST(test_macro_targets_limited_per_step)
 TEST(test_macro_latest_value_wins)
 {
     two_macros();
-    panel(10, 2, 10);
-    panel(10, 2, 20);
-    panel(10, 2, 30);
+    panel(ACID_USER_FIRST, 2, 10);
+    panel(ACID_USER_FIRST, 2, 20);
+    panel(ACID_USER_FIRST, 2, 30);
     CHECK(drain() == 4); // одна запись на ручку, не три
     CHECK(knob(0, 2) == 30 && knob(0, 5) == 30);
     CHECK(drain() == 0);
@@ -370,7 +370,7 @@ TEST(test_macro_latest_value_wins)
 TEST(test_direct_set_cancels_deferred)
 {
     two_macros();
-    panel(10, 2, 100);
+    panel(ACID_USER_FIRST, 2, 100);
     panel(0, 3, 7); // прямая правка цели новее макро
     bsp(1, 0);
     bsp(5, 9); // и с BSP
@@ -381,9 +381,9 @@ TEST(test_direct_set_cancels_deferred)
 TEST(test_requeue_after_cancel)
 {
     two_macros();
-    panel(10, 2, 100);
+    panel(ACID_USER_FIRST, 2, 100);
     panel(0, 2, 7);
-    panel(10, 2, 50); // снова макро: запись живая, без дублей в очереди
+    panel(ACID_USER_FIRST, 2, 50); // снова макро: запись живая, без дублей в очереди
     CHECK(drain() == 4);
     CHECK(knob(0, 2) == 50);
     CHECK(drain() == 0);
@@ -392,13 +392,36 @@ TEST(test_requeue_after_cancel)
 TEST(test_init_drops_deferred)
 {
     two_macros();
-    panel(10, 2, 100);
+    panel(ACID_USER_FIRST, 2, 100);
     acid_link_init(&l);
     CHECK(drain() == 0);
 }
 
+TEST(test_bsp_user_page_still_10)
+{
+    reset_custom();
+    CHECK(bsp(1, 10) == 1);
+    CHECK(ev.page == ACID_USER_FIRST && ev.value == ACID_USER_FIRST);
+    CHECK(acid_link_page(&l, &s) == ACID_USER_FIRST);
+    CHECK(bsp(1, 15) == 1);
+    CHECK(acid_link_page(&l, &s) == ACID_USER_FIRST + 5);
+}
+
+TEST(test_bsp_layer_page)
+{
+    reset();
+    CHECK(bsp(1, 16) == 1);
+    CHECK(s.page == ACID_PAGE_LAYER1 && ev.value == ACID_PAGE_LAYER1);
+    CHECK(bsp(1, 17) == 1);
+    CHECK(s.page == ACID_PAGE_LAYER1 + 1);
+    CHECK(bsp(1, 18) == 0);
+    CHECK(s.page == ACID_PAGE_LAYER1 + 1);
+}
+
 int main(void)
 {
+    RUN(test_bsp_user_page_still_10);
+    RUN(test_bsp_layer_page);
     RUN(test_pickup_blocks_until_cross);
     RUN(test_pickup_skip_over);
     RUN(test_pickup_from_below);
