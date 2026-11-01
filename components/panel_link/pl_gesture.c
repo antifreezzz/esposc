@@ -26,6 +26,15 @@ int pl_sector(int x, int y)
     return (int)((a + SECTOR_DEG / 2) / SECTOR_DEG) % SECTORS;
 }
 
+int pl_grid_cell(int x, int y)
+{
+    if (x < 8 || x >= 8 + 4 * 116 || y < 44 || y >= 44 + 4 * 107) {
+        return -1;
+    }
+    return ((y - 44) / 107) * 4 + (x - 8) / 116;
+}
+
+
 void pl_turn_begin(pl_turn_t *t, int x, int y, int v, int lo, int hi)
 {
     float a = angle(x, y);

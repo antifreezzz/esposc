@@ -155,6 +155,18 @@ TEST(test_press_smear_ends)
     CHECK(x == 100 && y == 100);
 }
 
+TEST(test_grid_cell)
+{
+    CHECK(pl_grid_cell(100, 20) == -1); // шапка
+    CHECK(pl_grid_cell(2, 100) == -1);  // левое поле
+    CHECK(pl_grid_cell(476, 100) == -1);
+    CHECK(pl_grid_cell(50, 80) == 0);   // левый верх: энкодер 1 (PAGE)
+    CHECK(pl_grid_cell(170, 80) == 1);  // энкодер 2
+    CHECK(pl_grid_cell(420, 80) == 3);  // правый верх: энкодер 4
+    CHECK(pl_grid_cell(50, 200) == 4);  // 2-й ряд, 1-й столбец: энкодер 5
+    CHECK(pl_grid_cell(420, 430) == 15); // правый низ: энкодер 16
+}
+
 int main(void)
 {
     RUN(test_sector_clock);
@@ -167,5 +179,7 @@ int main(void)
     RUN(test_press_moved_is_not_hold);
     RUN(test_press_tap);
     RUN(test_press_smear_ends);
+    RUN(test_grid_cell);
     TEST_MAIN_END();
 }
+
