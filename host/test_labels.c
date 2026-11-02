@@ -16,7 +16,7 @@ static int empty(int page, int enc, int type)
     case 7: return type == 0 && enc >= 10 && enc <= 12;
     case 10:
     case 11: return type == 25 ? enc >= 2 : type == 0 && enc >= 10 && enc <= 12; // слой: как синт, OFF - пусто
-    case 8: return enc >= 14;
+    case 8: return enc >= 15;
     default: return 0;
     }
 }
@@ -267,7 +267,10 @@ TEST(test_fx_layer_vol_labels)
     uint8_t raw[16] = {0};
     CHECK(strcmp(pl_knob_label(8, 12, raw), "LYR1 VOL") == 0);
     CHECK(strcmp(pl_knob_label(8, 13, raw), "LYR2 VOL") == 0);
-    CHECK(pl_knob_label(8, 14, raw) == NULL);
+    CHECK(strcmp(pl_knob_label(8, 14, raw), "LYR HALF") == 0);
+    char buf[12];
+    CHECK(strcmp(pl_value_text(8, 14, 63, raw, buf), "OFF") == 0); // переключатель: порог 64
+    CHECK(strcmp(pl_value_text(8, 14, 64, raw, buf), "ON") == 0);
 }
 
 int main(void)

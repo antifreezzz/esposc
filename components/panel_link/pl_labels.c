@@ -25,7 +25,7 @@ static const char *const S303[16] = {NULL, "TYPE", "CUTOFF", "RESO", "ENV", "DEC
 static const char *const PLAITS[16] = {NULL, "TYPE", "HARMONICS", "TIMBRE", "MORPH", "DECAY", "LPG", "GLIDE",
                                        "TRANS", "T ENV", "M ENV", "P ENV", "ACCENT", "DRIVE", "TONE", "HOWL"};
 static const char *const FX[16] = {NULL, "CRUSH BITS", "CRUSH RATE", "DLY S1", "DLY S2", "DLY DRUMS", "DLY TIME",
-                                   "DLY FB", "DLY TONE", "STUTTER", "MOTION", "WIDTH", "LYR1 VOL", "LYR2 VOL"};
+                                   "DLY FB", "DLY TONE", "STUTTER", "MOTION", "WIDTH", "LYR1 VOL", "LYR2 VOL", "LYR HALF"};
 static const char *const TONAL[16] = {NULL, "STEP LEN", "STEPS", "ORDER", "TARGET", "HELD", "SCALE", "ROOT",
                                       "STEP 1", "STEP 2", "STEP 3", "STEP 4", "STEP 5", "STEP 6", "STEP 7", "STEP 8"};
 
@@ -166,6 +166,9 @@ const char *pl_value_text(int page, int enc, int v, const uint8_t page_raw[16], 
         if (page == 9 && enc == 1 && v == 0) {
             return "OFF"; // слой выключен
         }
+    }
+    if (page == 8 && enc == 14) {
+        return v >= 64 ? "ON" : "OFF"; // LYR HALF: переключатель
     }
     snprintf(buf, 12, "%d", v);
     return buf;
