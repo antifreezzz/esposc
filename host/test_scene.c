@@ -316,6 +316,55 @@ TEST(test_scene_import_old_blob)
     CHECK(c.val[0][1] == 40);
 }
 
+TEST(test_scene_skips_grids_actions)
+{
+    reset();
+    set(ACID_PAGE_GRIDS, DRM_ON, 1);
+    set(ACID_PAGE_GRIDS, DRM_X, 30);
+    acid_scene_store(&sc, 0, &s, &c);
+    set(ACID_PAGE_GRIDS, DRM_ON, 0);
+    set(ACID_PAGE_GRIDS, DRM_X, 90);
+    CHECK(acid_scene_recall(&sc, 0, 0) == 1);
+    run_to_end();
+    CHECK(knob(ACID_PAGE_GRIDS, DRM_X) == 30);
+    CHECK(knob(ACID_PAGE_GRIDS, DRM_ON) == 0); // вкл - действие, не звук: сцена его не трогает
+    CHECK(sc.knob[0][ACID_PAGE_GRIDS][DRM_FILL_NOW] == 0xFF);
+}
+
+// Сцена до этапа Grids (12 страниц): страницы 0-11 как были, Grids не задан.
+TEST(test_scene_v2_import)
+{
+    static uint8_t old[4 + 1 + 8 * 12 * 16 + 8 * 6 * 16];
+    memset(old, 0, sizeof old);
+    memcpy(old, "SCN\x02", 4);
+    old[4] = 1;
+    uint8_t *kb = old + 5, *user = old + 5 + 8 * 12 * 16;
+    reset();
+    for (int p = 0; p < 12; p++) {
+        for (int e = 1; e < 16; e++) {
+            kb[p * 16 + e] = (uint8_t)acid_synth_knob(&s, p, e);
+        }
+    }
+    kb[ACID_PAGE_LAYER1 * 16 + 3] = 55; // слой синта 1 в старой сцене есть
+    kb[6 * 16 + 2] = 77;
+    user[0 * 16 + 1] = 40;
+    CHECK(acid_scene_import(&sc, old, sizeof old) == 1);
+    CHECK(sc.knob[0][ACID_PAGE_GRIDS][DRM_X] == 0xFF);
+    set(ACID_PAGE_GRIDS, DRM_X, 33);
+    CHECK(acid_scene_recall(&sc, 0, 0) == 1);
+    run_to_end();
+    CHECK(knob(6, 2) == 77);
+    CHECK(sc.knob[0][ACID_PAGE_LAYER1][3] == 55);
+    CHECK(c.val[0][1] == 40);
+    CHECK(knob(ACID_PAGE_GRIDS, DRM_X) == 33);
+}
+
+TEST(test_custom_targets_grids)
+{
+    reset();
+    CHECK(acid_custom_edit(&c, 0, 1, 0, ACID_PAGE_GRIDS, DRM_FILL_NOW, 0, 127) == 1);
+}
+
 TEST(test_scene_layer_type_jumps)
 {
     reset();
@@ -344,6 +393,9 @@ int main(void)
 {
     RUN(test_scene_layer_type_jumps);
     RUN(test_scene_import_old_blob);
+    RUN(test_scene_skips_grids_actions);
+    RUN(test_scene_v2_import);
+    RUN(test_custom_targets_grids);
     RUN(test_store_recall_instant_no_clock);
     RUN(test_per_chunk_limit);
     RUN(test_scan_limit);

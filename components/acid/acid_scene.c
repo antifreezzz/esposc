@@ -7,11 +7,13 @@
 #define TYPE_ENC 1
 #define PAGE_SYNTH1 6
 
-static const uint8_t MAGIC[4] = {'S', 'C', 'N', 2}; // 2: 12 страниц (слои)
-static const uint8_t MAGIC_V1[4] = {'S', 'C', 'N', 1};
-#define V1_PAGES 10
-#define V1_BLOB (4 + 1 + ACID_SCENES * V1_PAGES * ACID_KNOBS + sizeof(((acid_scene_t *)0)->user))
-#define UNSET 0xFF // ручка в сцене не задана (старая сцена без слоёв): вызов её не трогает
+static const uint8_t MAGIC[4] = {'S', 'C', 'N', 3}; // 3: 13 страниц (Grids)
+#define OLD_BLOB(pages) (4 + 1 + ACID_SCENES * (pages) * ACID_KNOBS + sizeof(((acid_scene_t *)0)->user))
+// Старые версии: 1 - 10 страниц (без слоёв), 2 - 12 (без Grids).
+static const struct {
+    uint8_t ver, pages;
+} OLD[] = {{1, 10}, {2, 12}};
+#define UNSET 0xFF // ручка в сцене не задана (старая сцена без слоёв или Grids): вызов её не трогает
 
 void acid_scene_init(acid_scene_t *sc)
 {
@@ -31,6 +33,9 @@ void acid_scene_store(acid_scene_t *sc, int n, const acid_synth_t *s, const acid
             sc->knob[n][p][e] = (uint8_t)acid_synth_knob(s, p, e);
         }
     }
+    // Вкл и «сбивка сейчас» у Grids - действия, не звук: вызов сцены их не трогает.
+    sc->knob[n][ACID_PAGE_GRIDS][DRM_ON] = UNSET;
+    sc->knob[n][ACID_PAGE_GRIDS][DRM_FILL_NOW] = UNSET;
     if (c) {
         memcpy(sc->user[n], c->val, sizeof sc->user[n]);
     } else {
@@ -221,28 +226,31 @@ size_t acid_scene_export(const acid_scene_t *sc, void *buf, size_t cap)
     return ACID_SCENE_BLOB;
 }
 
-// Старый blob (10 страниц): штатные страницы как были, слои не заданы.
-static int import_v1(acid_scene_t *sc, const uint8_t *b)
+// Старый blob (pages страниц): эти страницы как были, остальные не заданы.
+static int import_old(acid_scene_t *sc, const uint8_t *b, int pages, int v1)
 {
-    for (size_t i = 5; i < V1_BLOB; i++) {
-        if (b[i] > 127) {
+    size_t len = OLD_BLOB(pages);
+    for (size_t i = 5; i < len; i++) {
+        if (b[i] > 127 && (v1 || i >= 5 + (size_t)ACID_SCENES * pages * ACID_KNOBS || b[i] != UNSET)) {
             return 0;
         }
     }
     sc->used = b[4];
     memset(sc->knob, UNSET, sizeof sc->knob);
     for (int n = 0; n < ACID_SCENES; n++) {
-        memcpy(sc->knob[n], b + 5 + n * V1_PAGES * ACID_KNOBS, V1_PAGES * ACID_KNOBS);
+        memcpy(sc->knob[n], b + 5 + n * pages * ACID_KNOBS, (size_t)pages * ACID_KNOBS);
     }
-    memcpy(sc->user, b + 5 + ACID_SCENES * V1_PAGES * ACID_KNOBS, sizeof sc->user);
+    memcpy(sc->user, b + 5 + ACID_SCENES * pages * ACID_KNOBS, sizeof sc->user);
     return 1;
 }
 
 int acid_scene_import(acid_scene_t *sc, const void *buf, size_t len)
 {
     const uint8_t *b = buf;
-    if (len == V1_BLOB && memcmp(b, MAGIC_V1, sizeof MAGIC_V1) == 0) {
-        return import_v1(sc, b);
+    for (size_t k = 0; k < sizeof OLD / sizeof OLD[0]; k++) {
+        if (len == OLD_BLOB(OLD[k].pages) && memcmp(b, MAGIC, 3) == 0 && b[3] == OLD[k].ver) {
+            return import_old(sc, b, OLD[k].pages, OLD[k].ver == 1);
+        }
     }
     if (len != ACID_SCENE_BLOB || memcmp(b, MAGIC, sizeof MAGIC) != 0) {
         return 0;
