@@ -1,5 +1,7 @@
 #include "acid_demo.h"
 
+#include "acid_synth.h"
+
 #include <string.h>
 
 #define CH_DRUMS 1 // канал 2: ударка, туда же CC ручек (как в тестах live)
@@ -125,6 +127,10 @@ static void put(sink_t *o, uint8_t type, uint8_t ch, uint8_t d1, uint8_t d2)
 // Ручка как с BSP: страница (если другая), затем CC энкодера.
 static void knob(acid_demo_t *d, sink_t *o, int page, int enc, int v)
 {
+    if (page == ACID_DEMO_GRIDS) {
+        put(o, ACID_MIDI_KNOB, ACID_PAGE_GRIDS, (uint8_t)enc, (uint8_t)v);
+        return;
+    }
     if (d->page != page) {
         put(o, ACID_MIDI_CC, CH_DRUMS, CC_PAGE, (uint8_t)page);
         d->page = page;

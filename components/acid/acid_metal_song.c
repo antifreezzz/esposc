@@ -107,7 +107,6 @@ static const uint32_t dr_c[16] = {K | CR | A, K, K | RD, K, K | S | C | A, K, K 
                                   K | RD | A, K, K | RD, K, K | S | C | A, K, K | B, K | O};
 // Брейк вполовину: бочка, малый на третьей доле.
 static const uint32_t dr_half[16] = {K | CR | A, 0, H, 0, H, 0, K, H, S | C | A, 0, H, K, H, 0, O, 0};
-static const uint32_t dr_quiet[16] = {K, 0, B, 0, RM, 0, RD, 0, 0, 0, K | B, 0, RM, 0, RD, RM};
 // Нагнетание: дробь малого шестнадцатыми.
 static const uint32_t dr_build[16] = {K | S | A, S, S, S, K | S, S, S, S, K | S | A, S, S, S, K | S, S, S | A, S | A};
 static const uint32_t dr_hit[16] = {K | CR | C | A};
@@ -157,8 +156,13 @@ static const acid_demo_knob_t k_break[] = {
     {8, 2, 0, 60, 0},    {8, 3, 30, 30, 0},  {0, 12, 64, 96, 0},  {0, 14, 20, 108, 0}, {0, 10, 0, 0, 0},
     {8, 11, 2, 2, 0},    {8, 12, 90, 127, P}, {8, 7, 1, 1, 0},  {8, 4, 50, 50, 0},
 };
+// Автобарабаны: ручки страницы Grids (номера энкодеров как у DRM_*).
+#define G ACID_DEMO_GRIDS
 // 5 Тихая часть: перебор пинг-понгом, тональность по ступеням фригийского ре, гитара молчит.
+// Ударку играют автобарабаны: райд, редкая бочка, сбивка на две доли каждые 4 такта.
 static const acid_demo_knob_t k_quiet[] = {
+    {G, 2, 40, 40, 0},   {G, 3, 30, 30, 0},  {G, 4, 70, 70, 0},   {G, 5, 60, 60, 0},  {G, 6, 100, 100, 0},
+    {G, 7, 20, 20, 0},   {G, 9, 1, 1, 0},    {G, 10, 1, 1, 0},    {G, 11, 1, 1, 0},   {G, 1, 1, 1, 0},
     {8, 2, 0, 0, 0},     {8, 3, 0, 0, 0},    {0, 12, 64, 64, 0},  {0, 14, 64, 64, 0}, {0, 3, 45, 45, 0},
     {9, 9, 64, 64, 0},   {9, 10, 66, 66, 0}, {9, 11, 63, 62, P},  {9, 12, 65, 65, 0}, {9, 7, 4, 4, 0},
     {9, 8, 2, 2, 0},     {9, 6, 1, 1, 0},    {9, 5, 2, 2, 0},     {9, 2, 1, 1, 0},
@@ -167,7 +171,7 @@ static const acid_demo_knob_t k_quiet[] = {
 };
 // 6 Нагнетание: гитара восьмыми, ФНЧ закрыт и открывается, хруст растёт, статтер 1/8 -> 1/16.
 static const acid_demo_knob_t k_build[] = {
-    {9, 2, 0, 0, 0},     GUITAR,             {8, 6, 0, 0, 0},     {8, 4, 0, 0, 0},    {0, 3, 45, 70, 0},
+    {G, 1, 0, 0, 0},     {9, 2, 0, 0, 0},     GUITAR,             {8, 6, 0, 0, 0},     {8, 4, 0, 0, 0},    {0, 3, 45, 70, 0},
     {0, 12, 20, 63, 0},  {8, 2, 0, 70, 0},   {8, 3, 20, 20, 0},   {8, 10, 2, 3, 0},   {7, 6, 100, 100, 0},
 };
 // 7 Обрыв: удар и тишина, крэш приглушён.
@@ -230,7 +234,7 @@ static const acid_demo_part_t parts[] = {
     {12, riff_b, stab_b, dr_b, KN(k_riff_b), POOL(pool_stab), 1, CR},
     {1, riff_b, NULL, dr_fill_b, KN(k_fill_b), NULL, 0, 0, 0},
     {8, siren, voice, dr_half, KN(k_break), POOL(pool_voice), 1, CR},
-    {8, NULL, pluck, dr_quiet, KN(k_quiet), POOL(pool_pluck), 0, 0},
+    {8, NULL, pluck, NULL, KN(k_quiet), POOL(pool_pluck), 0, 0},
     {4, chug8, riser, dr_build, KN(k_build), POOL(pool_riser), 0, 0},
     {1, hit_once, NULL, dr_hit, KN(k_hit), NULL, 0, 0, 0},
     {16, riff_c, chord, dr_c, KN(k_drop), POOL(pool_chord), 1, CR},

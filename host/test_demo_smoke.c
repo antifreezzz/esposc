@@ -19,6 +19,7 @@ typedef struct {
     int motion[3], times[5], sends, crush, stutter[5], tonal_step, scale_chrom, scale_mode, cym_knob, perc_models[ACID_PERC_MODELS], perc_knob;
     int layer[2], layer_vol; // слои синтов звучали, их громкость крутили
     int layer_half;          // слой звучал на половинной частоте (FX 15)
+    int grids, grids_fill, grids_ride; // автобарабаны играли, у них была сбивка, рука времени на райде
     long silent_windows, wide_windows;
     int finite;
 } seen_t;
@@ -43,6 +44,7 @@ static void play_cycle(seen_t *z, int c)
     double sl = 0.0, sd = 0.0, ss = 0.0;
     int w = 0;
     float drive0 = s.drive;
+    uint32_t hits0 = s.grids_hits;
     memset(z, 0, sizeof *z);
     z->finite = 1;
     (void)drive0;
@@ -86,6 +88,10 @@ static void play_cycle(seen_t *z, int c)
             z->layer_half |= s.layer_half && lv->half && lv->nheld > 0;
         }
         z->hat_knob |= s.hat_tone != ACID_HAT_HZ;
+        z->grids |= s.grids_hits != hits0;
+        z->grids_fill |= s.drummer.knob[DRM_ON] && s.drummer.fill_from < s.drummer.fill_to;
+        z->grids_ride |= s.grids_hits != hits0 && s.drummer.knob[DRM_TIME] == DRM_TIME_RIDE;
+        hits0 = s.grids_hits;
         for (int k = 0; k < ACID_PERC_SLOTS; k++) {
             const acid_perc_voice_t *pv = &s.perc.v[k];
             if (pv->active && pv->fade_step == 0.0f) {
@@ -166,6 +172,8 @@ static void coverage(const acid_demo_song_t *song)
         CHECK(count(z.stutter, 5, 1) >= 2);
         CHECK(z.tonal_step && z.scale_chrom && z.scale_mode);
         CHECK(z.layer[0] && z.layer[1] && z.layer_vol && z.layer_half);
+        CHECK(z.grids && z.grids_fill);
+        CHECK(song != &acid_metal_song || z.grids_ride); // райд - в метале, в акиде хэт вперемешку
         printf("  cycle %d: %d models\n", c, count(z.models, ACID_TYPES, 1));
     }
 }

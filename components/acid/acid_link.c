@@ -161,8 +161,12 @@ int acid_link_midi(acid_link_t *l, acid_synth_t *s, const acid_midi_event_t *ev,
 {
     int enc = ev->type == ACID_MIDI_CC ? enc_of(ev->d1) : -1;
     l->npend = l->pend_at = 0;
-    if (ev->type == ACID_MIDI_CC && src == ACID_SRC_DEMO && l->demo_muted) {
+    if ((ev->type == ACID_MIDI_CC || ev->type == ACID_MIDI_KNOB) && src == ACID_SRC_DEMO && l->demo_muted) {
         return 0;
+    }
+    if (ev->type == ACID_MIDI_KNOB) {
+        acid_synth_midi(s, ev);
+        return report(l, s, ev->ch, ev->d1, src, out); // панели - как поворот ручки на её странице
     }
     if (enc < 0) {
         acid_synth_midi(s, ev);

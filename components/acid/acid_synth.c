@@ -854,6 +854,9 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
     case ACID_MIDI_CC:
         control_change(s, ev->d1, ev->d2);
         break;
+    case ACID_MIDI_KNOB:
+        acid_synth_set_knob(s, ev->ch, ev->d1, ev->d2);
+        break;
     case ACID_MIDI_CLOCK: {
         float spb = acid_clock_spb(&s->clock);
         acid_clock_tick(&s->clock, s->clock_now);

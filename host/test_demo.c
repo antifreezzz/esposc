@@ -173,6 +173,28 @@ TEST(test_demo_page_before_enc)
     CHECK(ev[enc].ch == 1); // ручки идут в канал ударки, как с BSP
 }
 
+// Ручка страницы Grids: у неё нет номера на BSP, поэтому не CC, а внутреннее событие ACID_MIDI_KNOB.
+static const acid_demo_knob_t grids_knobs[] = {{ACID_DEMO_GRIDS, 1, 1, 1, 0}, {ACID_DEMO_GRIDS, 2, 30, 30, 0}};
+static const acid_demo_part_t grids_parts[] = {{.bars = 1, .knobs = grids_knobs, .nknobs = 2}};
+static const acid_demo_song_t grids_song = {grids_parts, 1, 0};
+
+TEST(test_demo_grids_knob)
+{
+    acid_demo_init(&d, &grids_song);
+    int n = chunk();
+    int on = -1, x = -1;
+    for (int i = 0; i < n; i++) {
+        CHECK(!(ev[i].type == ACID_MIDI_CC && ev[i].d1 == 10 && ev[i].d2 == ACID_DEMO_GRIDS)); // страницу не листает
+        if (ev[i].type == ACID_MIDI_KNOB && ev[i].ch == 12 && ev[i].d1 == 1 && ev[i].d2 == 1) {
+            on = i;
+        }
+        if (ev[i].type == ACID_MIDI_KNOB && ev[i].ch == 12 && ev[i].d1 == 2 && ev[i].d2 == 30) {
+            x = i;
+        }
+    }
+    CHECK(on >= 0 && x >= 0);
+}
+
 TEST(test_demo_loop_seam)
 {
     acid_demo_init(&d, &song);
@@ -336,6 +358,7 @@ int main(void)
     RUN(test_demo_slide_overlap);
     RUN(test_demo_knob_ramp);
     RUN(test_demo_page_before_enc);
+    RUN(test_demo_grids_knob);
     RUN(test_demo_loop_seam);
     RUN(test_demo_vary_bounds);
     RUN(test_demo_deterministic);

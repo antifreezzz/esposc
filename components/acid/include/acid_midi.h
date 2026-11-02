@@ -11,6 +11,7 @@ typedef enum {
     ACID_MIDI_CLOCK,    // тик, 24 на четверть
     ACID_MIDI_START,
     ACID_MIDI_CONTINUE,
+    ACID_MIDI_KNOB, // только внутри (демо): ch - страница, d1 - enc, d2 - значение; из USB не приходит
 } acid_midi_type_t;
 
 typedef struct {

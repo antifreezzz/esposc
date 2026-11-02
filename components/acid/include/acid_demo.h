@@ -41,6 +41,8 @@ typedef struct {
 // vary с круга 1: N - концы плавной ручки плавают на +-N; ACID_DEMO_PICK - одно случайное значение
 // между from и to на часть (круг 0 - from, to может быть и меньше from).
 #define ACID_DEMO_PICK 0xFF
+// Страница Grids в ручке демо: номера на BSP у неё нет, ручки идут событием ACID_MIDI_KNOB.
+#define ACID_DEMO_GRIDS 100
 #define ACID_DEMO_KNOBS 48 // ручек в части не больше
 typedef struct {
     uint8_t page, enc, from, to, vary;
