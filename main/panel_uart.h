@@ -9,10 +9,12 @@
 // Из рендера - только очереди без ожидания.
 
 // Синт и связку задача читает без лока для снимка: устаревшая цифра на экране до следующего события, звук не трогает.
-// demo_on - режим для снимка (1 демо).
+// demo_on - режим для снимка (1 демо), demo_song - номер песни демо (PL_DEMO_*).
 // Свои страницы и сцены (c, sc) - так же для кадров PL_CUSTOM и PL_SCENE_STATE.
 esp_err_t panel_uart_start(const acid_synth_t *s, const acid_link_t *l, const acid_custom_t *c, const acid_scene_t *sc,
-                           const volatile int *demo_on);
+                           const volatile int *demo_on, const volatile int *demo_song);
+// Панель попросила следующую песню демо: 1 один раз на просьбу (без ожидания).
+int panel_uart_take_demo(void);
 // Правка с панели: 1 если есть (без ожидания).
 int panel_uart_receive(pl_set_t *out);
 // На панели открыли страницу: 1 если есть (без ожидания).

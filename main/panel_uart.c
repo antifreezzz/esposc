@@ -28,6 +28,8 @@ static const acid_link_t *s_link;
 static const acid_custom_t *s_custom;
 static const acid_scene_t *s_scene;
 static const volatile int *s_demo_on;
+static const volatile int *s_demo_song;
+static volatile int s_demo_due; // панель попросила следующее демо
 static volatile int s_snapshot_due;
 static unsigned s_custom_due; // бит своей страницы; ставит ядро 1, забирает задача связи (атомарно)
 static volatile int s_scene_due;
@@ -83,6 +85,15 @@ void panel_uart_send_load(const pl_load_t *l)
     s_load_due = 1;
 }
 
+int panel_uart_take_demo(void)
+{
+    if (!s_demo_due) {
+        return 0;
+    }
+    s_demo_due = 0;
+    return 1;
+}
+
 void panel_uart_snapshot_due(void)
 {
     s_snapshot_due = 1;
@@ -100,6 +111,7 @@ static void send_snapshot(void)
     static pl_snapshot_t snap;
     memset(&snap, 0, sizeof snap);
     snap.mode = *s_demo_on ? 0 : 1;
+    snap.demo = (uint8_t)*s_demo_song;
     snap.bsp_page = (uint8_t)acid_link_page(s_link, s_synth);
     for (int p = 0; p < PL_PAGES; p++) {
         for (int e = 0; e < PL_KNOBS; e++) {
@@ -159,6 +171,8 @@ static void link_task(void *arg)
                     xQueueSend(s_edit_q, p, 0);
                 } else if (type == PL_SCENE && len == sizeof(pl_scene_t)) {
                     xQueueSend(s_scene_q, p, 0);
+                } else if (type == PL_DEMO) {
+                    s_demo_due = 1;
                 } else if (type == PL_HELLO) {
                     s_snapshot_due = 1;
                 }
@@ -195,13 +209,14 @@ static void link_task(void *arg)
 }
 
 esp_err_t panel_uart_start(const acid_synth_t *s, const acid_link_t *l, const acid_custom_t *c, const acid_scene_t *sc,
-                           const volatile int *demo_on)
+                           const volatile int *demo_on, const volatile int *demo_song)
 {
     s_synth = s;
     s_link = l;
     s_custom = c;
     s_scene = sc;
     s_demo_on = demo_on;
+    s_demo_song = demo_song;
     const uart_config_t cfg = {
         .baud_rate = BAUD,
         .data_bits = UART_DATA_8_BITS,

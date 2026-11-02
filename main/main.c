@@ -34,6 +34,7 @@ static const char *TAG = "main";
 static acid_synth_t s_synth;
 static acid_demo_t s_demo;
 static volatile int s_demo_on; // играет демо: события от него, MIDI от BSP не слушаем
+static volatile int s_demo_song; // номер песни в DEMO_SONGS (PL_DEMO_* для панели)
 static acid_link_t s_link;      // панель: подхват BSP, глушение ручек демо
 static acid_custom_t s_custom;  // свои страницы: переживают смену демо <-> live
 static acid_scene_t s_scene;    // сцены: так же
@@ -56,18 +57,20 @@ static pl_load_acc_t s_load; // период индикатора загрузк
 // выключена, чтобы видеть полную цену худшего случая.
 #ifdef ESPOSC_STRESS
 #ifdef ESPOSC_STRESS_LAYERS
-#define DEMO_SONG acid_stress_layers_song // слои не влезают целиком: здесь проверяется защита, она включена
+#define DEMO_SONGS {&acid_stress_layers_song} // слои не влезают целиком: здесь проверяется защита, она включена
 #define GUARD 1
 #else
-#define DEMO_SONG acid_stress_song
+#define DEMO_SONGS {&acid_stress_song}
 #define GUARD 0
 #endif
 #define BENCH 1
 #else
-#define DEMO_SONG acid_demo_song
+#define DEMO_SONGS {&acid_metal_song, &acid_demo_song} // порядок PL_DEMO_*: тап по статусу панели листает
 #define BENCH 0
 #define GUARD 1
 #endif
+static const acid_demo_song_t *const s_songs[] = DEMO_SONGS;
+#define NSONGS (int)(sizeof s_songs / sizeof s_songs[0])
 
 static void slot1_task(void *arg)
 {
@@ -211,7 +214,7 @@ static void enter_mode(int live, const uint8_t *blob, int blob_ok)
         }
         s_demo_on = 0;
     } else {
-        acid_demo_init(&s_demo, &DEMO_SONG);
+        acid_demo_init(&s_demo, s_songs[s_demo_song]);
         s_demo_on = 1;
     }
     acid_link_init(&s_link);
@@ -252,6 +255,7 @@ static void synth_task(void *arg)
     uint32_t load_underruns = 0;
     int live = 0;
     int fade = 0; // блоков ухода громкости до смены режима
+    int next_song = 0; // уход громкости - ради следующей песни демо, режим тот же
     int save_pending = 0;
     int quiet = 0;
 
@@ -287,12 +291,21 @@ static void synth_task(void *arg)
         }
         if (!BENCH && midi_in_connected() != live && fade == 0) {
             fade = FADE_BLOCKS; // уходим без щелчка, потом меняем режим
+            next_song = 0;
+        }
+        if (panel_uart_take_demo() && !live && fade == 0 && NSONGS > 1) {
+            fade = FADE_BLOCKS; // тап по статусу панели: следующая песня с начала, синт с нуля
+            next_song = 1;
         }
         int64_t t0 = esp_timer_get_time();
         render_block(out_l, out_r);
         if (fade > 0) {
             block_fade(out_l, out_r, (float)fade / FADE_BLOCKS, (float)(fade - 1) / FADE_BLOCKS);
-            if (--fade == 0) {
+            if (--fade == 0 && next_song) {
+                s_demo_song = (s_demo_song + 1) % NSONGS;
+                enter_mode(0, blob, blob_ok);
+                ESP_LOGI(TAG, "demo song %d", s_demo_song);
+            } else if (fade == 0) {
                 live = !live;
                 enter_mode(live, blob, blob_ok);
                 save_pending = 0;
@@ -396,6 +409,6 @@ void app_main(void)
     usb_host_start();
     ESP_ERROR_CHECK(midi_in_start());
     ESP_ERROR_CHECK(audio_out_start());
-    ESP_ERROR_CHECK(panel_uart_start(&s_synth, &s_link, &s_custom, &s_scene, &s_demo_on));
+    ESP_ERROR_CHECK(panel_uart_start(&s_synth, &s_link, &s_custom, &s_scene, &s_demo_on, &s_demo_song));
     xTaskCreatePinnedToCore(synth_task, "synth", 4096, NULL, 6, &s_synth_task, 1);
 }
