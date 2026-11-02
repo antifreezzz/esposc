@@ -204,22 +204,42 @@ static void load_n(acid_synth_t *s, float load, int n)
 TEST(test_guard_steps)
 {
     init2();
-    acid_synth_set_knob(&b, ACID_PAGE_LAYER1, 1, 0); // ступень 2 - только когда есть что глушить
+    acid_synth_set_knob(&b, ACID_PAGE_LAYER1, 1, 0); // ступени 2-3 - только когда есть слои
     load_n(&b, 1.0f, 30);
     CHECK(b.tight == 1); // сначала перкуссия и тарелки
     load_n(&b, 1.0f, ACID_LOAD_STEP);
-    CHECK(b.tight == 2); // не помогло - слои
+    CHECK(b.tight == 2); // не помогло - слои на половинной частоте
+    CHECK(b.layer[0].half == 0); // слой переходит на своём сэмпле
+    acid_synth_render_layer(&b, 0, la, 1);
+    CHECK(b.layer[0].half == 1);
+    load_n(&b, 1.0f, ACID_LOAD_STEP);
+    CHECK(b.tight == 3); // и это не помогло - слои молчат
+    load_n(&b, 0.5f, ACID_LOAD_CALM + 10);
+    CHECK(b.tight == 2);
     load_n(&b, 0.5f, ACID_LOAD_CALM + 10);
     CHECK(b.tight == 1);
+    acid_synth_render_layer(&b, 0, la, 1);
+    CHECK(b.layer[0].half == 0);
     load_n(&b, 0.5f, ACID_LOAD_CALM);
     CHECK(b.tight == 0);
 }
 
-// Среднее выше бюджета: урезанием перкуссии не спастись, слои глушатся сразу, без ожидания ступени 1.
+// Слои уже на половинной частоте ручкой: ступени 2 нечего дать, с 1 сразу на 3.
+TEST(test_guard_skips_half_when_knob_on)
+{
+    init2();
+    acid_synth_set_knob(&b, ACID_PAGE_LAYER1, 1, 0);
+    acid_synth_set_knob(&b, 8, 14, 127);
+    load_n(&b, 1.0f, 30 + ACID_LOAD_STEP);
+    CHECK(b.tight == 3);
+}
+
+// Среднее выше бюджета: урезанием перкуссии не спастись, слои сразу на половинную частоту, без ожидания
+// ступени 1. Глушить - только если половинная частота не помогла, после того как среднее успело её увидеть.
 TEST(test_guard_jumps_on_overrun)
 {
     init2();
-    acid_synth_set_knob(&b, ACID_PAGE_LAYER1, 1, 0); // ступень 2 - только когда есть что глушить
+    acid_synth_set_knob(&b, ACID_PAGE_LAYER1, 1, 0);
     load_n(&b, 0.8f, 100);
     int n = 0;
     while (b.tight < 2 && n < 100) {
@@ -228,6 +248,21 @@ TEST(test_guard_jumps_on_overrun)
     }
     CHECK(b.tight == 2);
     CHECK(n <= 8);
+    load_n(&b, 1.4f, ACID_LOAD_SETTLE - 2);
+    CHECK(b.tight == 2);
+    load_n(&b, 1.4f, 4);
+    CHECK(b.tight == 3);
+}
+
+// Половинная частота помогла: среднее ниже порога - на ступени 2 и стоим, без глушения.
+TEST(test_guard_half_helps)
+{
+    init2();
+    acid_synth_set_knob(&b, ACID_PAGE_LAYER1, 1, 0);
+    load_n(&b, 1.4f, 20);
+    CHECK(b.tight == 2);
+    load_n(&b, 0.82f, 10 * ACID_LOAD_CALM);
+    CHECK(b.tight == 2);
 }
 
 // Слои вернулись и снова перегруз: в следующий раз ждём вдвое дольше, без качелей каждые полсекунды.
@@ -252,7 +287,7 @@ TEST(test_guard_backoff)
     CHECK(b.tight == 1);
 }
 
-// Слоёв нет: ступень 2 ничего не даёт, перкуссия возвращается как раньше через 0.5 с.
+// Слоёв нет: ступеням 2 и 3 нечего делать, перкуссия возвращается как раньше через 0.5 с.
 TEST(test_guard_no_layers_stays_step1)
 {
     init2();
@@ -286,13 +321,13 @@ TEST(test_guard_ducks_layers)
     both_note(4, 1, 45);
     float pk, base = layer_jump(&pk);
     CHECK(pk > 0.05f);
-    load_n(&b, 1.0f, 30 + ACID_LOAD_STEP);
-    CHECK(b.tight == 2);
+    load_n(&b, 1.0f, 30 + 2 * ACID_LOAD_STEP);
+    CHECK(b.tight == 3);
     float j = layer_jump(&pk);
     CHECK(pk == 0.0f);          // слой затих и не считается
     CHECK(j < base + 0.05f);    // без щелчка
     load_n(&b, 0.5f, ACID_LOAD_CALM + 10);
-    CHECK(b.tight == 1);
+    CHECK(b.tight == 2);
     j = layer_jump(&pk);
     CHECK(pk > 0.05f);          // вернулся
     CHECK(j < base + 0.05f);
@@ -323,6 +358,8 @@ int main(void)
     RUN(test_layer1_rendered_apart);
     RUN(test_guard_no_layers_stays_step1);
     RUN(test_guard_jumps_on_overrun);
+    RUN(test_guard_skips_half_when_knob_on);
+    RUN(test_guard_half_helps);
     RUN(test_guard_backoff);
     RUN(test_layer_on_mid_note);
     RUN(test_guard_steps);

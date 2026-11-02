@@ -83,6 +83,8 @@ static void slot_init(acid_slot_t *v, float sr, int type)
 {
     v->type = v->sel_type = v->next_type = type;
     v->fade = 0;
+    v->half = v->hph = 0;
+    v->hlast = 0.0f;
     memset(v->knob, KNOB_NONE, sizeof v->knob);
     if (!v->plaits) {
         v->plaits = acid_plaits_create(); // один раз: s обнулён до первого init
@@ -129,6 +131,7 @@ void acid_synth_init(acid_synth_t *s, float sr)
         type_defaults(s, &s->layer[k]);
         s->layer_gain[k] = (float)LAYER_GAIN_RAW / 127.0f;
     }
+    s->layer_half = 0;
     s->save = 0;
     acid_kick_init(&s->kick, sr);
     acid_hat_init(&s->hat, sr);
@@ -247,18 +250,22 @@ void acid_synth_set_load(acid_synth_t *s, float load)
             acid_perc_set_limit(&s->perc, 1);
             acid_cym_set_limit(&s->cym, 1);
         }
-        int layers = layer_on(&s->layer[0]) || layer_on(&s->layer[1]); // без слоёв ступени 2 нечего глушить
+        int layers = layer_on(&s->layer[0]) || layer_on(&s->layer[1]); // без слоёв ступеням 2-3 нечего делать
         if (s->tight == 1 && layers && (load >= ACID_LOAD_OVER || ++s->hot >= ACID_LOAD_STEP)) {
-            // Одного голоса перкуссии не хватило (или и ждать нечего): слои приглушаются (layer_add).
+            // Одного голоса перкуссии не хватило (или и ждать нечего): слои на половинную частоту, а если они
+            // уже там ручкой - сразу приглушаются (layer_add).
             // Повтор без полного успокоения - слои возвращались зря: ждать вдвое дольше, без качелей.
-            s->tight = 2;
+            s->tight = s->layer_half ? 3 : 2;
+            s->hot = 0;
             s->calm_need = s->was2 && s->calm_need < 16 * ACID_LOAD_CALM ? 2 * s->calm_need : s->calm_need;
             s->was2 = 1;
+        } else if (s->tight == 2 && (++s->hot >= ACID_LOAD_STEP || (load >= ACID_LOAD_OVER && s->hot >= ACID_LOAD_SETTLE))) {
+            s->tight = 3; // половинной частоты мало
         }
     } else if (s->tight) {
         s->hot = 0;
         s->calm = load < ACID_LOAD_LOW ? s->calm + 1 : 0;
-        if (s->calm >= (s->tight == 2 ? s->calm_need : ACID_LOAD_CALM)) {
+        if (s->calm >= (s->tight >= 2 ? s->calm_need : ACID_LOAD_CALM)) {
             s->calm = 0;
             if (--s->tight == 0) { // назад по ступеням: сначала слои, потом перкуссия и тарелки
                 acid_perc_set_limit(&s->perc, ACID_PERC_SOUNDING);
@@ -993,10 +1000,10 @@ static inline float layer_add(acid_synth_t *s, int k, float y)
         return y; // выключенный слой не трогаем вовсе: стек нот возьмёт у синта при включении
     }
     slot_tick(s, lv);
-    // Защита на ступени 2: слой плавно уходит и, затихнув, не считается. Своя громкость у каждого слоя:
+    // Защита на ступени 3: слой плавно уходит и, затихнув, не считается. Своя громкость у каждого слоя:
     // слои на разных ядрах.
     float *d = &s->layer_duck[k];
-    if (s->tight == 2) {
+    if (s->tight == 3) {
         if (*d == 0.0f) {
             return y;
         }
@@ -1004,8 +1011,9 @@ static inline float layer_add(acid_synth_t *s, int k, float y)
     } else if (*d < 1.0f) {
         *d = *d < 1.0f - ACID_DUCK_UP ? *d + ACID_DUCK_UP : 1.0f;
     }
-    if (s->layer_half != lv->half) {
-        layer_rate(s, lv, s->layer_half);
+    int half = s->layer_half || s->tight >= 2; // ручкой или защитой
+    if (half != lv->half) {
+        layer_rate(s, lv, half);
     }
     float out;
     if (!lv->half) {

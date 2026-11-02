@@ -94,6 +94,9 @@ TEST(test_half_knob_is_switch)
     CHECK(h.layer_half);
     acid_synth_set_knob(&h, PAGE_FX, 14, 0);
     CHECK(!h.layer_half);
+    acid_synth_set_knob(&h, PAGE_FX, 14, 127);
+    acid_synth_init(&h, SR); // смена режима (демо/живой) начинает с выключенной
+    CHECK(!h.layer_half);
 }
 
 // 303: та же высота и та же огибающая громкости по окнам 5 мс.
