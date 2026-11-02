@@ -3,8 +3,10 @@
 #include <stdint.h>
 
 #include "acid_drive.h"
+#include "acid_drummer.h"
 #include "acid_drums.h"
 #include "acid_env.h"
+#include "acid_beat.h"
 #include "acid_clock.h"
 #include "acid_cym.h"
 #include "acid_filter.h"
@@ -19,10 +21,11 @@
 #define ACID_TYPES (1 + ACID_PLAITS_MODELS) // 0 - наш 303, 1..24 - модели Plaits
 #define ACID_LAYER_OFF ACID_TYPES          // тип слоя «выкл» (у синтов его нет)
 #define ACID_KNOBS 16
-// Страницы ручек внутри: 0-9 штатные, 10-11 слои синтов; свои страницы - следом (acid_custom.h).
-// На BSP номера другие: свои 10-15, слои 16-17 - перевод только на границе (энкодер 1).
-#define ACID_PAGES 12
+// Страницы ручек внутри: 0-9 штатные, 10-11 слои синтов, 12 Grids; свои страницы - следом (acid_custom.h).
+// На BSP номера другие: свои 10-15, слои 16-17, у Grids номера нет - перевод только на границе (энкодер 1).
+#define ACID_PAGES 13
 #define ACID_PAGE_LAYER1 10
+#define ACID_PAGE_GRIDS 12
 #define ACID_BSP_USER_FIRST 10
 #define ACID_BSP_LAYER1 16
 
@@ -136,6 +139,11 @@ typedef struct {
     float load_avg;   // сглаженная нагрузка блоков
     // Зеркало для панели: сырые значения страниц 0-2 и 8 (у синтов, перкуссии и тональности - свои knob[]).
     uint8_t raw[ACID_PAGES][ACID_KNOBS];
+    // Автобарабаны (страница Grids): шаги от клока, барабанщик шлёт ноты в ударку на тике, не в рендере.
+    acid_beat_t beat;
+    acid_drummer_t drummer;
+    int grids_step;      // шаг паттерна Grids 0..31 последнего сыгранного шага, -1 - выключен или стоп
+    uint32_t grids_hits; // нот от Grids с init
     int page; // 0 микс, 1 ударка, 2 ударка 2, 3 томы, 4 рим, 5 ковбелл, 6 синт 1, 7 синт 2, 8 эффекты, 9 тональность
 
     int save;          // сменили тип или ручку слоя тональности: память ручек пора записать

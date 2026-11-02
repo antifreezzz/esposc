@@ -101,7 +101,7 @@ TEST(test_blob_roundtrip_and_reject)
     blob[0] ^= 1;
     // Цель с невозможной страницей: blob чужой целиком, ничего не применяется.
     size_t at = 4 + ((2 * ACID_KNOBS + 7) * ACID_USER_TARGETS) * sizeof(acid_target_t);
-    blob[at] = 12;
+    blob[at] = ACID_PAGES;
     CHECK(acid_custom_import(&d, blob, sizeof blob) == 0);
     CHECK(acid_custom_count(&d, 2, 7) == 0 && d.val[2][7] == 0);
 }

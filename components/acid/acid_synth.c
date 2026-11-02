@@ -199,6 +199,11 @@ void acid_synth_init(acid_synth_t *s, float sr)
         s->cym.gain[w] = CYM_GAIN_MAX * (float)CYM_KNOB[w] / 127.0f;
     }
     memcpy(s->raw, RAW_DEFAULT, sizeof s->raw);
+    acid_beat_init(&s->beat);
+    acid_drummer_init(&s->drummer);
+    memcpy(s->raw[ACID_PAGE_GRIDS], s->drummer.knob, ACID_KNOBS);
+    s->grids_step = -1;
+    s->grids_hits = 0;
     s->page = PAGE_SYNTH1;
 }
 
@@ -221,7 +226,7 @@ int acid_page_to_bsp(int page)
     if (page >= 0 && page < ACID_PAGE_LAYER1) {
         return page;
     }
-    if (page >= ACID_PAGE_LAYER1 && page < ACID_PAGES) {
+    if (page >= ACID_PAGE_LAYER1 && page < ACID_PAGE_LAYER1 + ACID_SLOTS) {
         return ACID_BSP_LAYER1 + page - ACID_PAGE_LAYER1;
     }
     if (page >= ACID_PAGES && page < ACID_PAGES + ACID_BSP_LAYER1 - ACID_BSP_USER_FIRST) {
@@ -732,7 +737,26 @@ static void apply_page(acid_synth_t *s, int page, int slot, int v)
         page_synth(s, &s->slot[page - PAGE_SYNTH1], slot, v, 0);
     } else if (page >= ACID_PAGE_LAYER1 && page < ACID_PAGE_LAYER1 + ACID_SLOTS) {
         page_synth(s, &s->layer[page - ACID_PAGE_LAYER1], slot, v, 1);
+    } else if (page == ACID_PAGE_GRIDS) {
+        if (acid_drummer_set(&s->drummer, slot, v)) {
+            s->raw[page][slot] = (uint8_t)v;
+        }
+        if (!s->drummer.knob[DRM_ON]) {
+            s->grids_step = -1;
+        }
     }
+}
+
+// Шаг автобарабанов: ноты барабанщика в ударку, как пэды BSP.
+static void grids_play(acid_synth_t *s)
+{
+    acid_hit_t hit[ACID_DRUMMER_MAX];
+    int n = acid_drummer_step(&s->drummer, s->beat.step, s->beat.bar, hit);
+    for (int i = 0; i < n; i++) {
+        drum_on(s, hit[i].note, hit[i].vel);
+    }
+    s->grids_hits += (uint32_t)n;
+    s->grids_step = s->drummer.knob[DRM_ON] ? (int)(s->beat.bar & 1) * ACID_BEAT_STEPS + s->beat.step : -1;
 }
 
 static void control_change(acid_synth_t *s, int num, int v)
@@ -840,13 +864,24 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
         if (acid_tonal_tick(&s->tonal)) {
             tonal_boundary(s);
         }
+        if (acid_beat_tick(&s->beat)) {
+            grids_play(s);
+        }
         break;
     }
     case ACID_MIDI_START:
         acid_tonal_start(&s->tonal);
+        acid_beat_start(&s->beat);
+        acid_drummer_reset(&s->drummer);
+        break;
+    case ACID_MIDI_CONTINUE:
+        acid_beat_continue(&s->beat);
         break;
     case ACID_MIDI_STOP:
         acid_synth_notes_off(s); // защита от залипших нот
+        acid_beat_stop(&s->beat);
+        acid_drummer_reset(&s->drummer);
+        s->grids_step = -1;
         break;
     default:
         break;

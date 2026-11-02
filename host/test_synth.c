@@ -119,9 +119,9 @@ TEST(test_pcm_lr)
 
 TEST(test_bsp_page_mapping)
 {
-    // На BSP: 0-9 штатные, 10-15 свои, 16-17 слои. Внутри: 0-9, слои 10-11, свои 12-17.
+    // На BSP: 0-9 штатные, 10-15 свои, 16-17 слои. Внутри: 0-9, слои 10-11, Grids 12, свои 13-18.
     static const int bsp[] = {0, 9, 10, 15, 16, 17};
-    static const int page[] = {0, 9, 12, 17, 10, 11};
+    static const int page[] = {0, 9, 13, 18, 10, 11};
     for (int i = 0; i < 6; i++) {
         CHECK(acid_page_from_bsp(bsp[i]) == page[i]);
         CHECK(acid_page_to_bsp(page[i]) == bsp[i]);
@@ -129,7 +129,8 @@ TEST(test_bsp_page_mapping)
     CHECK(acid_page_from_bsp(18) == -1);
     CHECK(acid_page_from_bsp(127) == -1);
     CHECK(acid_page_from_bsp(-1) == -1);
-    CHECK(acid_page_to_bsp(18) == -1);
+    CHECK(acid_page_to_bsp(19) == -1);
+    CHECK(acid_page_to_bsp(ACID_PAGE_GRIDS) == -1);
 }
 
 int main(void)
