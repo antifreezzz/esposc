@@ -27,6 +27,9 @@ typedef struct {
 } acid_drive_t;
 
 void acid_drive_init(acid_drive_t *d, float sr);
+// Смена частоты (слой на половинной частоте): коэффициенты заново, история фильтров и ручки остаются.
+// Высоту потом задать заново (acid_drive_pitch).
+void acid_drive_set_rate(acid_drive_t *d, float sr);
 // Ручки 0..127 как на экране BSP. Деление тут можно: зовётся при повороте ручки.
 void acid_drive_set(acid_drive_t *d, int drive, int tone, int howl);
 static inline int acid_drive_on(const acid_drive_t *d)

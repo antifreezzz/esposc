@@ -143,6 +143,29 @@ TEST(test_drive_howl_follows_note)
     CHECK(peak_near(200.0 * h) < 0.3 * at1);
 }
 
+// Слой на половинной частоте: коэффициенты как у перегруза, заведённого на 24 кГц, состояние (история фильтров,
+// ручки) не обнуляется - переход без щелчка. Вой на той же гармонике ноты.
+TEST(test_drive_set_rate_keeps_state)
+{
+    setup(100, 80, 60);
+    run_sine(200.0, 0.3f, 4800);
+    acid_drive_t fresh;
+    acid_drive_init(&fresh, SR / 2);
+    acid_drive_set(&fresh, 100, 80, 60);
+    acid_drive_pitch(&fresh, 200.0f);
+    float ic1 = d.xover.ic1, fb = d.fb, env = d.env;
+    acid_drive_set_rate(&d, SR / 2);
+    acid_drive_pitch(&d, 200.0f);
+    CHECK(d.sr == SR / 2);
+    CHECK(fabsf(d.xover.g - fresh.xover.g) < 1e-7f);
+    CHECK(fabsf(d.post_hp.a3 - fresh.post_hp.a3) < 1e-7f);
+    CHECK(fabsf(d.env_rel - fresh.env_rel) < 1e-7f);
+    CHECK(fabsf(d.bp.g - fresh.bp.g) < 1e-7f);
+    CHECK(d.drive == 100 && d.tone == 80 && d.howl == 60);
+    CHECK(d.xover.ic1 == ic1 && d.fb == fb && d.env == env);
+    CHECK(ic1 != 0.0f);
+}
+
 // Нота кончилась - вой затихает за ~0.3 с, петля не свистит сама по себе.
 TEST(test_drive_howl_dies_after_note)
 {
@@ -176,6 +199,7 @@ int main(void)
     RUN(test_drive_bounded);
     RUN(test_drive_howl_follows_note);
     RUN(test_drive_howl_dies_after_note);
+    RUN(test_drive_set_rate_keeps_state);
     RUN(test_drive_low_alias);
     TEST_MAIN_END();
 }

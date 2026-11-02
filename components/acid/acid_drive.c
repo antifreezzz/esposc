@@ -65,15 +65,20 @@ static inline float clip(float x)
 void acid_drive_init(acid_drive_t *d, float sr)
 {
     memset(d, 0, sizeof *d);
+    acid_drive_set_rate(d, sr);
+    d->c_bias = clip(BIAS);
+    acid_drive_set(d, 0, 64, 0);
+    acid_drive_pitch(d, 110.0f);
+}
+
+void acid_drive_set_rate(acid_drive_t *d, float sr)
+{
     d->sr = sr;
     float g_x = tanf(PI_F * XOVER_HZ / sr);
     svf_set(&d->xover, g_x, XOVER_K);
     svf_set(&d->sub_lp, g_x, XOVER_K);
     svf_set(&d->post_hp, g_x, XOVER_K);
     d->env_rel = expf(-1.0f / (ENV_S * sr));
-    d->c_bias = clip(BIAS);
-    acid_drive_set(d, 0, 64, 0);
-    acid_drive_pitch(d, 110.0f);
 }
 
 void acid_drive_set(acid_drive_t *d, int drive, int tone, int howl)
