@@ -26,3 +26,9 @@ int pl_view_page_step(int page, int dir);
 int pl_view_target(const pl_model_t *m, int page, int enc, int i, int *tenc);
 // Слот своей страницы - псевдоним (одна цель на весь ход).
 int pl_view_is_alias(const pl_model_t *m, int up, int enc);
+// Статус в шапке: "NO LINK", "LIVE", в демо - имя песни ("METAL", "ACID"; чужой номер - "DEMO").
+const char *pl_view_status(const pl_model_t *m, int linked);
+// Тап по статусу в шапке (нажали и отпустили правее кнопки EDIT с её запасом) в демо со связью: следующее демо.
+#define PL_STATUS_X0 432 // EDIT_X1 + 20 панели
+#define PL_STATUS_Y1 40  // высота шапки панели (UI_TOP_H)
+int pl_view_demo_tap(const pl_model_t *m, int linked, int x0, int y0, int x1, int y1);

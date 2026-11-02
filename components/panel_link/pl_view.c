@@ -121,3 +121,22 @@ int pl_view_page_step(int page, int dir)
     }
     return (page + dir + PL_PAGES) % PL_PAGES;
 }
+
+const char *pl_view_status(const pl_model_t *m, int linked)
+{
+    static const char *const NAMES[PL_DEMO_SONGS] = {"METAL", "ACID"};
+    if (!linked) {
+        return "NO LINK";
+    }
+    if (m->mode) {
+        return "LIVE";
+    }
+    return m->demo >= 0 && m->demo < PL_DEMO_SONGS ? NAMES[m->demo] : "DEMO";
+}
+
+int pl_view_demo_tap(const pl_model_t *m, int linked, int x0, int y0, int x1, int y1)
+{
+    // Палец можно чуть увести вниз за шапку, как у прочих кнопок шапки.
+    return linked && m->have && !m->mode && x0 >= PL_STATUS_X0 && y0 < PL_STATUS_Y1 && y1 < PL_STATUS_Y1 + 16 &&
+           x1 >= PL_STATUS_X0 - 16;
+}

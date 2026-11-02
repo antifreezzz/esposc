@@ -15,3 +15,5 @@ void link_page(int page);
 void link_custom_edit(const pl_custom_edit_t *e);
 // Сцена: op PL_SCENE_RECALL или PL_SCENE_STORE, слот n, переход bars тактов.
 void link_scene(int op, int n, int bars);
+// Тап по статусу в демо: синту - следующая песня демо.
+void link_demo(void);

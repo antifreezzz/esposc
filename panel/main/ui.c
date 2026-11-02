@@ -578,7 +578,7 @@ static void draw_page(const pl_model_t *m)
 static void draw_status(const pl_model_t *m, uint32_t ms)
 {
     int linked = pl_model_linked(m, ms);
-    const char *s = !linked ? "NO LINK" : m->mode ? "LIVE" : "DEMO";
+    const char *s = pl_view_status(m, linked); // в демо - имя песни, тап по нему - следующая
     uint32_t c = !linked ? 0xff5e6c : m->mode ? 0x7be382 : 0xffb547;
     ui_text(u.bar_right, s);
     lv_obj_set_style_text_color(u.bar_right, lv_color_hex(c), 0);
@@ -730,7 +730,9 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
     pl_press_last(&u.press, &x1, &y1);
     int tap = pl_press_tap(ev) && (ev != PL_PRESS_RELEASE || u.grab < 0); // отпустили крутилку - не тап
     int head = tap && y0 < TOP_H && y1 < TOP_H + 16;
-    if (editing()) {
+    if (tap && pl_view_demo_tap(m, pl_model_linked(m, ms), x0, y0, x1, y1)) {
+        link_demo(); // снимок с новой песней придёт от синта
+    } else if (editing()) {
         edit_input(m, ev, down, x, y, x0, y0, x1, y1, tap);
         if (editing()) {
             u.screen = u.ed.state == PL_EDIT_PICK_PAGE ? MENU : PAGE; // выбор страницы цели - на меню

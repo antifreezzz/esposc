@@ -81,3 +81,8 @@ void link_scene(int op, int n, int bars)
     pl_scene_t s = {(uint8_t)op, (uint8_t)n, (uint8_t)bars};
     send(PL_SCENE, &s, sizeof s);
 }
+
+void link_demo(void)
+{
+    send(PL_DEMO, NULL, 0);
+}
