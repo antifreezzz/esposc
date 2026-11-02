@@ -845,17 +845,23 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
     }
 }
 
+// Частота, на которой считается слот: у слоя на половинной частоте вдвое ниже.
+static inline float slot_sr(const acid_synth_t *s, const acid_slot_t *v)
+{
+    return v->half ? 0.5f * s->sr : s->sr;
+}
+
 // Пересчёт дорогих величин раз в CTRL_BLOCK сэмплов.
 static float control_update(acid_synth_t *s, acid_slot_t *v)
 {
     float hz = exp2f(v->pitch_log2);
-    acid_osc_set_freq(&v->osc, hz, s->sr);
+    acid_osc_set_freq(&v->osc, hz, slot_sr(s, v));
     if (acid_drive_on(&v->drv)) {
         acid_drive_pitch(&v->drv, hz);
     }
 
     float cutoff = v->cut_base + v->fenv_amount * v->fenv.value;
-    return acid_ladder_coef(cutoff, s->sr);
+    return acid_ladder_coef(cutoff, slot_sr(s, v));
 }
 
 // Время слота: отложенное отпускание короткой ноты.
