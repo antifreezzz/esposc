@@ -119,7 +119,10 @@ int pl_view_page_step(int page, int dir)
     if (page >= PL_USER_FIRST) {
         return PL_USER_FIRST + (page - PL_USER_FIRST + dir + PL_USER_PAGES) % PL_USER_PAGES;
     }
-    return (page + dir + PL_PAGES) % PL_PAGES;
+    if (page == PL_PAGE_GRIDS) {
+        return page; // у Grids свой экран, в круге страниц его нет
+    }
+    return (page + dir + PL_PAGE_GRIDS) % PL_PAGE_GRIDS;
 }
 
 const char *pl_view_status(const pl_model_t *m, int linked)

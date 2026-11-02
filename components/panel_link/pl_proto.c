@@ -46,6 +46,7 @@ static int payload_len(uint8_t type)
     case PL_SCENE_STATE: return (int)sizeof(pl_scene_state_t);
     case PL_LOAD: return (int)sizeof(pl_load_t);
     case PL_DEMO: return 0;
+    case PL_GRIDS_STEP: return 1;
     default: return -1;
     }
 }
@@ -109,8 +110,11 @@ int pl_rx_feed(pl_rx_t *r, uint8_t byte, uint8_t *type, const uint8_t **payload,
 
 int pl_page_bsp(int page)
 {
-    if (page >= PL_PAGES - 2 && page < PL_PAGES) {
-        return 16 + page - (PL_PAGES - 2); // слои
+    if (page >= PL_PAGE_LAYER1 && page < PL_PAGE_LAYER1 + 2) {
+        return 16 + page - PL_PAGE_LAYER1; // слои
+    }
+    if (page == PL_PAGE_GRIDS) {
+        return -1;
     }
     if (page >= PL_USER_FIRST) {
         return 10 + page - PL_USER_FIRST;

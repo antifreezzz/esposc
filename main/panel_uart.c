@@ -22,6 +22,9 @@
 
 static const char *TAG = "panel";
 
+_Static_assert(ACID_PAGES == PL_PAGES && ACID_PAGE_GRIDS == PL_PAGE_GRIDS && ACID_USER_FIRST == PL_USER_FIRST,
+               "synth and panel page numbering");
+
 static QueueHandle_t s_set_q, s_knob_q, s_page_q, s_edit_q, s_scene_q;
 static const acid_synth_t *s_synth;
 static const acid_link_t *s_link;
@@ -199,6 +202,14 @@ static void link_task(void *arg)
             s_load_due = 0;
             pl_load_t l = s_load;
             send(PL_LOAD, &l, sizeof l);
+        }
+        // Шаг Grids: синт меняет его на тике клока (раз в шестнадцатую), опрос раз в 10 мс успевает.
+        static int grids_sent = -2;
+        int g = s_synth->grids_step;
+        if (g != grids_sent) {
+            grids_sent = g;
+            uint8_t b = g < 0 ? 0xFF : (uint8_t)g;
+            send(PL_GRIDS_STEP, &b, 1);
         }
         acid_link_ev_t ev;
         while (xQueueReceive(s_knob_q, &ev, 0) == pdTRUE) {

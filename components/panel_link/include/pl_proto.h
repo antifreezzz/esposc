@@ -7,12 +7,14 @@
 // Длина у каждого типа своя: заголовок с чужой длиной - не кадр, отбрасывается сразу.
 
 #define PL_SYNC 0xA5
-#define PL_PAGES 12 // 0-9 штатные, 10-11 слои синтов
+#define PL_PAGES 13 // 0-9 штатные, 10-11 слои синтов, 12 Grids
+#define PL_PAGE_LAYER1 10
+#define PL_PAGE_GRIDS 12
 #define PL_KNOBS 16
 #define PL_PAYLOAD_MAX 255
 #define PL_FRAME_MAX (PL_PAYLOAD_MAX + 4)
-#define PL_USER_PAGES 6 // свои страницы 12..17 (на BSP 10..15)
-#define PL_USER_FIRST 12
+#define PL_USER_PAGES 6 // свои страницы 13..18 (на BSP 10..15)
+#define PL_USER_FIRST 13
 #define PL_TARGETS 4
 #define PL_NONE 0xFF
 
@@ -28,6 +30,7 @@ enum {
     PL_SCENE_STATE = 9, // синт -> панель: занятые слоты, текущая сцена, переход
     PL_LOAD = 10,       // синт -> панель: загрузка ядер (pl_load.h)
     PL_DEMO = 11,       // панель -> синт: следующая песня демо (без нагрузки; в live синт игнорирует)
+    PL_GRIDS_STEP = 12, // синт -> панель: шаг паттерна Grids 0..31, 0xFF - стоит (1 байт)
 };
 
 enum { PL_DEMO_METAL, PL_DEMO_ACID, PL_DEMO_SONGS }; // номер песни демо в снимке
@@ -76,7 +79,7 @@ typedef struct {
 } pl_scene_state_t;
 
 // Кадр в out (не меньше 4 + len), возвращает его длину; len больше PL_PAYLOAD_MAX - 0.
-// Номер страницы, как на экране BSP: свои 10-15, слои 16-17 (номера страниц в кадрах - внутренние).
+// Номер страницы, как на экране BSP: свои 10-15, слои 16-17, у Grids нет (-1); номера страниц в кадрах - внутренние.
 int pl_page_bsp(int page);
 
 size_t pl_encode(uint8_t type, const void *payload, size_t len, uint8_t *out);

@@ -114,6 +114,7 @@ TEST(test_page_step_stays_in_group)
     CHECK(pl_view_page_step(9, 1) == 10); // за штатными - слои
     CHECK(pl_view_page_step(11, 1) == 0);
     CHECK(pl_view_page_step(0, -1) == 11);
+    CHECK(pl_view_page_step(PL_PAGE_GRIDS, 1) == PL_PAGE_GRIDS);
     CHECK(pl_view_page_step(PL_USER_FIRST + 5, 1) == PL_USER_FIRST);
     CHECK(pl_view_page_step(PL_USER_FIRST, -1) == PL_USER_FIRST + 5);
     CHECK(pl_view_page_step(PL_USER_FIRST + 2, 1) == PL_USER_FIRST + 3);

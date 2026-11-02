@@ -13,6 +13,7 @@ void pl_model_init(pl_model_t *m)
     m->goto_page = -1;
     memset(m->user_t, PL_NONE, sizeof m->user_t);
     m->scene.cur = PL_NONE;
+    m->grids_step = -1;
 }
 
 static int is_user(int page)
@@ -100,6 +101,8 @@ void pl_model_apply(pl_model_t *m, uint8_t type, const uint8_t *payload, size_t 
         memcpy(&m->load, payload, sizeof m->load);
         m->load_ms = ms;
         m->have_load = 1;
+    } else if (type == PL_GRIDS_STEP && len == 1) {
+        m->grids_step = payload[0] < 32 ? payload[0] : -1;
     } else {
         return;
     }

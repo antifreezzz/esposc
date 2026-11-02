@@ -17,6 +17,7 @@ static int empty(int page, int enc, int type)
     case 10:
     case 11: return type == 25 ? enc >= 2 : type == 0 && enc >= 10 && enc <= 12; // слой: как синт, OFF - пусто
     case 8: return enc >= 15;
+    case 12: return enc >= 13;
     default: return 0;
     }
 }
@@ -26,7 +27,7 @@ TEST(test_labels_cover_synth)
     uint8_t raw[16] = {0};
     for (int page = 0; page < PL_PAGES; page++) {
         CHECK(pl_page_name(page) != NULL);
-        int variants = (page == 6 || page == 7) ? 25 : page >= 10 ? 26 : (page >= 3 && page <= 5) ? 5 : 1;
+        int variants = (page == 6 || page == 7) ? 25 : (page == 10 || page == 11) ? 26 : (page >= 3 && page <= 5) ? 5 : 1;
         for (int t = 0; t < variants; t++) {
             raw[1] = (uint8_t)t;
             CHECK(pl_knob_label(page, 0, raw) == NULL); // энкодер 1 - страница, на круге его нет
@@ -273,11 +274,42 @@ TEST(test_fx_layer_vol_labels)
     CHECK(strcmp(pl_value_text(8, 14, 64, raw, buf), "ON") == 0);
 }
 
+TEST(test_grids_labels)
+{
+    static const uint8_t raw[16];
+    static const char *const L[] = {NULL, "ON", "X", "Y", "KICK", "SNARE", "HAT", "CHAOS", "HAT MODE", "TIME",
+                                    "EVERY", "FILL LEN", "FILL"};
+    CHECK(strcmp(pl_page_name(PL_PAGE_GRIDS), "GRIDS") == 0);
+    for (int e = 1; e <= 12; e++) {
+        CHECK(pl_knob_label(PL_PAGE_GRIDS, e, raw) && strcmp(pl_knob_label(PL_PAGE_GRIDS, e, raw), L[e]) == 0);
+    }
+    CHECK(pl_knob_label(PL_PAGE_GRIDS, 13, raw) == NULL);
+    int lo, hi;
+    pl_knob_range(PL_PAGE_GRIDS, 2, raw, &lo, &hi);
+    CHECK(lo == 0 && hi == 127);
+    static const int HI[] = {[1] = 1, [8] = 2, [9] = 1, [10] = 3, [11] = 2, [12] = 1};
+    for (int e = 1; e <= 12; e++) {
+        if (HI[e]) {
+            pl_knob_range(PL_PAGE_GRIDS, e, raw, &lo, &hi);
+            CHECK(lo == 0 && hi == HI[e]);
+        }
+    }
+    char buf[12];
+    CHECK(strcmp(pl_value_text(PL_PAGE_GRIDS, 1, 1, raw, buf), "ON") == 0);
+    CHECK(strcmp(pl_value_text(PL_PAGE_GRIDS, 8, 2, raw, buf), "MIX") == 0);
+    CHECK(strcmp(pl_value_text(PL_PAGE_GRIDS, 9, 1, raw, buf), "RIDE") == 0);
+    CHECK(strcmp(pl_value_text(PL_PAGE_GRIDS, 10, 0, raw, buf), "OFF") == 0);
+    CHECK(strcmp(pl_value_text(PL_PAGE_GRIDS, 10, 3, raw, buf), "16") == 0);
+    CHECK(strcmp(pl_value_text(PL_PAGE_GRIDS, 11, 2, raw, buf), "4") == 0);
+    CHECK(pl_page_color(PL_PAGE_GRIDS) != 0);
+}
+
 int main(void)
 {
     RUN(test_layer_labels);
     RUN(test_fx_layer_vol_labels);
     RUN(test_labels_cover_synth);
+    RUN(test_grids_labels);
     RUN(test_ranges);
     RUN(test_value_text);
     RUN(test_tonal_step_in_scale);

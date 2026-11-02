@@ -282,9 +282,22 @@ TEST(test_load_wrong_len_ignored)
     CHECK(!m.have_load);
 }
 
+TEST(test_grids_step_frame)
+{
+    pl_model_init(&m);
+    CHECK(m.grids_step == -1);
+    uint8_t b = 21;
+    pl_model_apply(&m, PL_GRIDS_STEP, &b, 1, 500);
+    CHECK(m.grids_step == 21 && m.last_rx_ms == 500);
+    b = 0xFF;
+    pl_model_apply(&m, PL_GRIDS_STEP, &b, 1, 510);
+    CHECK(m.grids_step == -1);
+}
+
 int main(void)
 {
     RUN(test_load_frame_stored);
+    RUN(test_grids_step_frame);
     RUN(test_load_wrong_len_ignored);
     RUN(test_model_snapshot_replaces_all);
     RUN(test_knob_updates_value);

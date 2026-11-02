@@ -196,6 +196,34 @@ TEST(test_demo_frame)
     CHECK(frames == 2 && got_type == PL_SCENE);
 }
 
+TEST(test_snapshot_fits)
+{
+    CHECK(PL_PAGES == 13 && PL_PAGE_GRIDS == 12 && PL_USER_FIRST == 13);
+    CHECK(sizeof(pl_snapshot_t) <= PL_PAYLOAD_MAX);
+}
+
+TEST(test_page_bsp)
+{
+    CHECK(pl_page_bsp(0) == 0 && pl_page_bsp(9) == 9);
+    CHECK(pl_page_bsp(PL_PAGE_LAYER1) == 16 && pl_page_bsp(PL_PAGE_LAYER1 + 1) == 17);
+    CHECK(pl_page_bsp(PL_PAGE_GRIDS) == -1);
+    CHECK(pl_page_bsp(PL_USER_FIRST) == 10 && pl_page_bsp(PL_USER_FIRST + 5) == 15);
+}
+
+// Шаг Grids: 1 байт; заголовок с другой длиной - не кадр.
+TEST(test_grids_step_frame)
+{
+    uint8_t f[PL_FRAME_MAX];
+    uint8_t step = 17;
+    start();
+    feed(f, pl_encode(PL_GRIDS_STEP, &step, 1, f));
+    CHECK(frames == 1 && got_type == PL_GRIDS_STEP && got_len == 1 && got_pl[0] == 17);
+    uint8_t two[2] = {1, 2};
+    start();
+    feed(f, pl_encode(PL_GRIDS_STEP, two, 2, f));
+    CHECK(frames == 0);
+}
+
 int main(void)
 {
     RUN(test_roundtrip);
@@ -207,5 +235,8 @@ int main(void)
     RUN(test_bad_header_resyncs_now);
     RUN(test_new_frame_sizes);
     RUN(test_demo_frame);
+    RUN(test_snapshot_fits);
+    RUN(test_page_bsp);
+    RUN(test_grids_step_frame);
     TEST_MAIN_END();
 }

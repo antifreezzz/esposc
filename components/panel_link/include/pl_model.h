@@ -33,6 +33,7 @@ typedef struct {
     pl_load_t load; // загрузка ядер синта, последний кадр
     uint32_t load_ms;
     int have_load;
+    int grids_step; // шаг паттерна Grids 0..31, -1 - нет данных или стоит
 } pl_model_t;
 
 void pl_model_init(pl_model_t *m);

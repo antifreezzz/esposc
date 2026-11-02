@@ -4,8 +4,8 @@
 
 #define N(a) ((int)(sizeof(a) / sizeof((a)[0])))
 
-static const char *const PAGE_NAME[12] = {"MIX", "DRUMS", "CYMBALS", "TOMS", "RIM", "COWBELL",
-                                          "SYNTH 1", "SYNTH 2", "FX", "TONAL", "LAYER 1", "LAYER 2"};
+static const char *const PAGE_NAME[13] = {"MIX",     "DRUMS",   "CYMBALS", "TOMS",  "RIM",     "COWBELL", "SYNTH 1",
+                                          "SYNTH 2", "FX",      "TONAL",   "LAYER 1", "LAYER 2", "GRIDS"};
 
 // По индексу энкодера с 0; NULL - пусто.
 static const char *const MIX[16] = {NULL, "MASTER", "DRIVE", "SYNTH 1", "SYNTH 2", "KICK", "HATS", "CLAP",
@@ -26,6 +26,8 @@ static const char *const PLAITS[16] = {NULL, "TYPE", "HARMONICS", "TIMBRE", "MOR
                                        "TRANS", "T ENV", "M ENV", "P ENV", "ACCENT", "DRIVE", "TONE", "HOWL"};
 static const char *const FX[16] = {NULL, "CRUSH BITS", "CRUSH RATE", "DLY S1", "DLY S2", "DLY DRUMS", "DLY TIME",
                                    "DLY FB", "DLY TONE", "STUTTER", "MOTION", "WIDTH", "LYR1 VOL", "LYR2 VOL", "LYR HALF"};
+static const char *const GRIDS[16] = {NULL, "ON", "X", "Y", "KICK", "SNARE", "HAT", "CHAOS", "HAT MODE",
+                                      "TIME", "EVERY", "FILL LEN", "FILL", NULL, NULL, NULL};
 static const char *const TONAL[16] = {NULL, "STEP LEN", "STEPS", "ORDER", "TARGET", "HELD", "SCALE", "ROOT",
                                       "STEP 1", "STEP 2", "STEP 3", "STEP 4", "STEP 5", "STEP 6", "STEP 7", "STEP 8"};
 
@@ -43,6 +45,12 @@ static const char *const ORDER[3] = {"FWD", "BOUNCE", "RANDOM"};
 static const char *const TARGET[3] = {"BOTH", "S1", "S2"};
 static const char *const HELD[3] = {"FINISH", "SLIDE", "JUMP"};
 static const char *const SCALE[8] = {"CHROM", "MAJOR", "MINOR", "DORIAN", "PHRYG", "MIXO", "HARM MIN", "PENTA"};
+static const char *const OFF_ON[2] = {"OFF", "ON"};
+static const char *const HAT_MODE[3] = {"CLOSED", "OPEN", "MIX"};
+static const char *const TIME_HAND[2] = {"HAT", "RIDE"};
+static const char *const EVERY[4] = {"OFF", "4", "8", "16"};
+static const char *const FILL_LEN[3] = {"1", "2", "4"};
+static const char *const FILL_NOW[2] = {"-", "FILL"};
 static const char *const ROOT[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 
 const char *pl_page_name(int page)
@@ -50,8 +58,9 @@ const char *pl_page_name(int page)
     return page >= 0 && page < N(PAGE_NAME) ? PAGE_NAME[page] : NULL;
 }
 
-#define LAYER1 10
+#define LAYER1 PL_PAGE_LAYER1
 #define LAYER_OFF 25
+#define GRIDS_PAGE PL_PAGE_GRIDS
 
 static int is_layer(int page)
 {
@@ -94,6 +103,7 @@ const char *pl_knob_label(int page, int enc, const uint8_t page_raw[16])
     case 7: return (model(page_raw, 25) == 0 ? S303 : PLAITS)[enc];
     case 8: return FX[enc];
     case 9: return TONAL[enc];
+    case GRIDS_PAGE: return GRIDS[enc];
     default: return NULL;
     }
 }
@@ -132,6 +142,11 @@ static int list_of(int page, int enc, const uint8_t *raw, const char *const **wo
         *words = W[enc], *lo = LO[enc], *hi = HI[enc];
     } else if (page == 9 && enc >= 8) {
         *lo = 52, *hi = 76; // шаг тональности, 64 без сдвига
+    } else if (page == GRIDS_PAGE && (enc == 1 || (enc >= 8 && enc <= 12))) {
+        static const char *const *const W[13] = {[1] = OFF_ON, [8] = HAT_MODE, [9] = TIME_HAND, [10] = EVERY,
+                                                 [11] = FILL_LEN, [12] = FILL_NOW};
+        static const int HI[13] = {[1] = 1, [8] = 2, [9] = 1, [10] = 3, [11] = 2, [12] = 1};
+        *words = W[enc], *hi = HI[enc];
     } else {
         return 0;
     }
@@ -179,8 +194,8 @@ int pl_labels_depend(int page)
     return (page >= 3 && page <= 7) || is_layer(page);
 }
 
-static const uint32_t PAGE_COLOR[12] = {0x6fc3ff, 0xff6f7d, 0xffb84d, 0xff7b47, 0xff9457,
-                                        0xffd24d, 0xff9900, 0x7be382, 0xc79bff, 0x5fd3e6, 0xff9900, 0x7be382}; // слои - цветом своего синта
+static const uint32_t PAGE_COLOR[13] = {0x6fc3ff, 0xff6f7d, 0xffb84d, 0xff7b47, 0xff9457, 0xffd24d, 0xff9900,
+                                        0x7be382, 0xc79bff, 0x5fd3e6, 0xff9900, 0x7be382, 0xff5e6c}; // слои - цветом своего синта
 
 uint32_t pl_page_color(int page)
 {
@@ -235,6 +250,12 @@ uint32_t pl_knob_color(int page, int enc, const uint8_t page_raw[16])
         if (enc <= 5) return 0x5fd3e6;
         if (enc <= 7) return 0xffb547;
         return 0x7be382;
+    case GRIDS_PAGE: // GRIDS: вкл, карта, плотности и хаос, руки, сбивки
+        if (enc == 1) return 0xffd24d;
+        if (enc <= 3) return 0x6fc3ff;
+        if (enc <= 7) return 0xff6f7d;
+        if (enc <= 9) return 0xffb84d;
+        return 0xc79bff;
     default:
         return 0;
     }
@@ -290,6 +311,12 @@ const char *pl_page_summary(int page, const uint8_t page_raw[16], char buf[24])
         }
         return buf;
     }
+    case GRIDS_PAGE:
+        if (!page_raw[1]) {
+            return "OFF";
+        }
+        snprintf(buf, 24, "ON X%d Y%d", page_raw[2], page_raw[3]);
+        return buf;
     case 9:
         if (page_raw[1] == 0) {
             return "OFF";
