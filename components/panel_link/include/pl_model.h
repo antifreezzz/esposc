@@ -16,6 +16,7 @@
 typedef struct {
     int have; // снимок пришёл
     int mode, bsp_page;
+    int demo; // песня демо PL_DEMO_* (в live - последняя)
     uint8_t raw[PL_PAGES][PL_KNOBS], bsp_pos[PL_KNOBS], held[PL_PAGES][PL_KNOBS];
     uint32_t last_rx_ms, last_hello_ms;
     int hello_sent;

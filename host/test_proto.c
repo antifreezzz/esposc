@@ -184,6 +184,18 @@ TEST(test_new_frame_sizes)
     CHECK(frames == 3 && got_type == PL_SCENE_STATE && got_pl[0] == 0x81);
 }
 
+// Панель просит следующее демо: кадр без нагрузки проходит разбор и рядом с другими.
+TEST(test_demo_frame)
+{
+    uint8_t f[PL_FRAME_MAX];
+    pl_scene_t sc = {0, 1, 0};
+    start();
+    feed(f, pl_encode(PL_DEMO, NULL, 0, f));
+    CHECK(frames == 1 && got_type == PL_DEMO && got_len == 0);
+    feed(f, pl_encode(PL_SCENE, &sc, sizeof sc, f));
+    CHECK(frames == 2 && got_type == PL_SCENE);
+}
+
 int main(void)
 {
     RUN(test_roundtrip);
@@ -194,5 +206,6 @@ int main(void)
     RUN(test_swallowed_two_frames);
     RUN(test_bad_header_resyncs_now);
     RUN(test_new_frame_sizes);
+    RUN(test_demo_frame);
     TEST_MAIN_END();
 }

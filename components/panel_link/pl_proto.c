@@ -45,6 +45,7 @@ static int payload_len(uint8_t type)
     case PL_SCENE: return (int)sizeof(pl_scene_t);
     case PL_SCENE_STATE: return (int)sizeof(pl_scene_state_t);
     case PL_LOAD: return (int)sizeof(pl_load_t);
+    case PL_DEMO: return 0;
     default: return -1;
     }
 }

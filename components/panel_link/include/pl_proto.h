@@ -27,7 +27,10 @@ enum {
     PL_SCENE = 8,       // панель -> синт: вызвать или записать сцену
     PL_SCENE_STATE = 9, // синт -> панель: занятые слоты, текущая сцена, переход
     PL_LOAD = 10,       // синт -> панель: загрузка ядер (pl_load.h)
+    PL_DEMO = 11,       // панель -> синт: следующая песня демо (без нагрузки; в live синт игнорирует)
 };
+
+enum { PL_DEMO_METAL, PL_DEMO_ACID, PL_DEMO_SONGS }; // номер песни демо в снимке
 
 // Нагрузки - только байты, без выравнивания.
 typedef struct {
@@ -36,6 +39,7 @@ typedef struct {
     uint8_t raw[PL_PAGES][PL_KNOBS];
     uint8_t bsp_pos[PL_KNOBS];                // 0xFF - энкодер не крутили
     uint8_t held[(PL_PAGES * PL_KNOBS) / 8]; // бит page * 16 + enc: ручка ждёт подхвата BSP
+    uint8_t demo;                            // песня демо PL_DEMO_*
 } pl_snapshot_t;
 
 typedef struct {

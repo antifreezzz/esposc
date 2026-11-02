@@ -37,6 +37,7 @@ static void apply_snapshot(pl_model_t *m, const pl_snapshot_t *s)
 {
     m->have = 1;
     m->mode = s->mode;
+    m->demo = s->demo;
     m->bsp_page = s->bsp_page;
     memcpy(m->raw, s->raw, sizeof m->raw);
     memcpy(m->bsp_pos, s->bsp_pos, sizeof m->bsp_pos);

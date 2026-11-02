@@ -28,8 +28,10 @@ TEST(test_model_snapshot_replaces_all)
     }
     s.bsp_pos[2] = 55;
     s.held[(6 * 16 + 2) / 8] = (uint8_t)(1 << ((6 * 16 + 2) % 8));
+    s.demo = 1;
     pl_model_apply(&m, PL_SNAPSHOT, (const uint8_t *)&s, sizeof s, 20);
     CHECK(m.have && m.mode == 1 && m.bsp_page == 3);
+    CHECK(m.demo == 1);
     CHECK(m.raw[6][2] == 62 && m.raw[9][15] == 105);
     CHECK(m.bsp_pos[2] == 55);
     CHECK(m.held[6][2] == 1 && m.held[6][3] == 0);
