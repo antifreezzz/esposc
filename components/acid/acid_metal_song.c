@@ -1,0 +1,243 @@
+// Демо-трек «метал»: ~3 минуты индустриального метала по кругу, 150 BPM. Гитару играет синт 1: VA на двух
+// волнах в тёмном перегрузе, короткие глухие ноты в унисон с бочкой. Динамика: синкопы, обрывы в тишину,
+// нагнетание и обвал. Брейк - 303 «сиреной» со свистом и воем. Свой материал, ре-фригийский.
+// Ручки по страницам BSP: 0 микс, 1 ударка, 2 ударка 2, 3-5 перкуссия, 6 синт 1, 7 синт 2, 8 эффекты,
+// 9 тональность, 16-17 слои.
+#include "acid_demo.h"
+
+#define N(n, v, l) {n, v, l}
+#define X {0, 0, 0} // пауза
+#define AC 120      // акцент: velocity выше 100
+#define NO 90
+
+// Ноты синта 1 в басу: ре второй октавы и ступени вокруг. b2 и тритон - вся «злость».
+#define R 38   // D2
+#define B2 39  // Eb2
+#define M3 41  // F2
+#define T5 44  // G#2, тритон
+#define P5 45  // A2
+#define B7 48  // C3
+#define OC 50  // D3
+
+// Рифф А: галоп с перебивкой, бочка бьёт вместе с каждой нотой.
+static const acid_demo_note_t riff_a[16] = {
+    N(R, AC, 1), N(R, NO, 1), X, N(R, NO, 1), N(R, AC, 1), X, N(B2, AC, 1), X,
+    N(R, AC, 1), N(R, NO, 1), X, N(R, NO, 1), N(T5, AC, 2), X, N(B2, NO, 1), N(R, NO, 1),
+};
+// Рифф Б: удары по три шестнадцатых поперёк такта и дыры между ними.
+static const acid_demo_note_t riff_b[16] = {
+    N(R, AC, 1), X, X, N(R, AC, 1), X, X, N(R, AC, 1), X,
+    X, X, N(R, NO, 1), N(R, NO, 1), N(B2, AC, 1), X, N(R, AC, 1), X,
+};
+// Рифф дропа: сплошные шестнадцатые, акценты рубят такт на 3+3+2.
+static const acid_demo_note_t riff_c[16] = {
+    N(R, AC, 1), N(R, NO, 1), N(R, NO, 1), N(R, AC, 1), N(R, NO, 1), N(R, NO, 1), N(B2, AC, 1), N(R, NO, 1),
+    N(R, AC, 1), N(R, NO, 1), N(R, NO, 1), N(M3, AC, 1), N(R, NO, 1), N(R, NO, 1), N(T5, AC, 1), N(P5, AC, 1),
+};
+// Нагнетание: восьмые на одной ноте.
+static const acid_demo_note_t chug8[16] = {
+    N(R, AC, 1), X, N(R, NO, 1), X, N(R, NO, 1), X, N(R, NO, 1), X,
+    N(R, AC, 1), X, N(R, NO, 1), X, N(R, NO, 1), X, N(R, AC, 1), N(R, AC, 1),
+};
+// Интро: редкие удары, рифф проступает из-под фильтра.
+static const acid_demo_note_t intro_hits[16] = {
+    N(R, AC, 2), X, X, X, X, X, N(R, NO, 1), X, N(R, AC, 2), X, X, X, N(B2, NO, 2), X, X, X,
+};
+// Обрыв: один удар всем, дальше тишина до конца такта.
+static const acid_demo_note_t hit_once[16] = {N(R, AC, 3)};
+// Аутро: длинные ноты вниз.
+static const acid_demo_note_t outro_long[16] = {
+    N(R, AC, 6), X, X, X, X, X, X, X, N(B2, NO, 4), X, X, X, N(R, NO, 4), X, X, X,
+};
+// Брейк: 303 меандром визжит слайдами по тритонам (len 2 и нота следом - слайд).
+static const acid_demo_note_t siren[16] = {
+    N(50, AC, 2), N(56, NO, 2), N(62, AC, 1), X, N(50, NO, 1), X, N(51, AC, 2), N(57, NO, 1),
+    N(50, AC, 2), N(62, AC, 2), N(56, NO, 1), X, N(51, NO, 1), N(50, AC, 2), N(44, NO, 2), N(38, AC, 1),
+};
+
+// Синт 2.
+static const acid_demo_note_t drone[16] = { // интро: тянется весь такт
+    N(62, 90, 16), X, X, X, X, X, X, X, X, X, X, X, X, X, X, X,
+};
+static const acid_demo_note_t stab_a[16] = { // металлические уколы на слабых долях
+    X, X, X, N(74, 100, 1), X, X, X, X, X, X, X, N(75, 100, 1), X, X, N(80, 110, 1), X,
+};
+static const acid_demo_note_t stab_b[16] = { // в дыры риффа Б
+    X, N(74, 100, 1), X, X, N(75, 90, 1), X, X, N(74, 100, 1), N(80, 110, 2), X, X, X, X, N(74, 90, 1), X, X,
+};
+static const acid_demo_note_t voice[16] = { // брейк: речь на долях
+    N(62, 100, 2), X, X, X, N(63, 90, 2), X, X, X, N(62, 100, 2), X, X, X, N(68, 110, 3), X, X, X,
+};
+static const acid_demo_note_t pluck[16] = { // тихая часть: ре-фригийский перебор
+    N(62, 100, 1), X, X, N(63, 90, 1), X, X, N(69, 100, 1), X,
+    N(67, 90, 1), X, X, N(63, 90, 1), X, X, N(65, 100, 1), X,
+};
+static const acid_demo_note_t riser[16] = { // шум растёт весь такт
+    N(62, 110, 16), X, X, X, X, X, X, X, X, X, X, X, X, X, X, X,
+};
+static const acid_demo_note_t chord[16] = { // дроп: аккорды половинками
+    N(62, 110, 8), X, X, X, X, X, X, X, N(63, 100, 6), X, X, X, X, X, N(68, 110, 2), X,
+};
+
+#define K ACID_DEMO_KICK
+#define S ACID_DEMO_SNARE
+#define C ACID_DEMO_CLAP
+#define H ACID_DEMO_CHAT
+#define O ACID_DEMO_OHAT
+#define A ACID_DEMO_ACC
+#define CR ACID_DEMO_CRASH
+#define RD ACID_DEMO_RIDE
+#define B ACID_DEMO_BELL
+#define RM ACID_DEMO_RIM
+#define CW ACID_DEMO_COW
+#define T1 ACID_DEMO_TOM1
+#define T2 ACID_DEMO_TOM2
+#define T3 ACID_DEMO_TOM3
+#define T4 ACID_DEMO_TOM4
+#define T5D ACID_DEMO_TOM5
+#define T6 ACID_DEMO_TOM6
+
+static const uint32_t dr_intro[16] = {K | A, 0, 0, 0, 0, 0, K, 0, K | A, 0, 0, 0, T1, 0, T1, T1};
+// Бочка в унисон с риффом А, малый на 2 и 4, райд четвертями.
+static const uint32_t dr_a[16] = {K | RD | A, K, H, K, K | S | RD | A, H, K, H,
+                                  K | RD | A, K, H, K, K | S | C | RD | A, H, K | O, K};
+static const uint32_t dr_b[16] = {K | RD | A, 0, H, K, 0, H, K, H, S | RD | A, 0, K, K, K | B, 0, K | A, H};
+// Дроп: двойная бочка шестнадцатыми.
+static const uint32_t dr_c[16] = {K | CR | A, K, K | RD, K, K | S | C | A, K, K | RD, K,
+                                  K | RD | A, K, K | RD, K, K | S | C | A, K, K | B, K | O};
+// Брейк вполовину: бочка, малый на третьей доле.
+static const uint32_t dr_half[16] = {K | CR | A, 0, H, 0, H, 0, K, H, S | C | A, 0, H, K, H, 0, O, 0};
+static const uint32_t dr_quiet[16] = {K, 0, B, 0, RM, 0, RD, 0, 0, 0, K | B, 0, RM, 0, RD, RM};
+// Нагнетание: дробь малого шестнадцатыми.
+static const uint32_t dr_build[16] = {K | S | A, S, S, S, K | S, S, S, S, K | S | A, S, S, S, K | S, S, S | A, S | A};
+static const uint32_t dr_hit[16] = {K | CR | C | A};
+static const uint32_t dr_outro[16] = {K | CR | A, 0, 0, 0, 0, 0, 0, 0, K | RD, 0, 0, 0, K | RD, 0, 0, 0};
+// Сбивки перед сменой части: томы вниз, рим, ковбелл-наковальня.
+static const uint32_t dr_fill_a[16] = {K | A, T6, T6, T5D, K | S, T4, T4, T3, K | CW | A, T2, T2, T1, K | CW | A, T1, K | T1, S | A};
+static const uint32_t dr_fill_b[16] = {K | RM, RM, T6, T5D, K | RM, T4, T3, T2, K | S, T1, RM, T1, K | RM | A, T3, T1 | A, S | A};
+static const uint32_t dr_fill_c[16] = {K | CW, CW, T6, T6, K | CW, T5D, T4, T4, K | S | A, T3, T2, T2, K | CW | A, T1, T1 | A, K | A};
+static const uint32_t dr_fill_d[16] = {K | RM | A, T6, RM, T5D, K | S, T4, RM, T3, K | RM | A, T2, T1, RM, K | S | A, K, K | A, K | S | A};
+
+#define P ACID_DEMO_PICK
+
+// Тип синта первым в части: ручки за ним применяются к новому типу (память ручек - по типу).
+// Синт 1 «гитара»: VA на двух волнах, тёмный перегруз, короткий хвост.
+#define GUITAR                                                                                                         \
+    {6, 2, 9, 9, 0}, {6, 3, 20, 20, 0}, {6, 4, 30, 30, 0}, {6, 5, 100, 100, 0}, {6, 6, 25, 25, 0},                     \
+        {6, 7, 40, 40, 0}, {6, 8, 0, 0, 0}, {6, 9, 64, 64, 0}, {6, 10, 70, 70, 0}, {6, 13, 80, 80, 0},                 \
+        {6, 14, 110, 110, 0}, {6, 15, 30, 30, 0}, {6, 16, 0, 0, 0}
+
+// 1 Интро: всё в исходное (круг начинается с одного и того же состояния), гитара из-под фильтра, гул сверху.
+// Посылы, хруст, статтер, слои и пампинг к этому месту уже сбросили обрыв и последний рифф А.
+static const acid_demo_knob_t k_intro[] = {
+    {0, 2, 127, 127, 0}, {0, 3, 60, 60, 0},   {0, 4, 90, 90, 0},  {0, 5, 70, 70, 0},   {0, 6, 100, 100, 0},
+    {0, 9, 80, 80, 0},   {0, 11, 60, 60, 0},  {0, 13, 40, 40, 0}, {0, 14, 64, 64, 0},  {0, 15, 64, 64, 0},
+    {0, 12, 15, 63, 0}, // DJ-фильтр ФНЧ открывается
+    {1, 2, 50, 50, 0},   {1, 3, 70, 70, 0},   {1, 5, 25, 25, 0},  {1, 6, 78, 78, 0},   {1, 12, 54, 54, 0},
+    {2, 3, 127, 127, 0}, {2, 4, 64, 64, 0},
+    GUITAR,
+    {7, 5, 40, 40, 0},   {7, 6, 90, 90, 0},   {7, 14, 0, 0, 0},   {8, 7, 3, 3, 0},     {9, 2, 0, 0, 0},
+};
+// 2 Рифф А: удар на входе, FM-уколы справа, дилэй в центре на уколах.
+static const acid_demo_knob_t k_riff_a[] = {
+    {8, 11, 0, 0, 0},   {0, 12, 64, 64, 0}, {0, 15, 90, 110, P}, {7, 3, 50, 50, 0}, {7, 4, 70, 70, 0}, {7, 6, 40, 40, 0},
+    {7, 14, 60, 60, 0}, {7, 15, 90, 90, 0},  {8, 5, 60, 60, 0}, {8, 8, 60, 60, 0}, {8, 12, 127, 127, 0},
+    {6, 4, 30, 50, 0},
+};
+// 3 Рифф Б: тональность сдвигает рифф полутонами (шаг на такт: 0, +1, 0, тритон), пампинг подкачивает.
+static const acid_demo_knob_t k_riff_b[] = {
+    {9, 9, 64, 64, 0}, {9, 10, 65, 65, 0}, {9, 11, 64, 64, 0}, {9, 12, 70, 69, P}, {9, 3, 4, 4, 0},
+    {9, 4, 0, 0, 0},   {9, 5, 0, 0, 0},    {9, 6, 2, 2, 0},    {9, 7, 0, 0, 0},    {9, 8, 2, 2, 0},
+    {9, 2, 1, 1, 0},   {0, 10, 30, 60, 0}, {0, 11, 30, 30, 0}, {1, 6, 90, 90, 0},
+};
+// 4 Брейк: 303 пилой, со второй половины меандром, со свистом резонанса и воем, хруст, ФВЧ, гитара гуляет по панораме.
+static const acid_demo_knob_t k_break[] = {
+    {9, 2, 0, 0, 0},     {6, 2, 0, 0, 0},    {6, 8, 0, 1, 0},     {6, 3, 40, 100, 10}, {6, 4, 116, 124, 0},
+    {6, 5, 90, 90, 0},   {6, 6, 50, 50, 0},  {6, 14, 70, 110, 0}, {6, 15, 60, 60, 0},  {6, 16, 30, 110, 0},
+    {8, 2, 0, 60, 0},    {8, 3, 30, 30, 0},  {0, 12, 64, 96, 0},  {0, 14, 20, 108, 0}, {0, 10, 0, 0, 0},
+    {8, 11, 2, 2, 0},    {8, 12, 90, 127, P}, {8, 7, 1, 1, 0},  {8, 4, 50, 50, 0},
+};
+// 5 Тихая часть: перебор пинг-понгом, тональность по ступеням фригийского ре, гитара молчит.
+static const acid_demo_knob_t k_quiet[] = {
+    {8, 2, 0, 0, 0},     {8, 3, 0, 0, 0},    {0, 12, 64, 64, 0},  {0, 14, 64, 64, 0}, {0, 3, 45, 45, 0},
+    {9, 9, 64, 64, 0},   {9, 10, 66, 66, 0}, {9, 11, 63, 62, P},  {9, 12, 65, 65, 0}, {9, 7, 4, 4, 0},
+    {9, 8, 2, 2, 0},     {9, 6, 1, 1, 0},    {9, 5, 2, 2, 0},     {9, 2, 1, 1, 0},
+    {8, 11, 1, 1, 0},    {8, 7, 2, 2, 0},    {8, 4, 0, 0, 0},     {8, 5, 70, 70, 0},  {8, 6, 40, 40, 0},
+    {8, 8, 80, 80, 0},   {0, 15, 40, 40, 0}, {7, 6, 50, 50, 0},
+};
+// 6 Нагнетание: гитара восьмыми, ФНЧ закрыт и открывается, хруст растёт, статтер 1/8 -> 1/16.
+static const acid_demo_knob_t k_build[] = {
+    {9, 2, 0, 0, 0},     GUITAR,             {8, 6, 0, 0, 0},     {8, 4, 0, 0, 0},    {0, 3, 45, 70, 0},
+    {0, 12, 20, 63, 0},  {8, 2, 0, 70, 0},   {8, 3, 20, 20, 0},   {8, 10, 2, 3, 0},   {7, 6, 100, 100, 0},
+};
+// 7 Обрыв: удар и тишина, крэш приглушён.
+static const acid_demo_knob_t k_hit[] = {
+    {8, 10, 0, 0, 0}, {8, 2, 0, 0, 0}, {8, 3, 0, 0, 0}, {0, 12, 64, 64, 0}, {0, 3, 80, 80, 0},
+    {2, 3, 20, 20, 0}, {8, 5, 0, 0, 0},
+};
+// 8 Дроп: всё вместе, слой синта 1 октавой ниже на половинной частоте, пампинг, аккорды.
+static const acid_demo_knob_t k_drop[] = {
+    {2, 3, 127, 127, 0}, {0, 10, 50, 50, 0},  {0, 11, 25, 25, 0},  {0, 5, 60, 60, 0},   {7, 6, 70, 70, 0},  {6, 4, 30, 60, 0},
+    {16, 2, 9, 9, 0},    {16, 3, 40, 40, 0},  {16, 9, 52, 52, 0},  {16, 14, 0, 0, 0},  {16, 6, 25, 25, 0},
+    {8, 13, 70, 70, 0},  {8, 15, 127, 127, 0}, {9, 9, 64, 64, 0},  {9, 10, 65, 65, 0}, {9, 11, 64, 64, 0},
+    {9, 12, 58, 58, 0},  {9, 7, 0, 0, 0},     {9, 6, 2, 2, 0},     {9, 5, 0, 0, 0},    {9, 2, 2, 2, 0},
+};
+// 9 Пик: слой синта 2 - струнная машина под аккордами, перегруз микса и ручки ударки ползут.
+static const acid_demo_knob_t k_peak[] = {
+    {9, 2, 0, 0, 0},     {0, 3, 80, 100, 0},  {1, 3, 70, 100, 0}, {1, 12, 54, 90, 0}, {2, 3, 127, 70, 0},
+    {2, 4, 64, 76, 0},   {7, 14, 0, 90, 0},  {7, 15, 40, 40, 0}, {17, 2, 7, 7, 0},   {8, 14, 70, 70, 0},
+};
+// 10 Рифф А снова: дилэй уколов случайно по стерео.
+static const acid_demo_knob_t k_riff_a2[] = {
+    {16, 2, 25, 25, 0}, {17, 2, 25, 25, 0}, {8, 15, 0, 0, 0}, {0, 10, 0, 0, 0}, {0, 3, 60, 60, 0},
+    {8, 11, 2, 2, 0},   {8, 5, 70, 70, 0},  {8, 7, 1, 1, 0},  {0, 5, 70, 70, 0},
+};
+// 11 Аутро: всё закрывается.
+static const acid_demo_knob_t k_outro[] = {
+    {0, 12, 64, 15, 0}, {8, 5, 70, 0, 0}, {8, 6, 0, 0, 0}, {6, 4, 30, 10, 0}, {2, 3, 127, 127, 0},
+    {2, 4, 64, 64, 0},  {1, 3, 70, 70, 0}, {1, 12, 54, 54, 0}, {7, 14, 0, 0, 0},
+};
+// Сбивки: модели и звук перкуссии (страницы 3 томы, 4 рим, 5 ковбелл). За круг звучат все пять моделей.
+static const acid_demo_knob_t k_fill_a[] = { // аналоговые томы пониже, ковбелл на квадратах
+    {3, 2, 0, 0, 0},  {3, 3, 30, 30, 0}, {3, 4, 79, 79, 0}, {3, 8, 40, 40, 0}, {3, 11, 0, 0, 0},
+    {3, 15, 37, 37, 0}, {3, 16, 50, 50, 0}, {5, 2, 1, 1, 0}, {5, 3, 40, 40, 0}, {5, 7, 70, 70, 0},
+};
+static const acid_demo_knob_t k_fill_b[] = { // модальные томы (металл), рим аналоговый
+    {3, 2, 3, 3, 0}, {3, 8, 60, 60, 0}, {3, 15, 50, 50, 0}, {4, 2, 0, 0, 0}, {4, 8, 70, 70, 0},
+};
+static const acid_demo_knob_t k_fill_c[] = { // FM-томы с ползущим строем, ковбелл шумом
+    {3, 2, 2, 2, 0}, {3, 3, 30, 60, 0}, {3, 8, 40, 40, 0}, {5, 2, 4, 4, 0}, {5, 7, 90, 90, 0},
+};
+static const acid_demo_knob_t k_fill_d[] = { // шумовые томы с крашером, модальный рим
+    {3, 2, 4, 4, 0}, {3, 3, 60, 60, 0}, {3, 11, 60, 60, 0}, {4, 2, 3, 3, 0}, {4, 8, 90, 90, 0},
+};
+
+static const uint8_t pool_drone[] = {7, 14, 13};   // string machine, wavetable, additive
+static const uint8_t pool_stab[] = {11, 10, 4};    // FM 2-op, waveshaping, DX7
+static const uint8_t pool_voice[] = {16, 12, 2};   // speech, granular formant, phase distortion
+static const uint8_t pool_pluck[] = {21, 20, 6};   // modal, string, wave terrain
+static const uint8_t pool_riser[] = {18, 17, 19};  // шум с фильтром, swarm, particle
+static const uint8_t pool_chord[] = {15, 7, 9};    // аккорды, string machine, VA две волны
+
+#define KN(k) k, (uint8_t)(sizeof k / sizeof k[0])
+#define POOL(p) p, (uint8_t)(sizeof p)
+
+static const acid_demo_part_t parts[] = {
+    {8, intro_hits, drone, dr_intro, KN(k_intro), POOL(pool_drone), 0, 0},
+    {12, riff_a, stab_a, dr_a, KN(k_riff_a), POOL(pool_stab), 1, CR},
+    {1, riff_a, stab_a, dr_fill_a, KN(k_fill_a), NULL, 0, 0, 0},
+    {12, riff_b, stab_b, dr_b, KN(k_riff_b), POOL(pool_stab), 1, CR},
+    {1, riff_b, NULL, dr_fill_b, KN(k_fill_b), NULL, 0, 0, 0},
+    {8, siren, voice, dr_half, KN(k_break), POOL(pool_voice), 1, CR},
+    {8, NULL, pluck, dr_quiet, KN(k_quiet), POOL(pool_pluck), 0, 0},
+    {4, chug8, riser, dr_build, KN(k_build), POOL(pool_riser), 0, 0},
+    {1, hit_once, NULL, dr_hit, KN(k_hit), NULL, 0, 0, 0},
+    {16, riff_c, chord, dr_c, KN(k_drop), POOL(pool_chord), 1, CR},
+    {1, riff_c, NULL, dr_fill_c, KN(k_fill_c), NULL, 0, 0, 0},
+    {12, riff_c, chord, dr_c, KN(k_peak), POOL(pool_chord), 1, CR},
+    {1, riff_b, NULL, dr_fill_d, KN(k_fill_d), NULL, 0, 0, 0},
+    {8, riff_a, stab_a, dr_a, KN(k_riff_a2), POOL(pool_stab), 1, CR},
+    {4, outro_long, drone, dr_outro, KN(k_outro), POOL(pool_drone), 0, CR},
+};
+
+const acid_demo_song_t acid_metal_song = {parts, (int)(sizeof parts / sizeof parts[0]), 25};

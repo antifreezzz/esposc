@@ -23,11 +23,15 @@ typedef struct {
     int finite;
 } seen_t;
 
-static void start(void)
+// Обе песни демо прошивки: охват фич одинаковый (акид заморожен, но охват не должен тихо потеряться).
+static const acid_demo_song_t *const SONGS[] = {&acid_metal_song, &acid_demo_song};
+#define NSONGS (int)(sizeof SONGS / sizeof SONGS[0])
+
+static void start(const acid_demo_song_t *song)
 {
     acid_synth_init(&s, SR);
     acid_synth_notes_off(&s);
-    acid_demo_init(&d, &acid_demo_song);
+    acid_demo_init(&d, song);
     acid_perc_init(&perc_defaults, SR);
 }
 
@@ -123,19 +127,21 @@ static int count(const int *a, int n, int from)
 
 TEST(test_demo_smoke_loop)
 {
-    start();
-    seen_t z;
-    for (int c = 0; c < 3; c++) {
-        play_cycle(&z, c);
-        CHECK(z.finite);
-        CHECK(z.silent_windows == 0);
-        CHECK(z.wide_windows > 0);
+    for (int g = 0; g < NSONGS; g++) {
+        start(SONGS[g]);
+        seen_t z;
+        for (int c = 0; c < 3; c++) {
+            play_cycle(&z, c);
+            CHECK(z.finite);
+            CHECK(z.silent_windows == 0);
+            CHECK(z.wide_windows > 0);
+        }
     }
 }
 
-TEST(test_demo_coverage)
+static void coverage(const acid_demo_song_t *song)
 {
-    start();
+    start(song);
     seen_t z;
     for (int c = 0; c < 3; c++) {
         play_cycle(&z, c);
@@ -164,9 +170,16 @@ TEST(test_demo_coverage)
     }
 }
 
+TEST(test_demo_coverage)
+{
+    for (int g = 0; g < NSONGS; g++) {
+        coverage(SONGS[g]);
+    }
+}
+
 TEST(test_demo_reset_clean)
 {
-    start();
+    start(&acid_demo_song);
     static acid_midi_event_t ev[96];
     float l[CH], r[CH];
     // Посреди круга 1 подключили BSP: сброс синта, демо молчит.
@@ -196,8 +209,10 @@ TEST(test_demo_reset_clean)
 TEST(test_demo_song_fits)
 {
     int ok = 1;
-    for (int i = 0; i < acid_demo_song.nparts; i++) {
-        ok &= acid_demo_song.parts[i].nknobs <= ACID_DEMO_KNOBS;
+    for (int g = 0; g < NSONGS; g++) {
+        for (int i = 0; i < SONGS[g]->nparts; i++) {
+            ok &= SONGS[g]->parts[i].nknobs <= ACID_DEMO_KNOBS;
+        }
     }
     CHECK(ok);
 }

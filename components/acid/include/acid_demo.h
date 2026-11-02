@@ -83,7 +83,8 @@ typedef struct {
     } held[ACID_DEMO_HELD];
 } acid_demo_t;
 
-extern const acid_demo_song_t acid_demo_song; // демо-трек прошивки
+extern const acid_demo_song_t acid_demo_song;  // демо «акид», 125 BPM
+extern const acid_demo_song_t acid_metal_song; // демо «метал», 150 BPM
 extern const acid_demo_song_t acid_stress_song; // стенд замеров: худший случай рендера без передышек
 extern const acid_demo_song_t acid_stress_layers_song; // стенд защиты: стресс и тяжёлые слои на обоих синтах
 
