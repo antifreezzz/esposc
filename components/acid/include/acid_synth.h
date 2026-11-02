@@ -35,6 +35,8 @@ typedef struct {
     int next_type;     // куда переходим после ухода звука
     int fade;          // смена типа: > 0 уход звука, < 0 приход, сэмплов осталось
     int half;          // слой на половинной частоте: считается каждый второй сэмпл
+    int hph;           // фаза половинной частоты: 1 - этот сэмпл посчитан
+    float hlast;       // последний посчитанный сэмпл слоя
     uint8_t knob[ACID_TYPES][ACID_KNOBS]; // сырые CC энкодеров по типам, 0xFF - не трогали
 
     acid_osc_t osc;
@@ -92,6 +94,7 @@ typedef struct {
     // сводится в шину синта 1. Тип ACID_LAYER_OFF не считается.
     acid_slot_t layer[ACID_SLOTS];
     float layer_gain[ACID_SLOTS]; // FX энкодеры 13-14
+    int layer_half;    // FX энкодер 15 (64 и выше): слои на половинной частоте
     acid_kick_t kick;
     acid_hat_t hat;
     acid_clap_t clap;

@@ -643,6 +643,7 @@ static void page_fx(acid_synth_t *s, int slot, int v)
     case 11: acid_delay_set_motion(&s->delay, s->delay.motion, v); break;
     case 12:
     case 13: s->layer_gain[slot - 12] = lin(v, 0.0f, 1.0f); break;
+    case 14: s->layer_half = v >= 64; break;
     default: break;
     }
     if (slot >= 6 && slot <= 8) {
@@ -878,7 +879,8 @@ static void slot_tick(acid_synth_t *s, acid_slot_t *v)
 static float plaits_next(acid_slot_t *v, int gate)
 {
     if (v->gliding) {
-        v->pitch_log2 = v->target_log2 + (v->pitch_log2 - v->target_log2) * v->glide_coef;
+        float gc = v->half ? v->glide_coef * v->glide_coef : v->glide_coef; // полюс за два сэмпла
+        v->pitch_log2 = v->target_log2 + (v->pitch_log2 - v->target_log2) * gc;
     }
     if (v->ppos == ACID_PLAITS_BLOCK) {
         v->ppos = 0;
@@ -889,7 +891,7 @@ static float plaits_next(acid_slot_t *v, int gate)
             memset(v->pbuf, 0, sizeof v->pbuf);
         } else {
             acid_plaits_params_t *p = &v->pp;
-            p->note = 12.0f * (v->pitch_log2 - log2f(440.0f)) + 69.0f;
+            p->note = 12.0f * (v->pitch_log2 - log2f(440.0f)) + 69.0f + (v->half ? 12.0f : 0.0f); // Plaits на 48 кГц
             p->trigger = gate && !v->retrig;
             v->retrig = 0;
             p->level = gate ? (v->accented ? 1.0f : 1.0f - v->p_accent) : 0.0f;
@@ -913,7 +915,8 @@ static float voice_next(acid_synth_t *s, acid_slot_t *v, int gate)
 {
     acid_amp_gate(&v->amp, gate);
     if (v->gliding) {
-        v->pitch_log2 = v->target_log2 + (v->pitch_log2 - v->target_log2) * v->glide_coef;
+        float gc = v->half ? v->glide_coef * v->glide_coef : v->glide_coef; // полюс за два сэмпла
+        v->pitch_log2 = v->target_log2 + (v->pitch_log2 - v->target_log2) * gc;
     }
     if (v->ctrl_left == 0) {
         v->g = control_update(s, v);
@@ -923,9 +926,16 @@ static float voice_next(acid_synth_t *s, acid_slot_t *v, int gate)
     v->ctrl_left--;
 
     float x = v->wave ? acid_osc_square(&v->osc) : acid_osc_saw(&v->osc);
-    acid_decay_next(&v->fenv);
+    float amp;
+    if (v->half) {
+        acid_decay_next2(&v->fenv);
+        amp = acid_amp_next2(&v->amp);
+    } else {
+        acid_decay_next(&v->fenv);
+        amp = acid_amp_next(&v->amp);
+    }
     float y = acid_ladder_tick(&v->flt, x, &v->lc);
-    float amp = acid_amp_next(&v->amp) * v->accent_gain;
+    amp *= v->accent_gain;
     if (acid_drive_on(&v->drv)) {
         return acid_drive_run(&v->drv, y * amp) * v->gain; // акцент бьёт в перегруз сильнее, громкость слота после
     }
@@ -935,15 +945,18 @@ static float voice_next(acid_synth_t *s, acid_slot_t *v, int gate)
 // Громкость смены типа: уход, переключение, приход.
 static float fade_step(acid_synth_t *s, acid_slot_t *v)
 {
+    int step = v->half ? 2 : 1; // на половинной частоте сэмпл слоя - за два
     if (v->fade > 0) {
         float g = (float)v->fade / FADE_N;
-        if (--v->fade == 0) {
+        v->fade -= step;
+        if (v->fade <= 0) {
+            v->fade = 0;
             type_switch(s, v);
         }
         return g;
     }
     float g = (float)(FADE_N + v->fade) / FADE_N;
-    v->fade++;
+    v->fade = v->fade + step > 0 ? 0 : v->fade + step;
     return g;
 }
 
@@ -961,6 +974,15 @@ static float slot_next(acid_synth_t *s, acid_slot_t *v, int gate)
 static int layer_on(const acid_slot_t *lv)
 {
     return lv->type != ACID_LAYER_OFF || lv->fade != 0;
+}
+
+// Слой на половинную частоту или обратно: перегруз под новую частоту, высота и фильтр - на ближайшем сэмпле.
+static void layer_rate(acid_synth_t *s, acid_slot_t *lv, int half)
+{
+    lv->half = half;
+    lv->hph = 0;
+    acid_drive_set_rate(&lv->drv, slot_sr(s, lv));
+    lv->ctrl_left = 0;
 }
 
 // Сэмпл слоя синта k, добавить к y. Время слоя идёт всегда: стек нот совпадает с синтом.
@@ -982,7 +1004,22 @@ static inline float layer_add(acid_synth_t *s, int k, float y)
     } else if (*d < 1.0f) {
         *d = *d < 1.0f - ACID_DUCK_UP ? *d + ACID_DUCK_UP : 1.0f;
     }
-    return y + s->layer_gain[k] * *d * slot_next(s, lv, lv->nheld > 0);
+    if (s->layer_half != lv->half) {
+        layer_rate(s, lv, s->layer_half);
+    }
+    float out;
+    if (!lv->half) {
+        out = slot_next(s, lv, lv->nheld > 0);
+        lv->hlast = out;
+    } else if ((lv->hph ^= 1) != 0) {
+        // Половинная частота: считаем каждый второй сэмпл, между ними середина.
+        float n = slot_next(s, lv, lv->nheld > 0);
+        out = 0.5f * (lv->hlast + n);
+        lv->hlast = n;
+    } else {
+        out = lv->hlast;
+    }
+    return y + s->layer_gain[k] * *d * out;
 }
 
 void acid_synth_render_slot(acid_synth_t *s, int k, float *out, size_t n)
