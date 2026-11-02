@@ -178,4 +178,4 @@ static const acid_demo_part_t parts[] = {
     {2, bass_a, NULL, dr_intro, KN(k_tail), NULL, 0, 0, 0},
 };
 
-const acid_demo_song_t acid_demo_song = {parts, (int)(sizeof parts / sizeof parts[0])};
+const acid_demo_song_t acid_demo_song = {parts, (int)(sizeof parts / sizeof parts[0]), 30};

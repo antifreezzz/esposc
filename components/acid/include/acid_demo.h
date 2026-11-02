@@ -4,9 +4,10 @@
 #include "acid_midi.h"
 
 // Демо-трек: партитура шлёт в синт MIDI так же, как BeatStep Pro (ноты, CC страниц и энкодеров,
-// клок, Start). 125 BPM: тик клока ровно 30 кусков по ACID_DEMO_CHUNK сэмплов, шестнадцатая - 180.
+// клок, Start). Темп - у песни: кусков по ACID_DEMO_CHUNK сэмплов на тик клока, шестнадцатая - 6 тиков.
+// 30 - 125 BPM (акид), 25 - 150 BPM (метал).
 #define ACID_DEMO_CHUNK 32
-#define ACID_DEMO_TICK 30 // кусков на тик клока
+#define ACID_DEMO_TICK 30 // кусков на тик клока у песни без своего темпа
 #define ACID_DEMO_STEP (6 * ACID_DEMO_TICK)
 #define ACID_DEMO_HELD 16 // звучащих нот одновременно на все каналы
 
@@ -60,10 +61,12 @@ typedef struct {
 typedef struct {
     const acid_demo_part_t *parts;
     int nparts;
+    int tick; // кусков на тик клока; 0 - ACID_DEMO_TICK
 } acid_demo_song_t;
 
 typedef struct {
     const acid_demo_song_t *song;
+    int32_t tick, step; // кусков на тик и на шестнадцатую
     int part;          // текущая часть
     int32_t t;         // кусок от начала круга
     int32_t k;         // кусок внутри части

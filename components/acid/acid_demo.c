@@ -14,9 +14,9 @@
 #define DRUM_BITS 17
 static const uint8_t DRUM_NOTES[DRUM_BITS] = {36, 38, 39, 42, 46, 0, 49, 51, 53, 37, 56, 41, 43, 45, 47, 48, 50};
 
-static int32_t part_len(const acid_demo_part_t *p)
+static int32_t part_len(const acid_demo_t *d, const acid_demo_part_t *p)
 {
-    return (int32_t)p->bars * 16 * ACID_DEMO_STEP;
+    return (int32_t)p->bars * 16 * d->step;
 }
 
 // Вариации круга: детерминированы его номером.
@@ -63,7 +63,7 @@ static void vary_syn1(acid_demo_t *d)
 static void part_enter(acid_demo_t *d)
 {
     const acid_demo_part_t *p = &d->song->parts[d->part];
-    d->part_len = part_len(p);
+    d->part_len = part_len(d, p);
     d->k = 0;
     memset(d->last, NO_VALUE, sizeof d->last);
     for (int i = 0; i < p->nknobs && i < ACID_DEMO_KNOBS; i++) {
@@ -92,6 +92,8 @@ static void part_enter(acid_demo_t *d)
 void acid_demo_init(acid_demo_t *d, const acid_demo_song_t *song)
 {
     d->song = song;
+    d->tick = song->tick ? song->tick : ACID_DEMO_TICK;
+    d->step = 6 * d->tick;
     d->part = 0;
     d->cycle = 0;
     d->t = 0;
@@ -156,7 +158,7 @@ static void note_on(acid_demo_t *d, sink_t *o, uint8_t ch, uint8_t note, uint8_t
 static void synth_step(acid_demo_t *d, sink_t *o, const acid_demo_note_t *pat, uint8_t ch, int step)
 {
     if (pat && pat[step].len) {
-        note_on(d, o, ch, pat[step].note, pat[step].vel, d->t + (int32_t)pat[step].len * ACID_DEMO_STEP);
+        note_on(d, o, ch, pat[step].note, pat[step].vel, d->t + (int32_t)pat[step].len * d->step);
     }
 }
 
@@ -191,19 +193,19 @@ int acid_demo_events(acid_demo_t *d, acid_midi_event_t *out, int cap)
         }
     }
 
-    if (d->k % ACID_DEMO_STEP == 0 && !last) {
-        int step = (int)(d->k / ACID_DEMO_STEP) % 16;
+    if (d->k % d->step == 0 && !last) {
+        int step = (int)(d->k / d->step) % 16;
         synth_step(d, &o, p->syn1 ? d->syn1 : NULL, CH_SYN1, step);
         synth_step(d, &o, p->syn2, CH_SYN2, step);
         uint32_t bits = p->drums ? p->drums[step] : 0;
         bits |= d->k == 0 ? p->first : 0;
         for (int b = 0; b < DRUM_BITS; b++) {
             if (DRUM_NOTES[b] && (bits & (1u << b))) {
-                note_on(d, &o, CH_DRUMS, DRUM_NOTES[b], bits & ACID_DEMO_ACC ? 127 : 96, d->t + ACID_DEMO_STEP / 2);
+                note_on(d, &o, CH_DRUMS, DRUM_NOTES[b], bits & ACID_DEMO_ACC ? 127 : 96, d->t + d->step / 2);
             }
         }
     }
-    if (d->t % ACID_DEMO_TICK == 0) {
+    if (d->t % d->tick == 0) {
         put(&o, ACID_MIDI_CLOCK, 0, 0, 0);
     }
 

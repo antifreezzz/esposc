@@ -24,7 +24,7 @@ static const acid_demo_part_t parts[] = {
     {.bars = 1, .syn1 = syn1, .syn2_pool = pool, .npool = 3, .first = ACID_DEMO_CRASH},
     {.bars = 1, .syn1 = syn1, .knobs = knobs3, .nknobs = 2, .vary_syn1 = 1},
 };
-static const acid_demo_song_t song = {parts, 3};
+static const acid_demo_song_t song = {parts, 3, 0}; // темп по умолчанию: 30
 #define LOOP (3 * BAR)
 
 static acid_demo_t d;
@@ -304,6 +304,28 @@ TEST(test_demo_vary_syn1)
     CHECK(diff); // акценты меняются
 }
 
+// Темп - поле песни: 25 кусков на тик (150 BPM) - клок каждые 25, шестнадцатая 150 кусков, круг 16 * 150.
+static const acid_demo_part_t fast_parts[] = {{.bars = 1, .syn1 = syn1}};
+static const acid_demo_song_t fast = {fast_parts, 1, 25};
+
+TEST(test_demo_tick_per_song)
+{
+    acid_demo_init(&d, &fast);
+    int clocks = 1, on48 = -1, starts = 0;
+    for (int k = 0; k < 2 * 16 * 150; k++) {
+        int n = chunk();
+        clocks &= (find(n, ACID_MIDI_CLOCK, -1, -1) >= 0) == (k % 25 == 0);
+        if (find(n, ACID_MIDI_NOTE_ON, 4, 48) >= 0 && on48 < 0) {
+            on48 = k;
+        }
+        starts += find(n, ACID_MIDI_START, -1, -1) >= 0;
+    }
+    CHECK(clocks);
+    CHECK(on48 == 2 * 150);
+    CHECK(starts == 2);
+    CHECK(acid_demo_cycle(&d) == 2);
+}
+
 int main(void)
 {
     RUN(test_demo_clock_every_960);
@@ -319,5 +341,6 @@ int main(void)
     RUN(test_demo_deterministic);
     RUN(test_demo_vary_knobs);
     RUN(test_demo_vary_syn1);
+    RUN(test_demo_tick_per_song);
     TEST_MAIN_END();
 }
