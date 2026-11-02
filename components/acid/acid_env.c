@@ -30,6 +30,12 @@ float acid_decay_next(acid_decay_t *e)
     return e->value;
 }
 
+float acid_decay_next2(acid_decay_t *e)
+{
+    e->value *= e->coef * e->coef;
+    return e->value;
+}
+
 void acid_amp_init(acid_amp_t *e, float attack_s, float release_s, float sr)
 {
     e->value = 0.0f;
@@ -49,6 +55,16 @@ float acid_amp_next(acid_amp_t *e)
         e->value = 1.0f + (e->value - 1.0f) * e->att;
     } else {
         e->value *= e->rel;
+    }
+    return e->value;
+}
+
+float acid_amp_next2(acid_amp_t *e)
+{
+    if (e->gate) {
+        e->value = 1.0f + (e->value - 1.0f) * (e->att * e->att);
+    } else {
+        e->value *= e->rel * e->rel;
     }
     return e->value;
 }
