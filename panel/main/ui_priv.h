@@ -49,3 +49,11 @@ void uc_xy_draw(const pl_model_t *m, int page);
 void uc_xy_input(pl_model_t *m, int page, int ev, int down, int x, int y, int x0, int y0, uint32_t ms);
 // Палец ушёл с пэда не отпусканием (смена вида или страницы): вернуть оси, если HOLD выкл.
 void uc_xy_release(pl_model_t *m);
+
+// ui_grids.c: экран Grids. Ввод - без лока LVGL, каждый опрос тача.
+void ug_build(lv_obj_t *scr);
+void ug_show(int on);
+void ug_draw(const pl_model_t *m);
+void ug_input(pl_model_t *m, int down, int x, int y, int x0, int y0, uint32_t ms);
+// Палец ушёл с экрана не отпусканием (смена вида): отпустить сбивку и карту.
+void ug_release(pl_model_t *m);

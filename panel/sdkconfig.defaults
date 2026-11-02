@@ -19,5 +19,5 @@ CONFIG_LV_FONT_MONTSERRAT_14=y
 CONFIG_LV_FONT_MONTSERRAT_20=y
 CONFIG_LV_FONT_MONTSERRAT_28=y
 CONFIG_LV_FONT_MONTSERRAT_48=y
-# LVGL: куча на все объекты экрана (меню, свои страницы, сцены, редактор), 64 КБ не хватало
-CONFIG_LV_MEM_SIZE=98304
+# LVGL: куча на все объекты экрана (меню, свои страницы, сцены, редактор, Grids); 96 КБ не хватило экрану Grids
+CONFIG_LV_MEM_SIZE=131072

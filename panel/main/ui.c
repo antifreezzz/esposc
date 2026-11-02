@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "link.h"
 #include "pl_gesture.h"
@@ -22,13 +23,14 @@
 #define BIG_BOX 244 // круглый диск подложки под большую дугу в центре
 #define BIG_D 210   // большая дуга захваченной ручки
 #define KNOBS 15    // энкодеры 2..16 (ячейки 0..14)
-#define MENU2_TILES 7 // USER 1-6 и SCENES
+#define MENU2_TILES 8 // USER 1-6, SCENES, GRIDS
+#define TILE_GRIDS (PL_USER_PAGES + 1)
 #define EDIT_X0 362 // кнопка EDIT в шапке своей страницы
 #define EDIT_X1 412
 #define XY_X0 88 // кнопка XY в шапке своей страницы: между «MENU» и стрелками
 #define XY_X1 140
 
-enum { MENU, MENU2, PAGE, SCENES };
+enum { MENU, MENU2, PAGE, SCENES, GRIDS };
 
 typedef struct {
     lv_obj_t *card, *num, *arc, *val, *name, *src, *pdot, *empty_dot;
@@ -135,7 +137,7 @@ int ui_tile_at(int x, int y)
 
 // Меню страниц: 2x6 плиток пониже, слой - справа от своего синта.
 #define MENU_TILE_H 64
-static const uint8_t MENU_SLOT[PL_PAGES] = {0, 1, 2, 3, 4, 5, 6, 8, 10, 11, 7, 9}; // страница -> место
+static const uint8_t MENU_SLOT[PL_PAGE_GRIDS] = {0, 1, 2, 3, 4, 5, 6, 8, 10, 11, 7, 9}; // страница -> место
 
 static void menu_xy(int p, int *x, int *y)
 {
@@ -147,7 +149,7 @@ static void menu_xy(int p, int *x, int *y)
 static int menu_page_at(int x, int y)
 {
     y -= TOP_H;
-    for (int p = 0; p < PL_PAGES; p++) {
+    for (int p = 0; p < PL_PAGE_GRIDS; p++) {
         int tx, ty;
         menu_xy(p, &tx, &ty);
         if (x >= tx && x < tx + UI_TILE_W && y >= ty && y < ty + MENU_TILE_H) {
@@ -211,22 +213,23 @@ static void build(void)
 
     // Меню: 2 столбца по 5 плиток с цветной полоской и сводкой состояния.
     u.menu = ui_box(scr, 0, TOP_H, W, W - TOP_H, C_BG);
-    for (int p = 0; p < PL_PAGES; p++) {
+    for (int p = 0; p < PL_PAGE_GRIDS; p++) { // у Grids свой экран: плитка во втором меню
         char num[4];
         snprintf(num, sizeof num, "%d", pl_page_bsp(p));
         int x, y;
         menu_xy(p, &x, &y);
         u.tile[p] = menu_tile(u.menu, x, y, MENU_TILE_H, pl_page_color(p), num, pl_page_name(p), &u.tile_sub[p]);
     }
-    // Второй экран меню: свои страницы 10..15 и сцены.
+    // Второй экран меню: свои страницы 10..15, сцены и Grids.
     u.menu2 = ui_box(scr, 0, TOP_H, W, W - TOP_H, C_BG);
     for (int p = 0; p < MENU2_TILES; p++) {
         char num[4];
-        snprintf(num, sizeof num, p < PL_USER_PAGES ? "%d" : "S", pl_page_bsp(PL_USER_FIRST + p));
+        snprintf(num, sizeof num, p < PL_USER_PAGES ? "%d" : p == TILE_GRIDS ? "G" : "S", pl_page_bsp(PL_USER_FIRST + p));
         int x, y;
         ui_tile_xy(p, &x, &y);
-        menu_tile(u.menu2, x, y, UI_TILE_H, p < PL_USER_PAGES ? pl_view_page_color(PL_USER_FIRST + p) : C_ACCENT, num,
-                  p < PL_USER_PAGES ? pl_user_name(p) : "SCENES", &u.tile2_sub[p]);
+        uint32_t pc = p < PL_USER_PAGES ? pl_view_page_color(PL_USER_FIRST + p) : p == TILE_GRIDS ? pl_page_color(PL_PAGE_GRIDS) : C_ACCENT;
+        menu_tile(u.menu2, x, y, UI_TILE_H, pc, num,
+                  p < PL_USER_PAGES ? pl_user_name(p) : p == TILE_GRIDS ? "GRIDS" : "SCENES", &u.tile2_sub[p]);
     }
 
     // Страница: сетка 3x5 из 15 карточек ручек (энкодеры 2..16).
@@ -295,6 +298,7 @@ static void build(void)
     lv_obj_set_style_border_width(u.bsp_mark, 3, 0);
 
     uc_build(scr);
+    ug_build(scr);
 
     // Всплывашка от BSP поверх всего: тёмная плашка с цветной рамкой страницы.
     u.toast = ui_box(scr, 20, W - 82, W - 40, 68, 0x161820);
@@ -437,6 +441,11 @@ static void draw_bar(const pl_model_t *m)
         ui_text(u.bar_left, LV_SYMBOL_LEFT " MENU");
         ui_text(u.bar_edit, user && (m->user_have >> (u.page - PL_USER_FIRST) & 1) ? "EDIT" : "");
         ui_text(u.bar_xy, !user ? "" : xy_on() ? "GRID" : "XY");
+    } else if (u.screen == GRIDS) {
+        snprintf(nav, sizeof nav, "GRIDS");
+        nc = pl_page_color(PL_PAGE_GRIDS);
+        ui_text(u.bar_left, LV_SYMBOL_LEFT " MENU");
+        ui_text(u.bar_edit, "");
     } else if (u.screen == SCENES) {
         snprintf(nav, sizeof nav, "SCENES");
         ui_text(u.bar_left, LV_SYMBOL_LEFT " MENU");
@@ -456,12 +465,12 @@ static void draw_bar(const pl_model_t *m)
 static void draw_menu(const pl_model_t *m)
 {
     char buf[24];
-    for (int p = 0; p < PL_PAGES; p++) {
+    for (int p = 0; p < PL_PAGE_GRIDS; p++) {
         ui_text(u.tile_sub[p], m->have ? pl_page_summary(p, m->raw[p], buf) : ""); // до снимка значения не настоящие
     }
-    int active = (m->have && m->mode == 1 && m->bsp_page < PL_PAGES) ? m->bsp_page : -1;
+    int active = (m->have && m->mode == 1 && m->bsp_page < PL_PAGE_GRIDS) ? m->bsp_page : -1;
     if (active != u.drawn_bsp_page) {
-        if (u.drawn_bsp_page >= 0 && u.drawn_bsp_page < PL_PAGES) {
+        if (u.drawn_bsp_page >= 0 && u.drawn_bsp_page < PL_PAGE_GRIDS) {
             lv_obj_set_style_border_width(u.tile[u.drawn_bsp_page], 1, 0);
             lv_obj_set_style_border_color(u.tile[u.drawn_bsp_page], lv_color_hex(C_TILE_BRD), 0);
         }
@@ -490,6 +499,7 @@ static void draw_menu2(const pl_model_t *m)
     }
     snprintf(buf, sizeof buf, "%d OF 8 SAVED", n);
     ui_text(u.tile2_sub[PL_USER_PAGES], m->have ? buf : "");
+    ui_text(u.tile2_sub[TILE_GRIDS], m->have ? pl_page_summary(PL_PAGE_GRIDS, m->raw[PL_PAGE_GRIDS], buf) : "");
 }
 
 static void draw_page(const pl_model_t *m)
@@ -749,7 +759,20 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
                 send_page(m, PL_USER_FIRST + t, ms);
             } else if (t == PL_USER_PAGES) {
                 u.screen = SCENES;
+            } else if (t == TILE_GRIDS) {
+                u.screen = GRIDS; // энкодеры BSP 2-13 крутят Grids, пока не тронут энкодер 1
+                u.page = PL_PAGE_GRIDS;
+                link_page(PL_PAGE_GRIDS);
+                pl_model_page_sent(m, ms);
             }
+        }
+    } else if (u.screen == GRIDS) {
+        if (head) {
+            ug_release(m);
+            u.screen = MENU2;
+            m->goto_page = -1;
+        } else {
+            ug_input(m, down, x, y, x0, y0, ms);
         }
     } else if (u.screen == SCENES) {
         if (head) {
@@ -781,6 +804,7 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
         knob_input(m, ev, down, x, y, x0, y0);
     }
     if (m->goto_page >= 0 && !down && u.grab < 0 && !editing()) {
+        ug_release(m);
         open_page(m->goto_page);
         m->goto_page = -1;
     }
@@ -819,15 +843,16 @@ void ui_start(void)
     build();
     lv_mem_monitor_t mon;
     lv_mem_monitor(&mon); // куча LVGL 96 КБ: при нехватке падает в первой отрисовке, а не здесь
-    ESP_LOGI("panel", "lvgl heap: used %d%%, free %u of %u, biggest %u", mon.used_pct, (unsigned)mon.free_size,
-             (unsigned)mon.total_size, (unsigned)mon.free_biggest_size);
+    ESP_LOGI("panel", "lvgl heap: used %d%%, free %u of %u, biggest %u; internal RAM free %u", mon.used_pct,
+             (unsigned)mon.free_size, (unsigned)mon.total_size, (unsigned)mon.free_biggest_size,
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     lvgl_port_unlock();
 }
 
 void ui_step(pl_model_t *m, int down, int x, int y, uint32_t ms)
 {
     input(m, down, x, y, ms);
-    if (u.screen == PAGE && !editing() && pl_model_page_resend(m, u.page, ms)) {
+    if ((u.screen == PAGE || u.screen == GRIDS) && !editing() && pl_model_page_resend(m, u.page, ms)) {
         link_page(u.page);
         pl_model_page_sent(m, ms);
     }
@@ -839,6 +864,7 @@ void ui_step(pl_model_t *m, int down, int x, int y, uint32_t ms)
     ui_show(u.grid, u.screen == PAGE && !xy_on());
     uc_xy_show(xy_on());
     uc_scenes_show(u.screen == SCENES);
+    ug_show(u.screen == GRIDS);
     uc_edit_draw(m, &u.ed);
     if (xy_on()) {
         uc_xy_draw(m, u.page);
@@ -848,6 +874,8 @@ void ui_step(pl_model_t *m, int down, int x, int y, uint32_t ms)
         draw_menu(m);
     } else if (u.screen == MENU2) {
         draw_menu2(m);
+    } else if (u.screen == GRIDS) {
+        ug_draw(m);
     } else {
         uc_scenes_draw(m);
     }
