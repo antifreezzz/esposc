@@ -76,6 +76,7 @@
   <div class="row"><div class="seg" id="segView"><button data-v="iso">3/4</button><button data-v="top">сверху</button><button data-v="rear">сзади</button><button data-v="right">справа</button></div></div>
   <div id="dims"></div>
   <div class="row"><button id="tplBtn" class="btn">Шаблон 1:1 для печати (A4)</button></div>
+  <div class="row"><button id="printBtn" class="btn">3MF для 3D-принтера</button></div>
   <details id="dimBox"><summary>Все размеры, мм</summary><table id="dimTable"></table></details>
 </div>
 
@@ -1135,6 +1136,164 @@ function templateHTML(sc) {
   return `<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>esposc: шаблон 1:1, ${title}</title><style>${css}</style></head>
     <body><div class="np"><button onclick="print()">Печать</button> · масштаб 100%, поля по умолчанию</div>${svgs}</body></html>`;
 }
+// ---------- 3MF для печати ----------
+// Пластиковые детали (материалы shell и lid) сетками в мм для слайсера. Дно, стенки, углы и стойки печатаются
+// одной ванной «Корпус», остальное (крышка, вставка, рамка куба) отдельными объектами лицом вниз.
+// Сцена левая (x вправо, y от задней стенки вперёд, z вверх): на выходе y -> -y, иначе слайсер получит зеркальную копию.
+// Деталь собрана из перекрывающихся призм: каждая замкнута, объединение делает слайсер. Допусков на посадку нет.
+const PRINT_OWN = ['Рамка-переходник'], PRINT_GAP = 10;
+// поворот, переводящий единичный a в единичный b; при a = -b вокруг оси x (крышки переворачиваются без зеркала по x)
+function rotTo(a, b) {
+  const c = dot(a, b);
+  if (c < -.999999) {
+    const k = nrm(Math.abs(a[0]) < .9 ? sub(AX, scl(a, a[0])) : sub(AY, scl(a, a[1])));
+    return v => sub(scl(k, 2 * dot(k, v)), v);
+  }
+  const k = crs(a, b), f = 1 / (1 + c);
+  return v => add(add(scl(v, c), crs(k, v)), scl(k, dot(k, v) * f));
+}
+// Т-стыки: earclip выкидывает вершины на одной прямой, и ребро крышки призмы проходит через вершины её боковой стенки.
+// Такой треугольник делим веером по лежащим на ребре вершинам, пока каждое ребро a->b не встретится с парным b->a.
+function fixTJunctions(verts, tris) {
+  for (let pass = 0; pass < 8; pass++) {
+    const m = new Map(), key = (p, q) => p * 1e6 + q;
+    for (const [a, b, c] of tris) for (const [p, q] of [[a, b], [b, c], [c, a]]) m.set(key(p, q), (m.get(key(p, q)) || 0) + 1);
+    const cand = new Set();
+    for (const [k, n] of m) { const p = Math.floor(k / 1e6), q = k % 1e6; if ((m.get(key(q, p)) || 0) !== n) cand.add(p), cand.add(q); }
+    if (!cand.size) return;
+    const cv = [...cand];
+    const onSeg = (p, q) => {
+      const A = verts[p], d = sub(verts[q], A), l2 = dot(d, d), hit = [];
+      for (const i of cv) {
+        if (i === p || i === q) continue;
+        const e = sub(verts[i], A), s = dot(e, d) / l2;
+        if (s <= 1e-6 || s >= 1 - 1e-6) continue;
+        const r = sub(e, scl(d, s));
+        if (dot(r, r) < 1e-8) hit.push([s, i]);
+      }
+      return hit.sort((x, y) => x[0] - y[0]).map(h => h[1]);
+    };
+    let changed = false;
+    for (let t = 0; t < tris.length; t++) {
+      const tr = tris[t];
+      for (let e = 0; e < 3; e++) {
+        const a = tr[e], b = tr[(e + 1) % 3], c = tr[(e + 2) % 3];
+        if (!cand.has(a) || !cand.has(b)) continue;
+        const mid = onSeg(a, b);
+        if (!mid.length) continue;
+        const chain = [a, ...mid, b];
+        tris[t] = [chain[0], chain[1], c];
+        for (let k = 1; k < chain.length - 1; k++) tris.push([chain[k], chain[k + 1], c]);
+        changed = true; break;
+      }
+    }
+    if (!changed) return;
+  }
+}
+function printModel(sc) {
+  const objs = new Map();
+  const take = (name, g) => { if (!objs.has(name)) objs.set(name, []); objs.get(name).push(g); };
+  for (const p of sc.parts) {
+    if (p.group === 'dim') continue;
+    for (const [m, g] of p.geos) {
+      if (m === MAT.shell) take(PRINT_OWN.includes(p.name) ? p.name : 'Корпус', g);
+      else if (m === MAT.lid) take(p.name, g);
+    }
+  }
+  const ctr = [sc.center[0], -sc.center[1], sc.center[2]];
+  const out = [];
+  let cursor = 0;
+  for (const [name, geos] of objs) {
+    // треугольники с общими вершинами; обход по записанной нормали (у крышек призмы в Geo он один на обе стороны)
+    let verts = [];
+    const tris = [], idx = new Map();
+    const vid = p => {
+      const k = p.map(c => c.toFixed(4)).join();
+      let i = idx.get(k); if (i === undefined) { i = verts.length; idx.set(k, i); verts.push(p); }
+      return i;
+    };
+    for (const g of geos) for (let i = 0; i < g.d.length; i += 24) {
+      const P = [0, 8, 16].map(o => [g.d[i + o], -g.d[i + o + 1], g.d[i + o + 2]]);
+      const N = [0, 8, 16].reduce((s, o) => add(s, [g.d[i + o + 3], -g.d[i + o + 4], g.d[i + o + 5]]), [0, 0, 0]);
+      const t = P.map(vid);
+      if (t[0] === t[1] || t[1] === t[2] || t[0] === t[2]) continue;
+      tris.push(dot(crs(sub(P[1], P[0]), sub(P[2], P[0])), N) < 0 ? [t[0], t[2], t[1]] : t);
+    }
+    fixTJunctions(verts, tris);
+    if (name !== 'Корпус') {
+      // самая большая плоскость детали ложится на стол той стороной, что смотрит наружу корпуса
+      const acc = new Map(), cen = [0, 0, 0];
+      for (const v of verts) for (let k = 0; k < 3; k++) cen[k] += v[k] / verts.length;
+      for (const [a, b, c] of tris) {
+        const cr = crs(sub(verts[b], verts[a]), sub(verts[c], verts[a])), ar = Math.hypot(...cr) / 2;
+        if (ar < 1e-9) continue;
+        let n = scl(cr, .5 / ar);
+        const lead = n.find(x => Math.abs(x) > 1e-6);
+        if (lead < 0) n = scl(n, -1);
+        const key = n.map(x => x.toFixed(2)).join(), e = acc.get(key) || { n, a: 0 };
+        e.a += ar; acc.set(key, e);
+      }
+      let n = [...acc.values()].reduce((x, y) => y.a > x.a ? y : x).n;
+      if (dot(n, sub(cen, ctr)) < 0) n = scl(n, -1);
+      const R = rotTo(n, [0, 0, -1]);
+      verts = verts.map(R);
+    }
+    const mn = [0, 1, 2].map(k => Math.min(...verts.map(v => v[k])));
+    const mx0 = Math.max(...verts.map(v => v[0]));
+    verts = verts.map(v => [v[0] - mn[0] + cursor, v[1] - mn[1], v[2] - mn[2]]);
+    cursor += mx0 - mn[0] + PRINT_GAP;
+    out.push({ name, verts, tris });
+  }
+  return { objects: out };
+}
+const CRC_T = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+  return t;
+})();
+function crc32(b) { let c = 0xFFFFFFFF; for (const x of b) c = CRC_T[(c ^ x) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+// zip без сжатия: 3MF это zip с тремя файлами
+function zipStore(files) {
+  const enc = new TextEncoder(), loc = [], cen = [];
+  let off = 0;
+  for (const [name, data] of files) {
+    const nm = enc.encode(name), crc = crc32(data);
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(12, 0x21, true);
+    h.setUint32(14, crc, true); h.setUint32(18, data.length, true); h.setUint32(22, data.length, true); h.setUint16(26, nm.length, true);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(14, 0x21, true);
+    c.setUint32(16, crc, true); c.setUint32(20, data.length, true); c.setUint32(24, data.length, true); c.setUint16(28, nm.length, true);
+    c.setUint32(42, off, true);
+    loc.push(new Uint8Array(h.buffer), nm, data); cen.push(new Uint8Array(c.buffer), nm);
+    off += 30 + nm.length + data.length;
+  }
+  const cenLen = cen.reduce((s, a) => s + a.length, 0);
+  const e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true);
+  e.setUint32(12, cenLen, true); e.setUint32(16, off, true);
+  const all = [...loc, ...cen, new Uint8Array(e.buffer)], z = new Uint8Array(all.reduce((s, a) => s + a.length, 0));
+  let p = 0; for (const a of all) { z.set(a, p); p += a.length; }
+  return z;
+}
+function make3mf(sc) {
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const num = v => String(+v.toFixed(4));
+  const objs = printModel(sc).objects.map((o, i) => `<object id="${i + 1}" name="${esc(o.name)}" type="model"><mesh><vertices>` +
+    o.verts.map(v => `<vertex x="${num(v[0])}" y="${num(v[1])}" z="${num(v[2])}"/>`).join('') + '</vertices><triangles>' +
+    o.tris.map(t => `<triangle v1="${t[0]}" v2="${t[1]}" v3="${t[2]}"/>`).join('') + '</triangles></mesh></object>');
+  const model = `<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="ru-RU" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources>${objs.join('')}</resources>` +
+    `<build>${objs.map((_, i) => `<item objectid="${i + 1}"/>`).join('')}</build></model>`;
+  const enc = new TextEncoder();
+  return zipStore([
+    ['[Content_Types].xml', enc.encode(`<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>`)],
+    ['_rels/.rels', enc.encode(`<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>`)],
+    ['3D/3dmodel.model', enc.encode(model)],
+  ]);
+}
 function logoTex() {
   return canvasTex(40, 9, 20, (c, w, h) => {
     c.fillStyle = 'rgba(255,181,71,.9)'; c.font = '700 6px system-ui, sans-serif'; c.textBaseline = 'middle'; c.fillText('esposc', 0, h / 2);
@@ -1434,6 +1593,12 @@ seg('segVar', v => switchTo(curForm, v));
 seg('segForm', v => switchTo(v, curVk));
 document.getElementById('tplBtn').onclick = () =>
   window.open(URL.createObjectURL(new Blob([templateHTML(S)], { type: 'text/html' })), '_blank');
+document.getElementById('printBtn').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([make3mf(S)], { type: 'model/3mf' }));
+  a.download = `esposc-${S.form}${S.form === 'box' ? '-' + S.vk : ''}${S.ins ? '-' + S.ins : ''}.3mf`;
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
 seg('segLid', v => { lidState = +v; });
 seg('segView', v => setView(v));
 document.getElementById('explode').oninput = e => {
