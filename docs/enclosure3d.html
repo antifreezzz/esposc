@@ -31,6 +31,8 @@
   #dimTable td:nth-child(2) { color: #ffb547; font-family: ui-monospace, monospace; text-align: right; }
   #dimTable .nt { color: #7d8496; font-size: 11px; }
   .seg button:disabled { opacity: .35; cursor: not-allowed; }
+  .btn { width: 100%; background: #1b1c21; border: 1px solid #353945; border-radius: 8px; color: #c9ccd3; padding: 6px 4px; font: inherit; font-size: 12.5px; cursor: pointer; }
+  .btn:hover { border-color: #ffb547; color: #ffb547; }
   .lbl.dim { background: #15161a; color: #ffb547; border: 1px solid #ffb547; transform: translate(-50%, -50%); }
   .lbl.dim::after { display: none; }
   #info { top: 14px; right: 14px; width: 330px; max-height: calc(100% - 28px); overflow: auto; }
@@ -73,6 +75,7 @@
   </div>
   <div class="row"><div class="seg" id="segView"><button data-v="iso">3/4</button><button data-v="top">сверху</button><button data-v="rear">сзади</button><button data-v="right">справа</button></div></div>
   <div id="dims"></div>
+  <div class="row"><button id="tplBtn" class="btn">Шаблон 1:1 для печати (A4)</button></div>
   <details id="dimBox"><summary>Все размеры, мм</summary><table id="dimTable"></table></details>
 </div>
 
@@ -205,6 +208,7 @@ const FY = y => ({ o: [0, y, 0], u: AX, v: AZ, w: AY });
 const FX = x => ({ o: [x, 0, 0], u: AY, v: AZ, w: AX });
 const P3 = (F, a, b, t) => add(F.o, add(add(scl(F.u, a), scl(F.v, b)), scl(F.w, t)));
 function extrude(g, F, outer, holes, d) {
+  if (g.rec) g.rec.push({ F, outer, holes, d });   // плоские слои корпуса для шаблона 1:1
   const tris = triangulate(outer, holes);
   const nb = scl(F.w, -1);
   for (let i = 0; i < tris.length; i += 3) for (const [t, n] of [[0, nb], [d, F.w]])
@@ -351,7 +355,10 @@ function buildScene(form, vk, ins = 'blank') {
   const H1_NEED = 2; // мм под гнездом H1: отогнутые хвосты с проводом
   const P = (name, info, ex = [0, 0, 0], group = 'body') => {
     const p = { name, info, ex, group, geos: new Map(), decals: [], id: parts.length + 1 };
-    p.g = m => { if (!p.geos.has(m)) p.geos.set(m, new Geo()); return p.geos.get(m); };
+    p.g = m => {
+      if (!p.geos.has(m)) { const g = new Geo(); if (m === MAT.shell || m === MAT.lid) g.rec = []; p.geos.set(m, g); }
+      return p.geos.get(m);
+    };
     parts.push(p); return p;
   };
   const panelOn = form !== 'box';
@@ -1021,6 +1028,113 @@ function rrectRear(x0, y0, x1, y1, r) {
   for (let i = 0; i <= 6; i++) { const a = (180 + 90 * i / 6) * Math.PI / 180; p.push([x0 + r + r * Math.cos(a), y0 + r + r * Math.sin(a)]); }
   return clean(p);
 }
+// ---------- шаблон 1:1 ----------
+// Плоские детали корпуса (дно, стенки, крышка, вставка) как вид снаружи в мм: для картона, ручки и печати пластинами.
+// Углы R4 коробки и куба гнутые, в шаблон не идут; стойки крышки отмечены на дне.
+const TPL_SKIP = ['Угол', 'Стойки крышки', 'Ножки'];
+function bbox2(p) {
+  const xs = p.map(q => q[0]), ys = p.map(q => q[1]);
+  return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
+}
+const bbIn = (a, b, e = .01) => a.x0 >= b.x0 - e && a.y0 >= b.y0 - e && a.x1 <= b.x1 + e && a.y1 <= b.y1 + e;
+const bbKey = b => [b.x0, b.y0, b.x1, b.y1].map(v => v.toFixed(2)).join();
+function templateSheets(sc) {
+  const sheets = [];
+  const fkey = F => [...F.u, ...F.v, ...F.w].map(v => v.toFixed(3)).join();
+  const bossRec = sc.parts.filter(p => p.name === 'Стойки крышки').flatMap(p => [...p.geos.values()].flatMap(g => g.rec || []));
+  for (const p of sc.parts) {
+    if (TPL_SKIP.includes(p.name) || p.group === 'dim') continue;
+    const groups = new Map();
+    for (const g of p.geos.values()) for (const r of g.rec || []) {
+      const k = fkey(r.F); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r);
+    }
+    for (const layers of groups.values()) {
+      const main = layers.reduce((a, b) => Math.abs(area(b.outer)) > Math.abs(area(a.outer)) ? b : a);
+      const { u, v, w } = main.F;
+      // вид снаружи: мир левый (см. отражение x в рендере), поэтому u x v смотрит внутрь, если вид прямой
+      const s = Math.sign(dot(w, sub(main.F.o, sc.center))) || 1;
+      const flip = dot(crs(u, v), scl(w, s)) > 0;
+      const loc = (F, poly) => {
+        const d = sub(F.o, main.F.o), du = dot(d, u), dv = dot(d, v);
+        return poly.map(([a, b]) => [flip ? -(a + du) : a + du, b + dv]);
+      };
+      const out0 = loc(main.F, main.outer), ob = bbox2(out0);
+      const norm = poly => poly.map(([a, b]) => [a - ob.x0, b - ob.y0]);
+      const L = layers.map(r => {
+        const outer = loc(r.F, r.outer), holes = r.holes.map(h => loc(r.F, h));
+        const t0 = dot(sub(r.F.o, main.F.o), w);
+        return { outer, ob: bbox2(outer), holes, hb: holes.map(bbox2), t0, t1: t0 + r.d };
+      });
+      const desc = poly => {
+        const pts = norm(poly), b = bbox2(pts), cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
+        const rs = pts.map(([a, c]) => Math.hypot(a - cx, c - cy));
+        const round = pts.length >= 12 && Math.max(...rs) - Math.min(...rs) < .02 ? 2 * rs[0] : 0;
+        return { pts, bw: b.x1 - b.x0, bh: b.y1 - b.y0, cx, cy, round };
+      };
+      const through = [], pockets = [], ribs = [], seen = new Set();
+      for (const l of L) l.holes.forEach((h, i) => {
+        const hb = l.hb[i], k = bbKey(hb);
+        if (seen.has(k)) return; seen.add(k);
+        const thru = L.every(m => !bbIn(hb, m.ob) || m.hb.some(b => bbIn(hb, b)));
+        (thru ? through : pockets).push(desc(h));
+      });
+      for (const l of L) if (bbKey(l.ob) !== bbKey(ob) && !seen.has(bbKey(l.ob))) ribs.push(desc(l.outer));
+      const marks = p.name === 'Дно' ? bossRec.filter(r => fkey(r.F) === fkey(main.F)).map(r => desc(loc(r.F, r.outer))) : [];
+      const name = groups.size > 1 ? `${p.name} (${sheets.filter(q => q.part === p.name).length + 1})` : p.name;
+      sheets.push({ name, part: p.name, w: ob.x1 - ob.x0, h: ob.y1 - ob.y0, outline: norm(out0), through, pockets, ribs, marks,
+        thick: (F => Math.max(...F.map(l => l.t1)) - Math.min(...F.map(l => l.t0)))(L.filter(l => bbKey(l.ob) === bbKey(ob))) });
+    }
+  }
+  return sheets;
+}
+function templateHTML(sc) {
+  const PW = 190, PH = 277, FOOT = 26, LAB = 8, GAP = 6, f1 = v => (Math.round(v * 10) / 10).toString();
+  const title = sc.form === 'box' ? `Коробка 1.9", ${sc.vk === 'dac' ? 'ЦАП' : 'хаб'}` : FORMS[sc.form].title;
+  // раскладка полками; деталь шире листа поворачиваем на 90°
+  const pages = [[]];
+  let x = 0, y = 0, rowH = 0;
+  for (const s of templateSheets(sc)) {
+    const rot = s.w > PW && s.h <= PW, w = rot ? s.h : s.w, h = (rot ? s.w : s.h) + LAB;
+    if (x > 0 && x + w > PW) { x = 0; y += rowH + GAP; rowH = 0; }
+    if (y > 0 && y + h > PH - FOOT) { pages.push([]); x = 0; y = 0; rowH = 0; }
+    pages[pages.length - 1].push({ s, x, y, rot });
+    x += w + GAP; rowH = Math.max(rowH, h);
+  }
+  const path = pts => 'M' + pts.map(([a, b]) => `${a.toFixed(2)} ${b.toFixed(2)}`).join('L') + 'Z';
+  const hlab = d => d.round ? `⌀${f1(d.round)}` : `${f1(d.bw)}x${f1(d.bh)}`;
+  const draw = ({ s, x, y, rot }) => {
+    const fy = pts => pts.map(([a, b]) => [a, s.h - b]);   // v вверх -> SVG вниз
+    const tr = rot ? `translate(${x + s.h} ${y + LAB}) rotate(90)` : `translate(${x} ${y + LAB})`;
+    const hole = (d, cls) => `<path class="${cls}" d="${path(fy(d.pts))}"/>`;
+    const txt = d => `<text class="hl" x="${d.cx.toFixed(2)}" y="${(s.h - d.cy + .8).toFixed(2)}">${hlab(d)}</text>`;
+    const mark = d => `<circle class="mk" cx="${d.cx.toFixed(2)}" cy="${(s.h - d.cy).toFixed(2)}" r="${(d.bw / 2).toFixed(2)}"/>
+      <path class="mk" d="M${(d.cx - 1.5).toFixed(2)} ${(s.h - d.cy).toFixed(2)}h3M${d.cx.toFixed(2)} ${(s.h - d.cy - 1.5).toFixed(2)}v3"/>`;
+    return `<text class="nm" x="${x}" y="${y + 4.5}">${s.name}: ${f1(s.w)} x ${f1(s.h)}, толщина ${f1(s.thick)}, вид снаружи</text>
+      <g transform="${tr}"><path class="ol" d="${path(fy(s.outline))}"/>
+      ${s.pockets.map(d => hole(d, 'pk')).join('')}${s.ribs.map(d => hole(d, 'rb')).join('')}${s.through.map(d => hole(d, 'th')).join('')}
+      ${s.marks.map(mark).join('')}${s.through.filter(d => d.bw > 4 && d.bh > 2.5).map(txt).join('')}</g>`;
+  };
+  const ticks = Array.from({ length: 11 }, (_, i) => `<path class="ol" d="M${i * 10} 0v${i % 5 ? 2 : 3.5}"/>`).join('');
+  const foot = (i, n) => `<g transform="translate(0 ${PH - FOOT + 4})">
+    <g transform="translate(0 2)"><path class="ol" d="M0 0h100"/>${ticks}<text class="nm" x="102" y="2.5">100 мм: сверь линейкой</text></g>
+    <text class="lg" x="0" y="10">Печатать «фактический размер» / 100%, без «вписать в страницу». Сплошная с заливкой - вырез насквозь,</text>
+    <text class="lg" x="0" y="14">штрих - карман или ступень (не насквозь), точки - ребро или полка с изнанки, кружок с крестом - стойка M3.</text>
+    <text class="lg" x="0" y="18">Размеры под PETG 2.5 мм.${['box', 'cube'].includes(sc.form) ? ' Углы R4 гнутые, в шаблоне их нет: стенки короче на 1.5 мм с каждого края.' : ''} esposc · ${title} · вставка: ${sc.ins || 'нет'} · лист ${i + 1} из ${n}</text></g>`;
+  const css = `@page { size: A4; margin: 10mm; } body { margin: 0; background: #888; }
+    svg { display: block; background: #fff; margin: 10px auto; break-after: page; }
+    @media print { body { background: none; } svg { margin: 0; } .np { display: none; } }
+    .np { text-align: center; font: 14px system-ui; padding: 8px; }
+    .ol { fill: none; stroke: #000; stroke-width: .3; } .th { fill: #d8d8d8; stroke: #000; stroke-width: .3; }
+    .pk { fill: none; stroke: #000; stroke-width: .25; stroke-dasharray: 1.2 .8; }
+    .rb { fill: none; stroke: #555; stroke-width: .25; stroke-dasharray: .3 .7; }
+    .mk { fill: none; stroke: #c00; stroke-width: .25; stroke-dasharray: .6 .5; }
+    text { font-family: system-ui, sans-serif; } .nm { font-size: 3.2px; } .lg { font-size: 2.8px; }
+    .hl { font-size: 2.2px; text-anchor: middle; fill: #333; }`;
+  const svgs = pages.map((pg, i) => `<svg xmlns="http://www.w3.org/2000/svg" width="${PW}mm" height="${PH}mm" viewBox="0 0 ${PW} ${PH}">
+    ${pg.map(draw).join('')}${foot(i, pages.length)}</svg>`).join('\n');
+  return `<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>esposc: шаблон 1:1, ${title}</title><style>${css}</style></head>
+    <body><div class="np"><button onclick="print()">Печать</button> · масштаб 100%, поля по умолчанию</div>${svgs}</body></html>`;
+}
 function logoTex() {
   return canvasTex(40, 9, 20, (c, w, h) => {
     c.fillStyle = 'rgba(255,181,71,.9)'; c.font = '700 6px system-ui, sans-serif'; c.textBaseline = 'middle'; c.fillText('esposc', 0, h / 2);
@@ -1318,6 +1432,8 @@ const switchTo = (form, vk, ins = curIns) => { curForm = form; curVk = vk; curIn
 seg('segIns', v => switchTo(curForm, curVk, v));
 seg('segVar', v => switchTo(curForm, v));
 seg('segForm', v => switchTo(v, curVk));
+document.getElementById('tplBtn').onclick = () =>
+  window.open(URL.createObjectURL(new Blob([templateHTML(S)], { type: 'text/html' })), '_blank');
 seg('segLid', v => { lidState = +v; });
 seg('segView', v => setView(v));
 document.getElementById('explode').oninput = e => {
