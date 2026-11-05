@@ -10,3 +10,4 @@ __pycache__/
 *.bin
 build-stress/
 build-stress-layers/
+panel/build-bench/

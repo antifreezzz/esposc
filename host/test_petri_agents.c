@@ -3,6 +3,9 @@
 #include "petri.h"
 #include "test.h"
 
+static int16_t U1[PETRI_N * PETRI_N], V1[PETRI_N * PETRI_N];
+static int8_t DK1[PETRI_N * PETRI_N];
+
 #define NN (PETRI_N * PETRI_N)
 static petri_t P;
 
@@ -169,6 +172,7 @@ TEST(ecology_survives)
 
 int main(void)
 {
+    petri_bind(&P, U1, V1, DK1);
     RUN(start_population);
     RUN(set_count_clamps);
     RUN(grazers_eat);

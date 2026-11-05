@@ -26,9 +26,14 @@ typedef struct {
 } petri_agent_t;
 
 typedef struct {
-    int16_t u[PETRI_N * PETRI_N], v[PETRI_N * PETRI_N]; // Q15
-    int8_t dk[PETRI_N * PETRI_N];                       // поправка к k от мутагенов, шаг 0.012/127
-    int16_t row[3][2][PETRI_N];                         // старые строки y-1, y и 0 на время шага (u, v)
+    // Сетки PETRI_N x PETRI_N - память вызывающего (petri_bind): на панели внутренняя RAM фрагментирована,
+    // одним куском вся чашка (~51 КБ) не выделяется, по отдельности (18 + 18 + 9 КБ) - да.
+    int16_t *u, *v; // Q15
+    int8_t *dk;     // поправка к k от мутагенов, шаг 0.012/127
+    // Рабочие строки шага (u, v): старые копии строк y-1 и 0, текущая строка с краями тора, суммы столбцов 3x1,
+    // лапласиан. Простые проходы по строке вместо одного цикла с 9 указателями: тот не влезал в регистры Xtensa.
+    int16_t prev[2][PETRI_N], first[2][PETRI_N], mid[2][PETRI_N + 2];
+    int32_t col[2][PETRI_N + 2], lap[2][PETRI_N];
     int16_t f_q, k_q;                                   // F и k в Q15
     uint32_t rng;
     // Жители.
@@ -53,6 +58,8 @@ typedef struct {
 uint32_t petri_rand(uint32_t *s); // xorshift32
 float petri_randf(uint32_t *s);   // [0, 1)
 
+// Привязать сетки: u и v по PETRI_N * PETRI_N int16, dk - int8. До petri_init; init их сохраняет.
+void petri_bind(petri_t *p, int16_t *u, int16_t *v, int8_t *dk);
 // U = 1, V = 0, Δk = 0, пресет 0, капли посева; жители 3, 1, 2, 1, аппетит 0.15, сила мутагенов 1.
 void petri_init(petri_t *p, uint32_t seed);
 // U = 1, V = 0 и 12 капель радиусом 2-5 в случайных местах.

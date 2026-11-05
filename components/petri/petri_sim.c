@@ -88,9 +88,20 @@ void petri_reseed(petri_t *p)
     }
 }
 
+void petri_bind(petri_t *p, int16_t *u, int16_t *v, int8_t *dk)
+{
+    p->u = u;
+    p->v = v;
+    p->dk = dk;
+}
+
 void petri_init(petri_t *p, uint32_t seed)
 {
+    int16_t *u = p->u, *v = p->v;
+    int8_t *dk = p->dk;
     memset(p, 0, sizeof *p);
+    petri_bind(p, u, v, dk);
+    memset(dk, 0, PETRI_N * PETRI_N);
     p->rng = seed;
     float f, k;
     petri_preset(0, &f, &k);
@@ -113,37 +124,51 @@ static inline int clampq(int32_t x)
     return x < 0 ? 0 : x > PETRI_Q ? PETRI_Q : x;
 }
 
-// Шаг на месте: строка y-1 уже перезаписана, поэтому её старая копия в row[0]; текущая строка перезаписывается
-// слева направо - копия в row[1]; для последней строки нижний сосед - строка 0, её старая копия в row[2].
+// Лапласиан строки в Q15, уже умноженный на 0.05: 4*s4 + sd - 20c == 3*s4 + S - 21c, где S - сумма окна 3x3.
+static void row_lap(const int16_t *up, const int16_t *m, const int16_t *dn, int32_t *col, int32_t *lap)
+{
+    for (int x = 0; x < N; x++) {
+        col[x + 1] = up[x] + m[x + 1] + dn[x];
+    }
+    col[0] = col[N];
+    col[N + 1] = col[1];
+    for (int x = 1; x <= N; x++) {
+        int32_t c = m[x], s4 = m[x - 1] + m[x + 1] + col[x] - c, S = col[x - 1] + col[x] + col[x + 1];
+        lap[x - 1] = ((3 * s4 + S - 21 * c) * 1638 + R15) >> 15;
+    }
+}
+
+// Шаг на месте: строка y-1 уже перезаписана, поэтому её старая копия в prev; текущая строка перезаписывается -
+// копия в mid (с краями тора); для последней строки нижний сосед - строка 0, её старая копия в first.
 void petri_step(petri_t *p)
 {
-    int16_t(*prev)[N] = p->row[0], (*cur)[N] = p->row[1], (*first)[N] = p->row[2];
-    memcpy(first[0], p->u, sizeof first[0]);
-    memcpy(first[1], p->v, sizeof first[1]);
+    memcpy(p->first[0], p->u, sizeof p->first[0]); // строка 0
+    memcpy(p->first[1], p->v, sizeof p->first[1]);
     const int32_t f = p->f_q, k = f + p->k_q;
     for (int y = 0; y < N; y++) {
         int16_t *gu = p->u + y * N, *gv = p->v + y * N;
-        memcpy(cur[0], gu, sizeof cur[0]);
-        memcpy(cur[1], gv, sizeof cur[1]);
-        const int16_t *uu = y ? prev[0] : p->u + (N - 1) * N, *uv = y ? prev[1] : p->v + (N - 1) * N;
-        const int16_t *du = y < N - 1 ? p->u + (y + 1) * N : first[0], *dv = y < N - 1 ? p->v + (y + 1) * N : first[1];
-        const int16_t *mu = cur[0], *mv = cur[1];
+        int16_t *mu = p->mid[0], *mv = p->mid[1];
+        memcpy(mu + 1, gu, N * sizeof *gu);
+        memcpy(mv + 1, gv, N * sizeof *gv);
+        mu[0] = mu[N];
+        mu[N + 1] = mu[1];
+        mv[0] = mv[N];
+        mv[N + 1] = mv[1];
+        const int16_t *uu = y ? p->prev[0] : p->u + (N - 1) * N, *uv = y ? p->prev[1] : p->v + (N - 1) * N;
+        const int16_t *du = y < N - 1 ? gu + N : p->first[0], *dv = y < N - 1 ? gv + N : p->first[1];
+        row_lap(uu, mu, du, p->col[0], p->lap[0]);
+        row_lap(uv, mv, dv, p->col[1], p->lap[1]);
+        const int32_t *lu = p->lap[0], *lv = p->lap[1];
         const int8_t *dk = p->dk + y * N;
         for (int x = 0; x < N; x++) {
-            int xm = x ? x - 1 : N - 1, xp = x < N - 1 ? x + 1 : 0;
-            int32_t u = mu[x], v = mv[x];
-            int32_t s4u = mu[xm] + mu[xp] + uu[x] + du[x], sdu = uu[xm] + uu[xp] + du[xm] + du[xp];
-            int32_t s4v = mv[xm] + mv[xp] + uv[x] + dv[x], sdv = uv[xm] + uv[xp] + dv[xm] + dv[xp];
-            int32_t lu = ((4 * s4u + sdu - 20 * u) * 1638 + R15) >> 15; // * 0.05
-            int32_t lv = ((4 * s4v + sdv - 20 * v) * 1638 + R15) >> 15;
+            int32_t u = mu[x + 1], v = mv[x + 1];
             int32_t uv2 = (u * v + R15) >> 15, uvv = (uv2 * v + R15) >> 15;
             int32_t kk = k + ((dk[x] * 99) >> 5); // dk * 0.012/127 в Q15
-            gu[x] = (int16_t)clampq(u + lu - uvv + ((f * (PETRI_Q - u) + R15) >> 15));
-            gv[x] = (int16_t)clampq(v + (lv >> 1) + uvv - ((kk * v + R15) >> 15));
+            gu[x] = (int16_t)clampq(u + lu[x] - uvv + ((f * (PETRI_Q - u) + R15) >> 15));
+            gv[x] = (int16_t)clampq(v + (lv[x] >> 1) + uvv - ((kk * v + R15) >> 15));
         }
-        int16_t(*t)[N] = prev;
-        prev = cur;
-        cur = t;
+        memcpy(p->prev[0], mu + 1, N * sizeof *mu);
+        memcpy(p->prev[1], mv + 1, N * sizeof *mv);
     }
 }
 

@@ -4,7 +4,11 @@
 #include "petri.h"
 #include "test.h"
 
+static int16_t U1[PETRI_N * PETRI_N], V1[PETRI_N * PETRI_N], U2[PETRI_N * PETRI_N], V2[PETRI_N * PETRI_N];
+static int8_t DK1[PETRI_N * PETRI_N], DK2[PETRI_N * PETRI_N];
+
 #define NN (PETRI_N * PETRI_N)
+#define GOLDEN 0xf3c39945u // первая версия шага (9 указателей в одном цикле)
 static petri_t P, P2;
 
 static void clear(petri_t *p)
@@ -34,7 +38,7 @@ TEST(values_stay_in_range)
 {
     petri_init(&P, 1);
     petri_set_fk(&P, 0.09f, 0.045f);
-    memset(P.dk, 127, sizeof P.dk);
+    memset(P.dk, 127, NN);
     int bad = 0;
     for (int s = 0; s < 500; s++) {
         petri_step(&P);
@@ -82,13 +86,13 @@ TEST(same_seed_same_dish)
         petri_step(&P);
         petri_step(&P2);
     }
-    CHECK(memcmp(P.u, P2.u, sizeof P.u) == 0);
-    CHECK(memcmp(P.v, P2.v, sizeof P.v) == 0);
+    CHECK(memcmp(P.u, P2.u, NN * sizeof *P.u) == 0);
+    CHECK(memcmp(P.v, P2.v, NN * sizeof *P.v) == 0);
     petri_init(&P2, 8);
     for (int s = 0; s < 100; s++) {
         petri_step(&P2);
     }
-    CHECK(memcmp(P.v, P2.v, sizeof P.v) != 0);
+    CHECK(memcmp(P.v, P2.v, NN * sizeof *P.v) != 0);
 }
 
 // Эталон тех же формул во float с двойным буфером.
@@ -170,6 +174,47 @@ TEST(presets_stay_alive)
     }
 }
 
+// Сетки - память вызывающего (на панели внутренняя RAM фрагментирована, одним куском 51 КБ не выделить).
+TEST(bind_uses_caller_grids)
+{
+    petri_t q;
+    petri_bind(&q, U1, V1, DK1);
+    petri_init(&q, 4);
+    CHECK(q.u == U1 && q.v == V1 && q.dk == DK1);
+    int ones = 0, seeded = 0;
+    for (int i = 0; i < NN; i++) {
+        ones += U1[i] == PETRI_Q;
+        seeded += V1[i] > 0;
+    }
+    CHECK(ones > NN / 2);
+    CHECK(seeded > 0);
+}
+
+static uint32_t dish_hash(const petri_t *p)
+{
+    uint32_t h = 2166136261u;
+    for (int i = 0; i < NN; i++) {
+        h = (h ^ (uint16_t)p->u[i]) * 16777619u;
+        h = (h ^ (uint16_t)p->v[i]) * 16777619u;
+    }
+    return h;
+}
+
+// Шаг прибит к первой версии бит в бит: перестановки ради скорости не меняют арифметику.
+TEST(step_golden)
+{
+    petri_init(&P, 9);
+    memset(P.dk, 0, NN);
+    for (int i = 0; i < NN; i += 7) {
+        P.dk[i] = (int8_t)((i % 255) - 127);
+    }
+    for (int s = 0; s < 200; s++) {
+        petri_step(&P);
+    }
+    printf("  hash %08x\n", (unsigned)dish_hash(&P));
+    CHECK(dish_hash(&P) == GOLDEN);
+}
+
 TEST(bilinear_read)
 {
     petri_init(&P, 1);
@@ -183,12 +228,17 @@ TEST(bilinear_read)
 
 int main(void)
 {
+    petri_bind(&P, U1, V1, DK1);
+    petri_bind(&P2, U2, V2, DK2);
+    RUN(bind_uses_caller_grids);
+    petri_bind(&P, U1, V1, DK1);
     RUN(uniform_stays_uniform);
     RUN(values_stay_in_range);
     RUN(drop_wraps_torus);
     RUN(same_seed_same_dish);
     RUN(matches_float_reference);
     RUN(presets_stay_alive);
+    RUN(step_golden);
     RUN(bilinear_read);
     TEST_MAIN_END();
 }

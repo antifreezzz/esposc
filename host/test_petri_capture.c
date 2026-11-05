@@ -5,6 +5,9 @@
 #include "petri.h"
 #include "test.h"
 
+static int16_t U1[PETRI_N * PETRI_N], V1[PETRI_N * PETRI_N];
+static int8_t DK1[PETRI_N * PETRI_N];
+
 #define NN (PETRI_N * PETRI_N)
 static petri_t P;
 static int16_t T[PETRI_TABLE];
@@ -197,6 +200,7 @@ TEST(init_defaults)
 
 int main(void)
 {
+    petri_bind(&P, U1, V1, DK1);
     RUN(empty_dish_is_silent);
     RUN(void_mode_sounds_in_empty);
     RUN(mean_removed);
