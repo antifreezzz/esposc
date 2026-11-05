@@ -25,6 +25,8 @@ uint32_t pl_view_page_color(int page);
 int pl_view_page_step(int page, int dir);
 // Цель i слота своей страницы: её страница 0..9 и энкодер в *enc, -1 - нет такой.
 int pl_view_target(const pl_model_t *m, int page, int enc, int i, int *tenc);
+// На странице есть кнопка перехода к экрану чашки: страница её ручек или синт с типом PETRI.
+int pl_view_dish(const pl_model_t *m, int page);
 // Слот своей страницы - псевдоним (одна цель на весь ход).
 int pl_view_is_alias(const pl_model_t *m, int up, int enc);
 // Статус в шапке: "NO LINK", "LIVE", в демо - имя песни ("METAL", "ACID"; чужой номер - "DEMO").

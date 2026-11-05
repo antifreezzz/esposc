@@ -145,3 +145,9 @@ int pl_view_demo_tap(const pl_model_t *m, int linked, int x0, int y0, int x1, in
     return linked && m->have && !m->mode && x0 >= PL_STATUS_X0 && y0 < PL_STATUS_Y1 && y1 < PL_STATUS_Y1 + 16 &&
            x1 >= PL_STATUS_X0 - 16;
 }
+
+int pl_view_dish(const pl_model_t *m, int page)
+{
+    int synth = page == PL_PAGE_SYNTH1 || page == PL_PAGE_SYNTH1 + 1;
+    return m->have && (page == PL_PAGE_PETRI || (synth && m->raw[page][1] == PL_TYPE_PETRI));
+}
