@@ -64,7 +64,7 @@ TEST(plays_table_pitch)
     start();
     sine(&F, 1, 0);
     acid_petri_post(&P, &F);
-    acid_petri_note_on(&P, 220, 100);
+    acid_petri_note_on(&P, 57, 220, 100);
     run(4800);
     float pk;
     int c = crossings(9600, &pk);
@@ -78,7 +78,7 @@ TEST(crossfade_no_jump)
     start();
     sine(&F, 1, 0);
     acid_petri_post(&P, &F);
-    acid_petri_note_on(&P, 220, 100);
+    acid_petri_note_on(&P, 57, 220, 100);
     run(9600);
     float prev = acid_petri_osc(&P), dmax_before = 0;
     for (int i = 0; i < 2400; i++) {
@@ -103,7 +103,7 @@ TEST(latest_table_wins)
     start();
     sine(&F, 1, 0);
     acid_petri_post(&P, &F);
-    acid_petri_note_on(&P, 220, 100);
+    acid_petri_note_on(&P, 57, 220, 100);
     run(4800);
     sine(&F, 0.5f, 0);
     acid_petri_post(&P, &F);
@@ -124,7 +124,7 @@ TEST(four_voices_then_steal)
     acid_petri_post(&P, &F);
     float hz[5] = {110, 220, 330, 440, 550};
     for (int i = 0; i < 5; i++) {
-        acid_petri_note_on(&P, hz[i], 100);
+        acid_petri_note_on(&P, i, hz[i], 100);
         run(48);
     }
     int on = 0, has110 = 0;
@@ -134,7 +134,7 @@ TEST(four_voices_then_steal)
     }
     CHECK(on == 4);
     CHECK(has110 == 0);
-    acid_petri_note_off(&P, 330);
+    acid_petri_note_off(&P, 2); // нота 2 - 330 Гц
     on = 0;
     for (int i = 0; i < ACID_PETRI_VOICES; i++) {
         on += P.v[i].gate;
@@ -146,8 +146,8 @@ TEST(four_voices_then_steal)
 TEST(mip_by_pitch)
 {
     start();
-    acid_petri_note_on(&P, 3000, 100);
-    acid_petri_note_on(&P, 300, 100);
+    acid_petri_note_on(&P, 100, 3000, 100);
+    acid_petri_note_on(&P, 60, 300, 100);
     int lv3000 = -1, lv300 = -1;
     for (int i = 0; i < ACID_PETRI_VOICES; i++) {
         if (P.v[i].gate && P.v[i].hz == 3000) {
@@ -182,7 +182,7 @@ TEST(freeze_holds)
     start();
     sine(&F, 1, 0);
     acid_petri_post(&P, &F);
-    acid_petri_note_on(&P, 220, 100);
+    acid_petri_note_on(&P, 57, 220, 100);
     run(4800);
     acid_petri_freeze(&P, 1);
     run(4800);
@@ -200,7 +200,7 @@ TEST(baked_after_silence)
     sine(&set[1], 0.5f, 0);
     acid_petri_init(&P, SR);
     acid_petri_use_baked(&P, set, 2);
-    acid_petri_note_on(&P, 220, 100);
+    acid_petri_note_on(&P, 57, 220, 100);
     float pk;
     crossings(4800, &pk);
     CHECK(pk > 0.1f); // зашитый набор звучит сразу
@@ -218,7 +218,7 @@ TEST(dc_removed)
     start();
     sine(&F, 0.5f, 0.4f);
     acid_petri_post(&P, &F);
-    acid_petri_note_on(&P, 220, 100);
+    acid_petri_note_on(&P, 57, 220, 100);
     run(48000);
     double s = 0;
     for (int i = 0; i < 4800; i++) {

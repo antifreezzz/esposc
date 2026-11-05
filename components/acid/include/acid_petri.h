@@ -23,6 +23,7 @@ typedef struct {
 typedef struct {
     uint32_t ph, inc;
     float hz, env, x1, y1, lvl, g;
+    int8_t note; // нота MIDI: отпускание по ней, частоту мог сдвинуть слой тональности
     uint8_t gate, on, level;
     uint32_t age;
 } acid_petri_voice_t;
@@ -47,6 +48,10 @@ typedef struct {
     int nbaked, bi;
 } acid_petri_t;
 
+// Зашитые таблицы (acid_petri_tables.c, генерирует tools/petri_bake).
+extern const acid_petri_frame_t acid_petri_baked[];
+extern const int acid_petri_nbaked;
+
 void acid_petri_init(acid_petri_t *p, float sr);
 // Набор зашитых таблиц: звучит сразу и после 0.5 с без таблиц снаружи. NULL - без набора (молчит до таблицы).
 void acid_petri_use_baked(acid_petri_t *p, const acid_petri_frame_t *f, int n);
@@ -54,9 +59,12 @@ void acid_petri_use_baked(acid_petri_t *p, const acid_petri_frame_t *f, int n);
 void acid_petri_wave_build(acid_petri_wave_t *w, const int16_t tab[ACID_PETRI_TABLE]);
 // Таблица снаружи в ящик (фаза событий). Последняя побеждает.
 void acid_petri_post(acid_petri_t *p, const acid_petri_frame_t *f);
-void acid_petri_note_on(acid_petri_t *p, float hz, int vel);
-void acid_petri_note_off(acid_petri_t *p, float hz);
+// Нота note с частотой hz: та же нота перезапускает свой голос, иначе свободный, иначе самый старый.
+void acid_petri_note_on(acid_petri_t *p, int note, float hz, int vel);
+void acid_petri_note_off(acid_petri_t *p, int note);
 void acid_petri_notes_off(acid_petri_t *p);
+// Голоса молчат сразу (смена типа: звук уже ушёл).
+void acid_petri_kill(acid_petri_t *p);
 // Атака и релиз в секундах (при смене ручки).
 void acid_petri_set_env(acid_petri_t *p, float attack_s, float release_s);
 // Фриз: включение копирует звучащую таблицу, переход 30 мс.

@@ -167,14 +167,15 @@ TEST(test_blob_v2_imported)
     init2();
     acid_synth_set_knob(&a, 6, 2, 11);
     acid_synth_set_knob(&a, 7, 1, 3);
-    static uint8_t v2[4 + ACID_SLOTS * (1 + ACID_TYPES * ACID_KNOBS) + ACID_TONAL_KNOBS];
+    // Раскладка версии 2: 25 типов на слот (до PETRI).
+    static uint8_t v2[4 + ACID_SLOTS * (1 + 25 * ACID_KNOBS) + ACID_TONAL_KNOBS];
     uint8_t *p = v2;
     memcpy(p, "AS5\x02", 4);
     p += 4;
     for (int k = 0; k < ACID_SLOTS; k++) {
         *p++ = (uint8_t)a.slot[k].sel_type;
-        memcpy(p, a.slot[k].knob, sizeof a.slot[k].knob);
-        p += sizeof a.slot[k].knob;
+        memcpy(p, a.slot[k].knob, 25 * ACID_KNOBS);
+        p += 25 * ACID_KNOBS;
     }
     memcpy(p, a.tonal.knob, ACID_TONAL_KNOBS);
     CHECK(acid_synth_import(&b, v2, sizeof v2) == 1);

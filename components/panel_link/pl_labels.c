@@ -24,6 +24,10 @@ static const char *const S303[16] = {NULL, "TYPE", "CUTOFF", "RESO", "ENV", "DEC
                                      "GLIDE", "TRANS", NULL, NULL, NULL, "DRIVE", "TONE", "HOWL"};
 static const char *const PLAITS[16] = {NULL, "TYPE", "HARMONICS", "TIMBRE", "MORPH", "DECAY", "LPG", "GLIDE",
                                        "TRANS", "T ENV", "M ENV", "P ENV", "ACCENT", "DRIVE", "TONE", "HOWL"};
+static const char *const PETRI_SYN[16] = {NULL,     "TYPE",     "CUTOFF", "RESO",   "ENV",   "DECAY", "ATTACK", "RELEASE",
+                                          "RELIEF", "CONTRAST", "ORBIT",  "RADIUS", "CENTER", "DRIVE", "TONE",   "HOWL"};
+static const char *const RELIEF[4] = {"HEIGHT", "EDGE", "FOLD", "VOID"};
+static const char *const ORBIT[5] = {"CIRCLE", "EIGHT", "LISS 3:2", "ROSE", "EPI"};
 static const char *const FX[16] = {NULL, "CRUSH BITS", "CRUSH RATE", "DLY S1", "DLY S2", "DLY DRUMS", "DLY TIME",
                                    "DLY FB", "DLY TONE", "STUTTER", "MOTION", "WIDTH", "LYR1 VOL", "LYR2 VOL", "LYR HALF"};
 static const char *const GRIDS[16] = {NULL, "ON", "X", "Y", "KICK", "SNARE", "HAT", "CHAOS", "HAT MODE",
@@ -31,11 +35,11 @@ static const char *const GRIDS[16] = {NULL, "ON", "X", "Y", "KICK", "SNARE", "HA
 static const char *const TONAL[16] = {NULL, "STEP LEN", "STEPS", "ORDER", "TARGET", "HELD", "SCALE", "ROOT",
                                       "STEP 1", "STEP 2", "STEP 3", "STEP 4", "STEP 5", "STEP 6", "STEP 7", "STEP 8"};
 
-// Типы синта: 0 - наш 303, дальше модели Plaits по порядку движков.
-static const char *const TYPES[26] = {"303", "VA VCF", "PHASE DIST", "DX7 1", "DX7 2", "DX7 3", "TERRAIN",
-                                      "STRINGS", "CHIP", "VA 2WAVE", "WAVESHAPE", "FM 2OP", "FORMANT",
-                                      "ADDITIVE", "WAVETABLE", "CHORDS", "SPEECH", "SWARM", "NOISE",
-                                      "PARTICLE", "STRING", "MODAL", "BASS DRUM", "SNARE", "HI-HAT", "OFF"}; // OFF - только у слоя
+// Типы синта: 0 - наш 303, 1..24 - модели Plaits по порядку движков, 25 - чашка Петри (не у слоя), 26 - OFF (только у слоя).
+static const char *const TYPES[27] = {"303",      "VA VCF",   "PHASE DIST", "DX7 1",    "DX7 2",     "DX7 3",  "TERRAIN",
+                                      "STRINGS",  "CHIP",     "VA 2WAVE",   "WAVESHAPE", "FM 2OP",   "FORMANT", "ADDITIVE",
+                                      "WAVETABLE", "CHORDS",  "SPEECH",     "SWARM",    "NOISE",     "PARTICLE", "STRING",
+                                      "MODAL",    "BASS DRUM", "SNARE",     "HI-HAT",   "PETRI",     "OFF"};
 static const char *const PERC_MODEL[5] = {"ANALOG", "SQUARES", "FM", "MODAL", "NOISE"};
 static const char *const WAVE[2] = {"SAW", "SQR"};
 static const char *const DLY_TIME[5] = {"1/16", "1/8", "3/16", "1/4", "3/8"};
@@ -59,7 +63,8 @@ const char *pl_page_name(int page)
 }
 
 #define LAYER1 PL_PAGE_LAYER1
-#define LAYER_OFF 25
+#define PETRI 25
+#define LAYER_OFF 26
 #define GRIDS_PAGE PL_PAGE_GRIDS
 
 static int is_layer(int page)
@@ -83,6 +88,14 @@ static int model(const uint8_t *raw, int n)
     return raw[1] < n ? raw[1] : 0;
 }
 
+// Вид синта по типу: 0 - 303, 1 - Plaits, 2 - PETRI.
+enum { K303, KPLAITS, KPETRI };
+static int synth_kind(const uint8_t *raw)
+{
+    int t = model(raw, LAYER_OFF);
+    return t == 0 ? K303 : t == PETRI ? KPETRI : KPLAITS;
+}
+
 const char *pl_knob_label(int page, int enc, const uint8_t page_raw[16])
 {
     if (enc < 1 || enc > 15 || (layer_off(page, page_raw) && enc > 1)) {
@@ -100,7 +113,10 @@ const char *pl_knob_label(int page, int enc, const uint8_t page_raw[16])
         }
         return page != 3 && enc >= 14 ? NULL : PERC[enc]; // интервал и ширина только у томов
     case 6:
-    case 7: return (model(page_raw, 25) == 0 ? S303 : PLAITS)[enc];
+    case 7: {
+        static const char *const *const BY_KIND[3] = {S303, PLAITS, PETRI_SYN};
+        return BY_KIND[synth_kind(page_raw)][enc];
+    }
     case 8: return FX[enc];
     case 9: return TONAL[enc];
     case GRIDS_PAGE: return GRIDS[enc];
@@ -121,12 +137,18 @@ static int list_of(int page, int enc, const uint8_t *raw, const char *const **wo
         return 0;
     }
     page = as_synth(page);
-    int plaits = (page == 6 || page == 7) && model(raw, 25) != 0;
-    if ((page == 6 || page == 7) && enc == 1) {
-        *words = TYPES, *hi = 24;
-    } else if ((page == 6 || page == 7) && !plaits && enc == 7) {
+    int synth = page == 6 || page == 7, kind = synth ? synth_kind(raw) : K303, plaits = kind == KPLAITS;
+    if (synth && enc == 1) {
+        *words = TYPES, *hi = PETRI;
+    } else if (synth && kind == KPETRI && enc == 8) {
+        *words = RELIEF, *hi = 3;
+    } else if (synth && kind == KPETRI && enc == 10) {
+        *words = ORBIT, *hi = 4;
+    } else if (synth && kind == KPETRI) {
+        return 0;
+    } else if (synth && !plaits && enc == 7) {
         *words = WAVE, *hi = 1;
-    } else if ((page == 6 || page == 7) && enc == (plaits ? 8 : 9)) {
+    } else if (synth && enc == (plaits ? 8 : 9)) {
         *lo = 52, *hi = 76; // транспозиция ±12
     } else if (page >= 3 && page <= 5 && enc == 1) {
         *words = PERC_MODEL, *hi = 4;
@@ -182,6 +204,9 @@ const char *pl_value_text(int page, int enc, int v, const uint8_t page_raw[16], 
             return "OFF"; // слой выключен
         }
     }
+    if ((as_synth(page) == 6 || as_synth(page) == 7) && synth_kind(page_raw) == KPETRI && enc == 12 && v == 127) {
+        return "FOLLOW"; // центр орбиты едет за пожирателем
+    }
     if (page == 8 && enc == 14) {
         return v >= 64 ? "ON" : "OFF"; // LYR HALF: переключатель
     }
@@ -234,7 +259,14 @@ uint32_t pl_knob_color(int page, int enc, const uint8_t page_raw[16])
         return 0x5fd3e6;
     case 6:
     case 7: { // SYNTH 1 & 2
-        int plaits = model(page_raw, 25) != 0;
+        if (synth_kind(page_raw) == KPETRI) { // тип, фильтр, огибающие, рельеф и орбита, перегруз
+            if (enc == 1) return 0xffd24d;
+            if (enc <= 5) return as_synth(page) == 6 ? 0xff9900 : 0x7be382;
+            if (enc <= 7) return 0x6fc3ff;
+            if (enc <= 12) return 0xc79bff;
+            return 0xff5e6c;
+        }
+        int plaits = synth_kind(page_raw) == KPLAITS;
         if (enc == 1) return 0xffd24d;
         if (enc <= 6) return as_synth(page) == 6 ? 0xff9900 : 0x7be382;
         if (enc <= (plaits ? 8 : 9)) return 0x6fc3ff;
@@ -275,7 +307,10 @@ int pl_knob_bipolar(int page, int enc, const uint8_t page_raw[16])
     case 5: return enc == 12;
     case 6:
     case 7:
-        if (model(page_raw, 25) == 0) {
+        if (synth_kind(page_raw) == KPETRI) {
+            return enc == 14;
+        }
+        if (synth_kind(page_raw) == K303) {
             return enc == 9 || enc == 14;
         }
         return (enc >= 8 && enc <= 11) || enc == 14;
