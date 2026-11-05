@@ -104,7 +104,7 @@ static void paint(const petri_t *d)
 void up_draw(const pl_model_t *m, uint32_t ms)
 {
     const petri_t *d = petri_task_dish();
-    int on = m->have && (m->raw[6][1] == 25 || m->raw[7][1] == 25);
+    int on = m->have && pl_petri_synth(m->raw) >= 0;
     char buf[64], pre[12];
     if (!on) {
         ui_text(p.info, "SET SYNTH 1 OR 2 TYPE TO PETRI");

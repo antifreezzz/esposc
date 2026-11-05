@@ -174,3 +174,8 @@ int pl_petri_collect(pl_petri_rx_t *r, uint8_t type, const uint8_t *payload, siz
     }
     return 0;
 }
+
+int pl_petri_synth(const uint8_t raw[PL_PAGES][PL_KNOBS])
+{
+    return raw[PL_PAGE_SYNTH1][1] == PL_TYPE_PETRI ? 0 : raw[PL_PAGE_SYNTH1 + 1][1] == PL_TYPE_PETRI ? 1 : -1;
+}

@@ -8,6 +8,7 @@
 
 #define PL_SYNC 0xA5
 #define PL_PAGES 14 // 0-9 штатные, 10-11 слои синтов, 12 Grids, 13 чашка Петри
+#define PL_PAGE_SYNTH1 6 // синт 2 - следом
 #define PL_PAGE_LAYER1 10
 #define PL_PAGE_GRIDS 12
 #define PL_PAGE_PETRI 13 // на BSP 18
@@ -18,6 +19,8 @@
 #define PL_USER_FIRST 14
 #define PL_TARGETS 4
 #define PL_NONE 0xFF
+#define PL_TYPE_PETRI 25 // тип синта (энкодер 2 страниц 6-7): чашка Петри, у слоя не бывает
+#define PL_LAYER_OFF 26  // тип слоя «выкл»
 
 enum {
     PL_SNAPSHOT = 1, // синт -> панель: всё состояние
@@ -50,6 +53,8 @@ typedef struct {
     int8_t mods[6];
     uint8_t jumps, flags;
 } pl_petri_rx_t;
+// Синт с типом PETRI по сырым значениям: 0 или 1 (оба - синт 1), -1 - ни один.
+int pl_petri_synth(const uint8_t raw[PL_PAGES][PL_KNOBS]);
 // Нагрузки 4 кадров (типы PL_PETRI_0 + k) и их длины.
 void pl_petri_split(const int16_t tab[PL_PETRI_POINTS], const int8_t mods[6], uint8_t jumps, uint8_t seq,
                     uint8_t out[4][PL_PETRI_PART_MAX], size_t len[4]);

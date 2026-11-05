@@ -2,8 +2,6 @@
 
 #include <string.h>
 
-#define SYNTH1 6 // страницы синтов
-#define TYPE_PETRI 25
 
 static float lin(int v, float a, float b)
 {
@@ -29,11 +27,11 @@ void petri_knobs_init(petri_knobs_t *k)
 
 int petri_knobs_apply(petri_t *p, petri_knobs_t *k, const uint8_t raw[PL_PAGES][PL_KNOBS])
 {
-    int which = raw[SYNTH1][1] == TYPE_PETRI ? 0 : raw[SYNTH1 + 1][1] == TYPE_PETRI ? 1 : -1;
+    int which = pl_petri_synth(raw);
     if (which < 0) {
         return -1;
     }
-    const uint8_t *sy = raw[SYNTH1 + which], *pg = raw[PL_PAGE_PETRI];
+    const uint8_t *sy = raw[PL_PAGE_SYNTH1 + which], *pg = raw[PL_PAGE_PETRI];
     p->mode = sy[8] < PETRI_MODES ? sy[8] : 0;
     p->contrast = lin(sy[9], 0, 1);
     p->shape = sy[10] < PETRI_SHAPES ? sy[10] : 0;

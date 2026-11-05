@@ -81,7 +81,7 @@ static void task(void *arg)
     uint8_t seq = 0;
     TickType_t wake = xTaskGetTickCount();
     for (;;) {
-        int on = s_model->have && (s_model->raw[6][1] == 25 || s_model->raw[7][1] == 25);
+        int on = s_model->have && pl_petri_synth(s_model->raw) >= 0;
         if (!on) {
             vTaskDelay(pdMS_TO_TICKS(IDLE_MS));
             wake = xTaskGetTickCount();

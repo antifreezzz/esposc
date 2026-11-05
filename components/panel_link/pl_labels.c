@@ -68,8 +68,8 @@ const char *pl_page_name(int page)
 }
 
 #define LAYER1 PL_PAGE_LAYER1
-#define PETRI 25
-#define LAYER_OFF 26
+#define PETRI PL_TYPE_PETRI
+#define LAYER_OFF PL_LAYER_OFF
 #define GRIDS_PAGE PL_PAGE_GRIDS
 #define PETRI_PG PL_PAGE_PETRI
 

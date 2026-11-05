@@ -36,6 +36,22 @@ static int feed(int part)
     return got;
 }
 
+// Какой синт играет PETRI: номера типа и страниц - общие с синтом (_Static_assert в main/panel_uart.c).
+TEST(petri_synth_by_type)
+{
+    static uint8_t raw[PL_PAGES][PL_KNOBS];
+    CHECK(PL_TYPE_PETRI == 25 && PL_LAYER_OFF == 26 && PL_PAGE_SYNTH1 == 6);
+    memset(raw, 0, sizeof raw);
+    CHECK(pl_petri_synth(raw) == -1);
+    raw[PL_PAGE_SYNTH1 + 1][1] = PL_TYPE_PETRI;
+    CHECK(pl_petri_synth(raw) == 1);
+    raw[PL_PAGE_SYNTH1][1] = PL_TYPE_PETRI;
+    CHECK(pl_petri_synth(raw) == 0); // оба - чашку ведёт синт 1
+    raw[PL_PAGE_LAYER1][1] = PL_TYPE_PETRI;
+    raw[PL_PAGE_SYNTH1][1] = raw[PL_PAGE_SYNTH1 + 1][1] = 0;
+    CHECK(pl_petri_synth(raw) == -1); // слой не считается
+}
+
 TEST(split_collect_roundtrip)
 {
     fill(0);
@@ -95,6 +111,7 @@ TEST(frame_lengths_fixed)
 
 int main(void)
 {
+    RUN(petri_synth_by_type);
     RUN(split_collect_roundtrip);
     RUN(mixed_seq_rejected);
     RUN(lost_part_waits);
