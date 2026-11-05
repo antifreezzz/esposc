@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>esposc: макеты панели</title>
+<style>
+@font-face { font-family: 'JetBrains Mono'; src: url(fonts/JetBrainsMono.ttf); font-weight: 100 800; }
+@font-face { font-family: 'Barlow Condensed'; src: url(fonts/BarlowCondensed-Medium.ttf); font-weight: 500; }
+@font-face { font-family: 'Barlow Condensed'; src: url(fonts/BarlowCondensed-SemiBold.ttf); font-weight: 600; }
+@font-face { font-family: 'Barlow'; src: url(fonts/Barlow-Medium.ttf); font-weight: 500; }
+@font-face { font-family: 'Space Grotesk'; src: url(fonts/SpaceGrotesk.ttf); font-weight: 300 700; }
+
+body { margin: 0; background: #1a1b1e; color: #d8d8d8; font: 15px/1.5 system-ui, sans-serif; }
+main { max-width: 1560px; margin: 0 auto; padding: 24px 32px 64px; }
+h1 { font-size: 26px; margin: 0 0 6px; }
+h2 { font-size: 22px; margin: 48px 0 4px; }
+p, li { color: #a9abb2; max-width: 980px; }
+.bar { display: flex; gap: 8px; align-items: center; margin: 12px 0 0; }
+.bar button { background: #2a2c31; color: #ddd; border: 1px solid #3a3d44; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+.bar button.on { background: #ddd; color: #111; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 8px 0 14px; font-size: 13px; color: #8d9098; }
+.meta b { color: #d8d8d8; font-weight: 500; }
+.sw { display: flex; gap: 4px; margin: 6px 0 14px; flex-wrap: wrap; }
+.sw i { width: 26px; height: 26px; border-radius: 4px; border: 1px solid #0003; }
+.screens { display: flex; flex-wrap: wrap; gap: 20px; }
+.shot figcaption { font-size: 12px; color: #8d9098; margin-top: 6px; }
+.scr { position: relative; width: 480px; height: 480px; overflow: hidden; }
+.scr * { box-sizing: border-box; }
+.a { position: absolute; }
+.t { position: absolute; white-space: nowrap; }
+.screens.x2 .scr { zoom: 2; }
+code { background: #26282d; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+<h1>esposc: макеты панели 480x480</h1>
+<p>Три направления стиля на реальной раскладке панели: координаты сетки 3x5, шапка 40 px, меню 2x6, геометрия Grids
+из <code>pl_grids_ui.c</code>, подписи из <code>pl_labels.c</code>. Раскладка, зоны тача и число объектов LVGL не
+меняются: меняются только цвета, шрифты, толщины, радиусы и тексты.</p>
+<p>Правило макетов: только то, что программный рендер LVGL рисует дёшево. Это заливка, рамка, радиус, дуга, линия и текст.
+Без теней, размытия, полупрозрачности и градиентов. Оттенки вроде «тусклого акцента» считаются заранее и хранятся
+как сплошной цвет.</p>
+<p>Шрифты сейчас: Montserrat 12/14/20/28/48, полный ASCII и символы, <b>~181 КБ</b> флэша панели (замер по
+<code>esposc_panel.map</code>). Новый набор конвертируется с урезанными глифами: крупный кегль только для цифр и
+заглавных. Поэтому он меньше, хотя шрифт другой. Оценки ниже приблизительные, точный размер покажет конвертация.</p>
+<div class="bar"><span>Масштаб:</span><button data-z="1" class="on">1x</button><button data-z="2">2x</button></div>
+<div id="themes"></div>
+</main>
+
+<script>
+const PAGE = ["MIX", "DRUMS", "CYMBALS", "TOMS", "RIM", "COWBELL", "SYNTH 1", "SYNTH 2", "FX", "TONAL", "LAYER 1", "LAYER 2", "GRIDS", "PETRI"];
+const BSP = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 16, 17, -1, 18];
+const MENU_SLOT = [0, 1, 2, 3, 4, 5, 6, 8, 10, 11, 7, 9];
+const SUMMARY = ["LEVELS & DJF", "808 / 909", "CRASH & RIDE", "MODAL", "FM", "SQUARES", "303", "STRINGS", "DLY 3/16 ST 1/8", "MINOR A", "OFF", "MODAL"];
+// SYNTH 1 (303): E2..E16, null - пустая ячейка
+const KNOBS = [["TYPE", 0, "303"], ["CUTOFF", 87], ["RESO", 104], ["ENV", 64], ["DECAY", 52], ["ACCENT", 96], ["WAVE", 0, "SAW"],
+  ["GLIDE", 20], ["TRANS", 64, "+0"], null, null, null, ["DRIVE", 40], ["TONE", 70], ["HOWL", 0]];
+
+const THEMES = [
+  {
+    id: "a", name: "А. Прибор",
+    about: "Как у приборов Elektron и OP-1: плоско, моноширинный гротеск, тонкие линии. Цвет страницы только на дуге и метках, " +
+      "фон один на всё. Активное состояние - инверсия: заливка цветом страницы, чёрный текст.",
+    ui: "'JetBrains Mono'", num: "'JetBrains Mono'", w: 500, wNum: 600, ls: "0.04em",
+    bg: "#0a0a0a", bar: "#0a0a0a", barLine: "#262626", surf: "#0a0a0a", field: "#101010", brd: "#2a2a2a",
+    text: "#e8e6e1", dim: "#8c8a84", muted: "#4d4b47", track: "#1e1e1e", cell: "#181818", ok: "#c6ff3d", bsp: "#5ec8ff", warn: "#ff4f5e",
+    r: 3, rTile: 3, arcW: 3, bigArcW: 6, cardFill: false,
+    s: { lab: 11, val: 13, nav: 14, bar: 12, tName: 15, tNum: 24, big: 44, bigName: 12, tstName: 16, tstVal: 26 },
+    pages: ["#7cc4ff", "#ff5a5a", "#ffb000", "#ff7a2e", "#ff9a3c", "#ffd23f", "#ff8a00", "#8de05a", "#b892ff", "#3fd6d6", "#ff8a00", "#8de05a", "#ff4f5e", "#2fd3a0"],
+    petri: ["#0a0a0a", "#123a30", "#2fd3a0", "#e8e6e1"],
+    fonts: "JetBrains Mono: 11, 13, 15 (ASCII), 24 (цифры), 44 (цифры и заглавные)", flash: "~65 КБ",
+  },
+  {
+    id: "b", name: "Б. Тёплый аналог",
+    about: "Тёмный графит с тёплым оттенком, кремовый текст, акценты как лампы и светодиоды. Узкий гротеск позволяет крупные " +
+      "цифры без тесноты. Толстые дуги, мягкие радиусы, у карточки «светодиод» цвета страницы.",
+    ui: "'Barlow Condensed'", num: "'Barlow Condensed'", w: 500, wNum: 600, ls: "0.02em",
+    bg: "#13110e", bar: "#1b1814", barLine: "#2b2720", surf: "#1d1a15", field: "#171410", brd: "#2b2720",
+    text: "#f1e7d0", dim: "#a99f8a", muted: "#5f574a", track: "#2b2720", cell: "#26221c", ok: "#a8d672", bsp: "#8fd3e8", warn: "#ff6b4a",
+    r: 14, rTile: 14, arcW: 7, bigArcW: 16, cardFill: true,
+    s: { lab: 16, val: 19, nav: 22, bar: 15, tName: 21, tNum: 30, big: 58, bigName: 17, tstName: 21, tstVal: 32 },
+    pages: ["#f2c46d", "#ff6b4a", "#ffb648", "#ff8a4c", "#ffa25e", "#ffd66b", "#ff9d2e", "#a8d672", "#e39bb0", "#7fd1c0", "#ff9d2e", "#a8d672", "#ff6b4a", "#7fd1a0"],
+    petri: ["#13110e", "#4a2a14", "#e08a3a", "#f6e7c6"],
+    fonts: "Barlow Condensed: 15, 16, 21 (ASCII), 30 (цифры), 58 (цифры и заглавные)", flash: "~70 КБ",
+  },
+  {
+    id: "c", name: "В. Неон-минимал",
+    about: "Почти чёрный фон, карточки без рамок, насыщенные дуги и плотная типографика. Рамка появляется только у активного. " +
+      "Самый контрастный на ярком свету, но пестрит сильнее остальных.",
+    ui: "'Space Grotesk'", num: "'Space Grotesk'", w: 500, wNum: 700, ls: "0.03em",
+    bg: "#000000", bar: "#000000", barLine: "#15171c", surf: "#0b0c10", field: "#06070a", brd: "#1a1c22",
+    text: "#ffffff", dim: "#8b90a0", muted: "#4a4f5c", track: "#171920", cell: "#14161c", ok: "#39ff88", bsp: "#00d4ff", warn: "#ff2e63",
+    r: 8, rTile: 10, arcW: 5, bigArcW: 12, cardFill: true,
+    s: { lab: 12, val: 16, nav: 18, bar: 13, tName: 18, tNum: 28, big: 48, bigName: 13, tstName: 18, tstVal: 28 },
+    pages: ["#00d4ff", "#ff2e63", "#ffd400", "#ff6a00", "#ff8f1f", "#ffe500", "#ff7a00", "#39ff88", "#a66bff", "#00ffd0", "#ff7a00", "#39ff88", "#ff2e63", "#00ffb3"],
+    petri: ["#000000", "#002a40", "#00ffb3", "#ffffff"],
+    fonts: "Space Grotesk: 12, 13, 18 (ASCII), 28 (цифры), 48 (цифры и заглавные)", flash: "~70 КБ",
+  },
+];
+
+// Сплошной цвет между a и b (k=0 - a): так же заранее считается и на панели.
+function mix(a, b, k) {
+  const p = (h, i) => parseInt(h.slice(1 + i * 2, 3 + i * 2), 16);
+  return "#" + [0, 1, 2].map(i => Math.round(p(a, i) * (1 - k) + p(b, i) * k).toString(16).padStart(2, "0")).join("");
+}
+
+function B(x, y, w, h, st, inner = "") {
+  return `<div class="a" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;${st}">${inner}</div>`;
+}
+function T(x, y, txt, st) {
+  return `<div class="t" style="left:${x}px;top:${y}px;${st}">${txt}</div>`;
+}
+// Текст по центру прямоугольника
+function TC(x, y, w, h, txt, st) {
+  return `<div class="t" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;line-height:${h}px;text-align:center;${st}">${txt}</div>`;
+}
+function font(t, size, color, num = false, extra = "") {
+  return `font-family:${num ? t.num : t.ui};font-weight:${num ? t.wNum : t.w};font-size:${size}px;color:${color};letter-spacing:${t.ls};${extra}`;
+}
+
+// Дуга LVGL: фон 135..45 градусов по часовой, ширина внутрь круга d.
+function arcPath(c, r, a0, a1) {
+  const pt = a => [c + r * Math.cos(a * Math.PI / 180), c + r * Math.sin(a * Math.PI / 180)];
+  const [x0, y0] = pt(a0), [x1, y1] = pt(a1);
+  return `M${x0.toFixed(2)} ${y0.toFixed(2)} A${r} ${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+}
+function arc(x, y, d, w, v, color, track, inner = "") {
+  const c = d / 2, r = c - w / 2, end = 135 + 270 * v / 127;
+  const ind = v > 0 ? `<path d="${arcPath(c, r, 135, Math.max(end, 135.5))}" stroke="${color}" stroke-width="${w}" fill="none" stroke-linecap="round"/>` : "";
+  return B(x, y, d, d, "", `<svg width="${d}" height="${d}" style="position:absolute"><path d="${arcPath(c, r, 135, 405)}" stroke="${track}" stroke-width="${w}" fill="none" stroke-linecap="round"/>${ind}</svg>${inner}`);
+}
+
+function header(t, left, center, centerColor, right) {
+  let h = B(0, 0, 480, 40, `background:${t.bar};border-bottom:1px solid ${t.barLine}`);
+  h += T(14, 0, left, font(t, t.s.bar, t.text, false, "line-height:40px"));
+  if (t.id === "a" && center.badge !== undefined) {
+    const w = center.text.length * 9 + 46;
+    h += B(240 - w / 2, 9, 30, 22, `background:${centerColor};border-radius:2px`);
+    h += TC(240 - w / 2, 9, 30, 22, String(center.badge).padStart(2, "0"), font(t, 12, "#0a0a0a", true));
+    h += T(240 - w / 2 + 38, 0, center.text, font(t, t.s.nav, t.text, false, "line-height:40px"));
+  } else {
+    h += TC(90, 0, 300, 40, center.text, font(t, t.s.nav, centerColor, t.id !== "a"));
+    if (t.id === "b") h += B(240 - center.text.length * 5, 36, center.text.length * 10, 3, `background:${centerColor};border-radius:2px`);
+  }
+  if (right) {
+    h += T(0, 3, right[0], font(t, t.s.bar, t.ok, false, "right:14px;left:auto;line-height:18px"));
+    h += T(0, 20, right[1], font(t, t.s.bar - 2, t.dim, false, "right:14px;left:auto;line-height:16px"));
+  }
+  return h;
+}
+
+// Карточка ручки (рамка 150x80 в сетке 3x5, как cell_xy в ui.c)
+function card(t, i, k, pc, grabbed) {
+  const x = 9 + (i % 3) * 156, y = 40 + 6 + Math.floor(i / 3) * 86;
+  const enc = "E" + (i + 2);
+  if (!k) {
+    const st = t.cardFill ? `background:${mix(t.surf, t.bg, 0.5)};border-radius:${t.r}px` : `border:1px solid ${mix(t.brd, t.bg, 0.5)};border-radius:${t.r}px`;
+    return B(x, y, 150, 80, st, B(70, 37, 6, 6, `background:${t.track};border-radius:3px`) + T(70, 12, enc, font(t, t.s.lab - 1, t.muted)));
+  }
+  const [name, v, txt] = k;
+  const val = txt ?? String(v);
+  let st, inner = "";
+  if (t.id === "a") {
+    st = `border:1px solid ${grabbed ? pc : t.brd};border-radius:${t.r}px`;
+    inner += arc(8, 14, 52, t.arcW, v, pc, t.track, TC(0, 0, 52, 52, val, font(t, t.s.val, t.text, true)));
+    inner += T(70, 12, enc.replace(/E(\d)$/, "E0$1"), font(t, 10, t.muted, true));
+    inner += T(70, 30, name, font(t, t.s.lab, grabbed ? pc : t.dim, false, "white-space:normal;width:74px;line-height:14px"));
+    inner += B(136, 10, 6, 6, `background:${pc}`);
+  } else if (t.id === "b") {
+    st = `background:${t.surf};border:${grabbed ? 2 : 1}px solid ${grabbed ? pc : t.brd};border-radius:${t.r}px`;
+    inner += arc(8, 12, 56, t.arcW, v, pc, t.track, TC(0, 0, 56, 56, val, font(t, t.s.val, t.text, true)));
+    inner += T(72, 12, name, font(t, t.s.lab, grabbed ? pc : t.text, false, "white-space:normal;width:70px;line-height:17px"));
+    inner += T(72, 54, enc, font(t, 13, t.muted));
+    inner += B(130, 10, 10, 10, `background:${pc};border-radius:5px;border:2px solid ${mix(pc, t.surf, 0.55)}`);
+  } else {
+    st = `background:${t.surf};${grabbed ? `border:2px solid ${pc};` : ""}border-radius:${t.r}px`;
+    inner += arc(8, 12, 56, t.arcW, v, pc, t.track, TC(0, 0, 56, 56, val, font(t, t.s.val, t.text, true)));
+    inner += T(72, 13, enc, font(t, 11, pc, true));
+    inner += T(72, 32, name, font(t, t.s.lab, grabbed ? pc : t.dim, false, "white-space:normal;width:72px;line-height:15px"));
+  }
+  return B(x, y, 150, 80, st, inner);
+}
+
+function scrPage(t, grab) {
+  const pc = t.pages[6];
+  let h = header(t, "‹ MENU", { text: "SYNTH 1", badge: 6 }, pc, ["LIVE", "C1 76% C0 67%"]);
+  KNOBS.forEach((k, i) => (h += card(t, i, k, pc, grab && i === 1)));
+  if (grab) {
+    const BOX = 244, D = 210, cx = 240, cy = 258, v = 87, bspv = 92;
+    let st;
+    if (t.id === "a") st = `background:${t.field};border:1px solid ${t.brd}`;
+    else if (t.id === "b") st = `background:${t.surf};border:2px solid ${mix(t.brd, t.text, 0.12)}`;
+    else st = `background:${t.field};border:2px solid ${pc}`;
+    let inner = arc((BOX - D) / 2 - (t.id === "a" ? 1 : 2), (BOX - D) / 2 - (t.id === "a" ? 1 : 2), D, t.bigArcW, v, pc, t.id === "b" ? t.track : mix(t.track, t.bg, 0.2));
+    const off = (t.id === "a" ? 1 : 2);
+    inner += TC(0, 72 - off, BOX, 20, "CUTOFF", font(t, t.s.bigName, t.id === "c" ? pc : t.dim));
+    inner += TC(0, 98 - off, BOX, t.s.big + 4, String(v), font(t, t.s.big, t.id === "a" ? t.text : t.id === "b" ? t.text : "#fff", true));
+    inner += TC(0, 160 - off, BOX, 18, "BSP " + bspv, font(t, t.s.bar - 1, t.bsp));
+    // метка положения BSP на дуге
+    const a = (135 + 270 * bspv / 127) * Math.PI / 180, r = D / 2 - t.bigArcW / 2;
+    inner += B(BOX / 2 - off + r * Math.cos(a) - 8, BOX / 2 - off + r * Math.sin(a) - 8, 16, 16, `border:3px solid ${t.bsp};border-radius:8px`);
+    h += B(cx - BOX / 2, cy - BOX / 2, BOX, BOX, st + ";border-radius:50%", inner);
+  }
+  return h;
+}
+
+function scrMenu(t) {
+  let h = header(t, "ESPOSC", { text: "USER ›" }, t.id === "a" ? t.text : t.pages[6], ["LIVE", "C1 76% C0 67%"]);
+  for (let p = 0; p < 12; p++) {
+    const k = MENU_SLOT[p], x = 12 + (k % 2) * 234, y = 40 + 6 + Math.floor(k / 2) * 72, pc = t.pages[p];
+    const num = String(BSP[p]);
+    let st, inner = "";
+    if (t.id === "a") {
+      st = `border:1px solid ${t.brd};border-radius:${t.rTile}px`;
+      inner += B(-1, -1, 3, 64, `background:${pc}`);
+      inner += T(14, 0, num.padStart(2, "0"), font(t, t.s.tNum, pc, true, "line-height:62px"));
+      inner += T(62, 11, PAGE[p], font(t, t.s.tName, t.text));
+      inner += T(62, 35, SUMMARY[p], font(t, 11, t.dim));
+    } else if (t.id === "b") {
+      st = `background:${t.surf};border:1px solid ${t.brd};border-radius:${t.rTile}px`;
+      inner += TC(6, 0, 44, 62, num, font(t, t.s.tNum, pc, true));
+      inner += B(52, 14, 1, 34, `background:${t.brd}`);
+      inner += T(64, 7, PAGE[p], font(t, t.s.tName, t.text));
+      inner += T(64, 34, SUMMARY[p], font(t, 15, t.dim));
+      inner += B(204, 10, 8, 8, `background:${pc};border-radius:4px`);
+    } else {
+      st = `background:${t.surf};border-radius:${t.rTile}px`;
+      inner += B(0, 12, 4, 40, `background:${pc};border-radius:2px`);
+      inner += T(16, 0, num, font(t, t.s.tNum, pc, true, "line-height:64px"));
+      inner += T(58, 10, PAGE[p], font(t, t.s.tName, "#fff", true));
+      inner += T(58, 36, SUMMARY[p], font(t, 12, t.dim));
+    }
+    h += B(x, y, 222, 64, st, inner);
+  }
+  return h;
+}
+
+function tile(t, x, y, w, h, txt, on, pc) {
+  let st, color;
+  if (t.id === "a") {
+    st = on ? `background:${pc}` : `border:1px solid ${t.brd}`;
+    color = on ? "#0a0a0a" : t.dim;
+  } else if (t.id === "b") {
+    st = `background:${t.surf};border:${on ? 2 : 1}px solid ${on ? pc : t.brd}`;
+    color = on ? pc : t.dim;
+  } else {
+    st = on ? `background:${mix(t.bg, pc, 0.18)};border:2px solid ${pc}` : `background:${t.surf}`;
+    color = on ? pc : t.dim;
+  }
+  return B(x, y, w, h, st + `;border-radius:${Math.min(t.r, 10)}px`, TC(0, 0, w - (on && t.id !== "a" ? 4 : 2), h - (on && t.id !== "a" ? 4 : 2), txt, font(t, t.id === "b" ? 17 : 13, color)));
+}
+function segs(t, ax, ay, aw, ah, labels, cur, pc) {
+  const step = Math.floor(aw / labels.length);
+  return labels.map((l, i) => tile(t, ax + i * step, ay, step - 4, ah, l, i === cur, pc)).join("");
+}
+
+function scrGrids(t) {
+  const pc = t.pages[12];
+  let h = header(t, "‹ MENU", { text: "GRIDS", badge: "G" }, pc, ["LIVE", "C1 76% C0 67%"]);
+  h += tile(t, 8, 48, 80, 48, "ON", true, pc);
+  h += tile(t, 96, 48, 120, 48, "FILL", false, pc);
+  h += segs(t, 224, 48, 248, 48, ["CLOSED", "OPEN", "MIX"], 2, pc);
+  // карта X/Y
+  const fx = 8, fy = 104, fw = 200, fh = 200, dx = 128, dy = 70;
+  let f = B(dx, 0, t.id === "a" ? 1 : 2, fh, `background:${t.track}`) + B(0, dy, fw, t.id === "a" ? 1 : 2, `background:${t.track}`);
+  f += B(dx - 8, dy - 8, 16, 16, `background:${pc};border-radius:${t.id === "a" ? 2 : 8}px`);
+  f += T(8, 6, "X 82  Y 35", font(t, t.id === "b" ? 14 : 11, t.muted));
+  h += B(fx, fy, fw, fh, `background:${t.field};border:1px solid ${t.brd};border-radius:${Math.min(t.r, 10)}px`, f);
+  // ползунки
+  const SL = [["KICK", 96], ["SNARE", 64], ["HAT", 110], ["CHAOS", 28]];
+  SL.forEach(([n, v], i) => {
+    const x = 220 + i * 63, w = 59, hh = Math.round(200 * v / 127);
+    const barc = i < 3 ? (t.id === "a" ? mix(pc, t.bg, 0.45) : mix(pc, t.bg, 0.5)) : mix(t.pages[8], t.bg, 0.45);
+    let s = B(0, 200 - hh, w, hh, `background:${barc};border-radius:${t.id === "a" ? 0 : Math.min(t.r, 10)}px`);
+    s += TC(0, 6, w, 16, n, font(t, t.id === "b" ? 15 : 11, t.id === "a" ? t.dim : t.text));
+    s += TC(0, 172, w, 20, String(v), font(t, t.id === "b" ? 19 : 14, t.text, true));
+    h += B(x, 104, w, 200, `background:${t.id === "a" ? t.field : t.surf};border-radius:${t.id === "a" ? 2 : Math.min(t.r, 10)}px;overflow:hidden${t.id === "a" ? `;border:1px solid ${t.brd}` : ""}`, s);
+  });
+  h += segs(t, 8, 312, 120, 40, ["HAT", "RIDE"], 0, pc);
+  h += segs(t, 136, 312, 200, 40, ["OFF", "4", "8", "16"], 2, pc);
+  h += segs(t, 344, 312, 128, 40, ["1", "2", "4"], 1, pc);
+  // сетка шагов
+  const KICK = { 0: 2, 8: 2, 16: 2, 24: 2, 6: 1, 22: 1, 19: 1, 30: 1 }, SN = { 8: 2, 24: 2, 30: 1, 14: 1 };
+  const hit = mix(pc, t.bg, 0.55), acc = pc;
+  ["K", "S", "H"].forEach((n, p) => {
+    h += T(12, 362 + p * 38, n, font(t, t.id === "b" ? 17 : 13, t.dim, false, "line-height:34px"));
+    for (let s = 0; s < 32; s++) {
+      const m = p === 0 ? KICK[s] : p === 1 ? SN[s] : s % 2 === 0 ? (s % 8 === 4 ? 2 : 1) : (s % 8 === 7 ? 1 : 0);
+      h += B(32 + s * 14, 362 + p * 38, 12, 34, `background:${m === 2 ? acc : m === 1 ? hit : t.cell};border-radius:${t.id === "a" ? 1 : 2}px`);
+    }
+  });
+  h += B(32 + 13 * 14, 362 + 2 * 38 + 34 + 2, 12, 4, `background:${t.id === "a" ? t.text : t.pages[6]};border-radius:2px`);
+  return h;
+}
+
+// Чашка: Gray-Scott 96x96 один раз, раскраска по теме (как petri_palette, сплошной LUT)
+let DISH = null;
+function grow() {
+  const N = 96, F = 0.037, K = 0.06;
+  let u = new Float32Array(N * N).fill(1), v = new Float32Array(N * N);
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  for (let n = 0; n < 24; n++) {
+    const cx = Math.floor(rnd() * N), cy = Math.floor(rnd() * N);
+    for (let y = -3; y <= 3; y++) for (let x = -3; x <= 3; x++) v[((cy + y + N) % N) * N + (cx + x + N) % N] = 1;
+  }
+  let u2 = new Float32Array(N * N), v2 = new Float32Array(N * N);
+  for (let it = 0; it < 4000; it++) {
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const i = y * N + x, l = y * N + (x + N - 1) % N, r = y * N + (x + 1) % N, up = ((y + N - 1) % N) * N + x, dn = ((y + 1) % N) * N + x;
+      const lu = u[l] + u[r] + u[up] + u[dn] - 4 * u[i], lv = v[l] + v[r] + v[up] + v[dn] - 4 * v[i];
+      const uvv = u[i] * v[i] * v[i];
+      u2[i] = u[i] + 0.2 * lu - uvv + F * (1 - u[i]);
+      v2[i] = v[i] + 0.1 * lv + uvv - (F + K) * v[i];
+    }
+    [u, u2] = [u2, u]; [v, v2] = [v2, v];
+  }
+  return v;
+}
+function paintDish(canvas, t) {
+  DISH ??= grow();
+  const N = 96, ctx = canvas.getContext("2d"), img = ctx.createImageData(N, N);
+  const P = t.petri.map(h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)));
+  for (let i = 0; i < N * N; i++) {
+    const k = Math.min(1, DISH[i] * 2.6) * 3, s = Math.min(2, Math.floor(k)), f = k - s;
+    for (let c = 0; c < 3; c++) img.data[i * 4 + c] = P[s][c] * (1 - f) + P[s + 1][c] * f;
+    img.data[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function scrPetri(t) {
+  const pc = t.pages[13];
+  let h = header(t, "‹ MENU", { text: "PETRI", badge: 18 }, pc, ["LIVE", "C1 72% C0 56%"]);
+  let d = `<canvas class="dish" width="96" height="96" style="position:absolute;width:384px;height:384px;image-rendering:pixelated"></canvas>`;
+  // орбита (роза) и жители: точки поверх картинки, как dot() в ui_petri.c
+  let pts = "";
+  for (let i = 0; i < 64; i++) {
+    const a = i / 64 * 2 * Math.PI, r = 120 * Math.cos(2 * a);
+    pts += B(192 + r * Math.cos(a) - 2, 192 + r * Math.sin(a) - 2, 4, 4, `background:${mix(pc, t.bg, 0.35)}`);
+  }
+  pts += B(192 + 120 * Math.cos(0.5) * Math.cos(0.25) - 6, 192 + 120 * Math.cos(0.5) * Math.sin(0.25) - 6, 12, 12, `background:${t.text}`);
+  [[60, 90], [300, 120], [210, 300], [120, 250]].forEach(([x, y], i) =>
+    (pts += B(x - 4, y - 4, 8, 8, `background:${[t.ok, t.pages[1], t.pages[8], t.pages[2]][i]}`)));
+  h += B(48, 46, 384, 384, t.id === "a" ? `outline:1px solid ${t.brd}` : "", d + pts);
+  // всплывашка от BSP
+  const tw = 440, th = 68;
+  let st = `background:${t.id === "a" ? t.field : mix(t.surf, t.bg, 0.3)};border:${t.id === "a" ? 1 : 2}px solid ${pc};border-radius:${t.id === "a" ? 3 : t.id === "b" ? 16 : 10}px`;
+  let ti = T(16, 0, "PRESET", font(t, t.s.tstName, t.text, false, `line-height:${th - 4}px`));
+  ti += T(0, 0, "CORAL", font(t, t.s.tstVal, pc, true, `right:16px;left:auto;line-height:${th - 4}px`));
+  h += B(20, 480 - 82, tw, th, st, ti);
+  return h;
+}
+
+function render() {
+  const root = document.getElementById("themes");
+  for (const t of THEMES) {
+    const sec = document.createElement("section");
+    const sw = [t.bg, t.surf, t.brd, t.muted, t.dim, t.text, t.bsp, t.ok, ...t.pages.slice(0, 10), t.pages[12], t.pages[13]];
+    sec.innerHTML = `<h2>${t.name}</h2><p>${t.about}</p>
+      <div class="meta"><span>Шрифт: <b>${t.fonts}</b></span><span>Флэш на шрифты: <b>${t.flash}</b> вместо ~181 КБ</span>
+      <span>Новых объектов LVGL: <b>0</b>, только стили</span><span>Радиус ${t.r}, дуга ${t.arcW} / ${t.bigArcW} px</span></div>
+      <div class="sw">${sw.map(c => `<i style="background:${c}" title="${c}"></i>`).join("")}</div>
+      <div class="screens"></div>`;
+    const box = sec.querySelector(".screens");
+    const shots = [["Страница синта", scrPage(t, false)], ["Захват ручки", scrPage(t, true)], ["Меню страниц", scrMenu(t)],
+      ["Grids", scrGrids(t)], ["Чашка Петри и всплывашка BSP", scrPetri(t)]];
+    for (const [cap, html] of shots) {
+      const fig = document.createElement("figure");
+      fig.className = "shot";
+      fig.style.margin = 0;
+      fig.innerHTML = `<div class="scr" id="${t.id}-${shots.findIndex(s => s[0] === cap)}" style="background:${t.bg}">${html}</div><figcaption>${cap}</figcaption>`;
+      box.appendChild(fig);
+    }
+    root.appendChild(sec);
+    sec.querySelectorAll("canvas.dish").forEach(c => paintDish(c, t));
+  }
+}
+
+document.querySelectorAll(".bar button").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".bar button").forEach(x => x.classList.toggle("on", x === b));
+  document.querySelectorAll(".screens").forEach(s => s.classList.toggle("x2", b.dataset.z === "2"));
+});
+document.fonts.ready.then(render);
+</script>
+</body>
+</html>
