@@ -109,6 +109,22 @@ static int level_of(float hz)
     return hz < 1000.0f ? 0 : hz < 2000.0f ? 1 : hz < 4000.0f ? 2 : 3;
 }
 
+static void set_hz(const acid_petri_t *p, acid_petri_voice_t *v, float hz)
+{
+    v->hz = hz;
+    v->inc = (uint32_t)(hz * (4294967296.0f / p->sr));
+    v->level = (uint8_t)level_of(hz);
+}
+
+void acid_petri_retune(acid_petri_t *p, int note, float hz)
+{
+    for (int k = 0; k < ACID_PETRI_VOICES; k++) {
+        if (p->v[k].gate && p->v[k].note == note) {
+            set_hz(p, &p->v[k], hz);
+        }
+    }
+}
+
 void acid_petri_note_on(acid_petri_t *p, int note, float hz, int vel)
 {
     (void)vel;
@@ -136,10 +152,8 @@ void acid_petri_note_on(acid_petri_t *p, int note, float hz, int vel)
         v->lvl = 0.05f;
         v->g = 0.3f * acid_rcp(v->lvl + 0.02f);
     }
-    v->hz = hz;
+    set_hz(p, v, hz);
     v->note = (int8_t)note;
-    v->inc = (uint32_t)(hz * (4294967296.0f / p->sr));
-    v->level = (uint8_t)level_of(hz);
     v->gate = v->on = 1;
     v->age = ++p->age;
 }

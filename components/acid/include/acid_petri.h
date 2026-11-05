@@ -61,6 +61,8 @@ void acid_petri_wave_build(acid_petri_wave_t *w, const int16_t tab[ACID_PETRI_TA
 void acid_petri_post(acid_petri_t *p, const acid_petri_frame_t *f);
 // Нота note с частотой hz: та же нота перезапускает свой голос, иначе свободный, иначе самый старый.
 void acid_petri_note_on(acid_petri_t *p, int note, float hz, int vel);
+// Зажатая нота note - на частоту hz без перезапуска (слой тональности сменил шаг).
+void acid_petri_retune(acid_petri_t *p, int note, float hz);
 void acid_petri_note_off(acid_petri_t *p, int note);
 void acid_petri_notes_off(acid_petri_t *p);
 // Голоса молчат сразу (смена типа: звук уже ушёл).

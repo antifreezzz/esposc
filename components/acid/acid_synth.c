@@ -942,6 +942,10 @@ static void tonal_boundary(acid_synth_t *s)
             continue;
         }
         v->target_log2 = log2f(acid_midi_to_hz(slot_note(s, v, v->held[v->nheld - 1])));
+        for (int k = 0; v->type == ACID_TYPE_PETRI && v->pet && k < v->nheld; k++) {
+            int n = v->held[k]; // у PETRI слайда нет: аккорд прыгает весь и в режиме глайда
+            acid_petri_retune(v->pet, n, acid_midi_to_hz(slot_note(s, v, n)));
+        }
         if (mode == 1) {
             v->gliding = 1;
         } else {
