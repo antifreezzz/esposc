@@ -51,6 +51,8 @@ static struct {
     pl_edit_t ed;
     int sent; // последнее отправленное значение захваченной ручки
     lv_obj_t *bar_left, *bar_nav, *bar_right, *bar_edit, *bar_xy, *bar_load;
+    lv_obj_t *bar_line; // подчёркивание имени страницы цветом страницы
+    int line_w;
     uint32_t load_color;
     uint8_t xy_view; // бит своей страницы: вместо сетки XY-пэд
     lv_obj_t *menu, *menu2, *grid;
@@ -176,22 +178,22 @@ static lv_obj_t *menu_tile(lv_obj_t *parent, int x, int y, int h, uint32_t pc, c
                            lv_obj_t **sub)
 {
     lv_obj_t *t = ui_box(parent, x, y, UI_TILE_W, h, C_TILE);
-    lv_obj_set_style_radius(t, 10, 0);
+    lv_obj_set_style_radius(t, UI_R, 0);
     lv_obj_set_style_border_width(t, 1, 0);
     lv_obj_set_style_border_color(t, lv_color_hex(C_TILE_BRD), 0);
 
     lv_obj_t *stripe = ui_box(t, 0, 12, 4, h - 24, pc);
     lv_obj_set_style_radius(stripe, 2, 0);
 
-    lv_obj_t *n = ui_label(t, &lv_font_montserrat_28, pc);
+    lv_obj_t *n = ui_label(t, &bc_32, pc);
     lv_label_set_text(n, num);
     lv_obj_align(n, LV_ALIGN_LEFT_MID, 16, 0);
 
-    lv_obj_t *l = ui_label(t, &lv_font_montserrat_20, C_TEXT);
+    lv_obj_t *l = ui_label(t, &bc_22, C_TEXT);
     lv_label_set_text(l, name);
     lv_obj_align(l, LV_ALIGN_TOP_LEFT, 54, 12);
 
-    *sub = ui_label(t, &lv_font_montserrat_12, C_DIM);
+    *sub = ui_label(t, &bc_15, C_DIM);
     lv_obj_align(*sub, LV_ALIGN_BOTTOM_LEFT, 55, -11);
     return t;
 }
@@ -209,14 +211,14 @@ static void pick_draw(lv_event_t *e)
     uint32_t pc = pl_page_color(page);
     lv_draw_fill_dsc_t f;
     lv_draw_fill_dsc_init(&f);
-    f.radius = 8;
+    f.radius = 10;
     f.color = lv_color_hex(C_TILE);
     lv_draw_border_dsc_t b;
     lv_draw_border_dsc_init(&b);
-    b.radius = 8;
+    b.radius = 10;
     lv_draw_label_dsc_t l;
     lv_draw_label_dsc_init(&l);
-    l.font = &lv_font_montserrat_14;
+    l.font = &bc_17;
     l.align = LV_TEXT_ALIGN_CENTER;
     uint8_t raw[PL_KNOBS] = {0};
     char buf[12];
@@ -244,18 +246,24 @@ static void build(void)
     lv_obj_set_scrollable(scr, false);
 
     lv_obj_t *bar = ui_box(scr, 0, 0, W, TOP_H, C_BAR);
-    u.bar_left = ui_label(bar, &lv_font_montserrat_14, C_TEXT);
+    lv_obj_set_style_border_side(bar, LV_BORDER_SIDE_BOTTOM, 0);
+    lv_obj_set_style_border_width(bar, 1, 0);
+    lv_obj_set_style_border_color(bar, lv_color_hex(C_TILE_BRD), 0);
+    u.bar_line = ui_box(bar, W / 2, TOP_H - 4, 0, 3, C_ACCENT);
+    lv_obj_set_style_radius(u.bar_line, 2, 0);
+    u.line_w = 0;
+    u.bar_left = ui_label(bar, &bc_17, C_TEXT);
     lv_obj_align(u.bar_left, LV_ALIGN_LEFT_MID, 14, 0);
-    u.bar_nav = ui_label(bar, &lv_font_montserrat_20, C_ACCENT);
+    u.bar_nav = ui_label(bar, &bc_22, C_ACCENT);
     lv_obj_align(u.bar_nav, LV_ALIGN_CENTER, 0, 0);
-    u.bar_right = ui_label(bar, &lv_font_montserrat_14, C_ACCENT);
+    u.bar_right = ui_label(bar, &bc_17, C_ACCENT);
     lv_obj_align(u.bar_right, LV_ALIGN_RIGHT_MID, -14, -8);
     // Под режимом - худшая загрузка ядер синта за полсекунды: ядро 1, ядро 0 (проценты бюджета).
-    u.bar_load = ui_label(bar, &lv_font_montserrat_12, C_TEXT);
+    u.bar_load = ui_label(bar, &bc_15, C_TEXT);
     lv_obj_align(u.bar_load, LV_ALIGN_RIGHT_MID, -14, 10);
-    u.bar_edit = ui_label(bar, &lv_font_montserrat_14, C_TEXT);
+    u.bar_edit = ui_label(bar, &bc_17, C_TEXT);
     lv_obj_align(u.bar_edit, LV_ALIGN_LEFT_MID, EDIT_X0 + 4, 0);
-    u.bar_xy = ui_label(bar, &lv_font_montserrat_14, C_TEXT);
+    u.bar_xy = ui_label(bar, &bc_17, C_TEXT);
     lv_obj_align(u.bar_xy, LV_ALIGN_LEFT_MID, XY_X0 + 4, 0);
 
     // Меню: 2 столбца по 5 плиток с цветной полоской и сводкой состояния.
@@ -291,27 +299,29 @@ static void build(void)
         int x, y;
         cell_xy(i, &x, &y);
         k->card = ui_box(u.grid, x, y, 150, 80, C_TILE);
-        lv_obj_set_style_radius(k->card, 10, 0);
+        lv_obj_set_style_radius(k->card, UI_R, 0);
         lv_obj_set_style_border_width(k->card, 1, 0);
         lv_obj_set_style_border_color(k->card, lv_color_hex(C_TILE_BRD), 0);
 
-        k->arc = arc(k->card, KNOB_D, 6);
+        k->arc = arc(k->card, KNOB_D, 7);
         lv_obj_set_pos(k->arc, 8, 12);
-        k->val = ui_label(k->arc, &lv_font_montserrat_14, C_TEXT);
+        k->val = ui_label(k->arc, &bc_17, C_TEXT);
         lv_obj_align(k->val, LV_ALIGN_CENTER, 0, 0);
 
-        k->num = ui_label(k->card, &lv_font_montserrat_12, C_MUTED);
+        k->num = ui_label(k->card, &bc_15, C_MUTED);
         lv_label_set_text_fmt(k->num, "E%d", i + 2);
         lv_obj_set_pos(k->num, 72, 14);
 
-        k->pdot = ui_box(k->card, 134, 10, 7, 7, C_MUTED);
-        lv_obj_set_style_radius(k->pdot, 4, 0);
+        // Светодиод: горит цветом ручки, синим - когда BSP держит ручку. Ободок - тот же цвет, притушенный к плашке.
+        k->pdot = ui_box(k->card, 130, 10, 10, 10, C_MUTED);
+        lv_obj_set_style_radius(k->pdot, 5, 0);
+        lv_obj_set_style_border_width(k->pdot, 2, 0);
 
-        k->name = ui_label(k->card, &lv_font_montserrat_12, C_DIM);
+        k->name = ui_label(k->card, &bc_15, C_DIM);
         lv_obj_set_width(k->name, 74);
         lv_obj_set_pos(k->name, 72, 36);
 
-        k->src = ui_label(k->card, &lv_font_montserrat_12, C_MUTED);
+        k->src = ui_label(k->card, &bc_15, C_MUTED);
         lv_obj_set_size(k->src, 74, 16);
         lv_label_set_long_mode(k->src, LV_LABEL_LONG_MODE_DOTS);
         lv_obj_set_pos(k->src, 72, 56);
@@ -328,19 +338,19 @@ static void build(void)
 
     // Захват: круглый медальон с большой дугой в центре экрана поверх сетки.
     int cy_in = RING_CY - TOP_H;
-    u.big_box = ui_box(u.grid, PL_CENTER - BIG_BOX / 2, cy_in - BIG_BOX / 2, BIG_BOX, BIG_BOX, 0x0e1016);
+    u.big_box = ui_box(u.grid, PL_CENTER - BIG_BOX / 2, cy_in - BIG_BOX / 2, BIG_BOX, BIG_BOX, C_FIELD);
     lv_obj_set_style_radius(u.big_box, BIG_BOX / 2, 0);
     lv_obj_set_style_border_width(u.big_box, 2, 0);
-    lv_obj_set_style_border_color(u.big_box, lv_color_hex(0x2c3240), 0);
+    lv_obj_set_style_border_color(u.big_box, lv_color_hex(C_RING), 0);
 
-    u.big = arc(u.big_box, BIG_D, 14);
-    lv_obj_set_style_arc_color(u.big, lv_color_hex(0x1c1f28), LV_PART_MAIN);
+    u.big = arc(u.big_box, BIG_D, 16);
+    lv_obj_set_style_arc_color(u.big, lv_color_hex(C_TRACK), LV_PART_MAIN);
     lv_obj_center(u.big);
-    u.big_name = ui_label(u.big, &lv_font_montserrat_14, C_DIM);
+    u.big_name = ui_label(u.big, &bc_17, C_DIM);
     lv_obj_align(u.big_name, LV_ALIGN_CENTER, 0, -40);
-    u.big_val = ui_label(u.big, &lv_font_montserrat_48, C_ACCENT);
+    u.big_val = ui_label(u.big, &bc_58, C_ACCENT);
     lv_obj_align(u.big_val, LV_ALIGN_CENTER, 0, 4);
-    u.big_sub = ui_label(u.big, &lv_font_montserrat_12, C_BSP);
+    u.big_sub = ui_label(u.big, &bc_15, C_BSP);
     lv_obj_align(u.big_sub, LV_ALIGN_CENTER, 0, 44);
 
     u.bsp_mark = ui_box(u.big_box, 0, 0, 16, 16, C_BG);
@@ -359,19 +369,19 @@ static void build(void)
     up_build(scr);
 
     // Всплывашка от BSP поверх всего: тёмная плашка с цветной рамкой страницы.
-    u.toast = ui_box(scr, 20, W - 82, W - 40, 68, 0x161820);
-    lv_obj_set_style_radius(u.toast, 12, 0);
+    u.toast = ui_box(scr, 20, W - 82, W - 40, 68, C_TOAST);
+    lv_obj_set_style_radius(u.toast, 16, 0);
     lv_obj_set_style_border_width(u.toast, 2, 0);
     lv_obj_set_style_border_color(u.toast, lv_color_hex(C_ACCENT), 0);
-    u.toast_name = ui_label(u.toast, &lv_font_montserrat_20, C_TEXT);
+    u.toast_name = ui_label(u.toast, &bc_22, C_TEXT);
     lv_obj_align(u.toast_name, LV_ALIGN_LEFT_MID, 16, 0);
-    u.toast_val = ui_label(u.toast, &lv_font_montserrat_28, C_ACCENT);
+    u.toast_val = ui_label(u.toast, &bc_32, C_ACCENT);
     lv_obj_align(u.toast_val, LV_ALIGN_RIGHT_MID, -16, 0);
     for (int i = 0; i < PL_TARGETS; i++) {
         int cw = (W - 40 - 32) / PL_TARGETS;
-        u.chip_page[i] = ui_label(u.toast, &lv_font_montserrat_12, C_DIM);
+        u.chip_page[i] = ui_label(u.toast, &bc_15, C_DIM);
         lv_obj_set_pos(u.chip_page[i], 16 + i * cw, 46);
-        u.chip_val[i] = ui_label(u.toast, &lv_font_montserrat_14, C_TEXT);
+        u.chip_val[i] = ui_label(u.toast, &bc_17, C_TEXT);
         lv_obj_set_size(u.chip_val[i], cw - 6, 18);
         lv_label_set_long_mode(u.chip_val[i], LV_LABEL_LONG_MODE_DOTS);
         lv_obj_set_pos(u.chip_val[i], 16 + i * cw, 64);
@@ -503,42 +513,53 @@ static void draw_bar(const pl_model_t *m)
         } else if (u.ed.state == PL_EDIT_PICK_KNOB) {
             snprintf(nav, sizeof nav, "PICK: %s", pl_page_name(u.ed.page));
         }
-        ui_text(u.bar_left, LV_SYMBOL_LEFT " MENU");
+        ui_text(u.bar_left, UI_SYM_LEFT " MENU");
         ui_text(u.bar_edit, u.ed.state == PL_EDIT_SLOTS ? "DONE" : "BACK");
     } else if (u.screen == PAGE && u.pick_page >= 0) {
         snprintf(nav, sizeof nav, "%s TYPE", pl_view_page_name(u.page));
         nc = pl_view_page_color(u.page);
-        ui_text(u.bar_left, LV_SYMBOL_CLOSE " CLOSE");
+        ui_text(u.bar_left, UI_SYM_CLOSE " CLOSE");
         ui_text(u.bar_edit, "");
     } else if (u.screen == PAGE) {
-        snprintf(nav, sizeof nav, LV_SYMBOL_LEFT "  %d %s  " LV_SYMBOL_RIGHT, pl_page_bsp(u.page), pl_view_page_name(u.page));
+        snprintf(nav, sizeof nav, UI_SYM_LEFT "  %d %s  " UI_SYM_RIGHT, pl_page_bsp(u.page), pl_view_page_name(u.page));
         nc = pl_view_page_color(u.page);
-        ui_text(u.bar_left, LV_SYMBOL_LEFT " MENU");
+        ui_text(u.bar_left, UI_SYM_LEFT " MENU");
         ui_text(u.bar_edit, user ? ((m->user_have >> (u.page - PL_USER_FIRST) & 1) ? "EDIT" : "")
                                  : pl_view_dish(m, u.page) ? "DISH" : "");
         ui_text(u.bar_xy, !user ? "" : xy_on() ? "GRID" : "XY");
     } else if (u.screen == GRIDS) {
         snprintf(nav, sizeof nav, "GRIDS");
         nc = pl_page_color(PL_PAGE_GRIDS);
-        ui_text(u.bar_left, LV_SYMBOL_LEFT " MENU");
+        ui_text(u.bar_left, UI_SYM_LEFT " MENU");
         ui_text(u.bar_edit, "");
     } else if (u.screen == PETRIS) {
         snprintf(nav, sizeof nav, "PETRI");
         nc = pl_page_color(PL_PAGE_PETRI);
-        ui_text(u.bar_left, LV_SYMBOL_LEFT " MENU");
+        ui_text(u.bar_left, UI_SYM_LEFT " MENU");
         ui_text(u.bar_edit, "KNOBS");
     } else if (u.screen == SCENES) {
         snprintf(nav, sizeof nav, "SCENES");
-        ui_text(u.bar_left, LV_SYMBOL_LEFT " MENU");
+        ui_text(u.bar_left, UI_SYM_LEFT " MENU");
         ui_text(u.bar_edit, "");
     } else {
-        snprintf(nav, sizeof nav, u.screen == MENU ? "USER  " LV_SYMBOL_RIGHT : LV_SYMBOL_LEFT "  PAGES");
+        snprintf(nav, sizeof nav, u.screen == MENU ? "USER  " UI_SYM_RIGHT : UI_SYM_LEFT "  PAGES");
         ui_text(u.bar_left, "ESPOSC");
         ui_text(u.bar_edit, "");
     }
-    ui_text(u.bar_nav, nav);
+    if (strcmp(lv_label_get_text(u.bar_nav), nav) != 0) {
+        lv_label_set_text(u.bar_nav, nav);
+        lv_point_t sz;
+        lv_text_get_size(&sz, nav, &bc_22, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+        int w = nav[0] ? (int)sz.x : 0;
+        if (w != u.line_w) {
+            lv_obj_set_width(u.bar_line, w);
+            lv_obj_set_x(u.bar_line, (W - w) / 2);
+            u.line_w = w;
+        }
+    }
     if (u.nav_color != nc) {
         lv_obj_set_style_text_color(u.bar_nav, lv_color_hex(nc), 0);
+        lv_obj_set_style_bg_color(u.bar_line, lv_color_hex(nc), 0);
         u.nav_color = nc;
     }
 }
@@ -607,7 +628,9 @@ static void draw_page(const pl_model_t *m)
         }
         int held = cell.held && m->bsp_pos[enc] != 0xFF;
         if (held != k->held) {
-            lv_obj_set_style_bg_color(k->pdot, lv_color_hex(held ? C_BSP : C_MUTED), 0);
+            uint32_t lc = held ? C_BSP : k->color;
+            lv_obj_set_style_bg_color(k->pdot, lv_color_hex(lc), 0);
+            lv_obj_set_style_border_color(k->pdot, lv_color_hex(ui_mix(lc, C_TILE, 141)), 0); // 0.55 к плашке
             lv_obj_set_style_text_color(k->num, lv_color_hex(held ? C_BSP : C_MUTED), 0);
             k->held = held;
         }
@@ -671,7 +694,7 @@ static void draw_status(const pl_model_t *m, uint32_t ms)
 {
     int linked = pl_model_linked(m, ms);
     const char *s = pl_view_status(m, linked); // в демо - имя песни, тап по нему - следующая
-    uint32_t c = !linked ? 0xff5e6c : m->mode ? 0x7be382 : 0xffb547;
+    uint32_t c = !linked ? C_BAD : m->mode ? C_OK : C_WARN;
     ui_text(u.bar_right, s);
     lv_obj_set_style_text_color(u.bar_right, lv_color_hex(c), 0);
 }
@@ -682,7 +705,7 @@ static void draw_status(const pl_model_t *m, uint32_t ms)
 static void draw_load(const pl_model_t *m, uint32_t ms)
 {
     char t[24] = "";
-    uint32_t c = 0x9aa3b2;
+    uint32_t c = C_DIM;
     if (m->have_load && ms - m->load_ms <= LOAD_STALE_MS) {
         const pl_load_t *l = &m->load;
         int worst = l->c1_worst > l->c0_worst ? l->c1_worst : l->c0_worst;
@@ -691,7 +714,7 @@ static void draw_load(const pl_model_t *m, uint32_t ms)
         } else {
             snprintf(t, sizeof t, "%d %d%%", l->c1_worst, l->c0_worst);
         }
-        c = (worst >= 100 || l->underruns) ? 0xff5e6c : worst >= LOAD_WARN ? 0xffb547 : 0x9aa3b2;
+        c = (worst >= 100 || l->underruns) ? C_BAD : worst >= LOAD_WARN ? C_WARN : C_DIM;
     }
     ui_text(u.bar_load, t);
     if (u.load_color != c) {

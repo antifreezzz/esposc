@@ -1,17 +1,19 @@
 #include "petri_color.h"
 
+// Стиль «Б. Тёплый аналог»: от фона экрана через бурый и янтарь к кремовому (docs/design/panel-mockups.html).
+#define NSTOPS 4
 static const struct {
     float t;
     uint8_t c[3];
-} STOPS[5] = {{0, {14, 19, 21}}, {0.28f, {24, 58, 72}}, {0.55f, {52, 138, 132}}, {0.8f, {242, 199, 110}},
-              {1, {255, 247, 226}}};
+} STOPS[NSTOPS] = {{0, {0x13, 0x11, 0x0e}}, {1 / 3.0f, {0x4a, 0x2a, 0x14}}, {2 / 3.0f, {0xe0, 0x8a, 0x3a}},
+                   {1, {0xf6, 0xe7, 0xc6}}};
 
 void petri_palette(uint16_t lut[256])
 {
     for (int i = 0; i < 256; i++) {
         float t = i / 255.0f;
         int j = 0;
-        while (j < 3 && t > STOPS[j + 1].t) {
+        while (j < NSTOPS - 2 && t > STOPS[j + 1].t) {
             j++;
         }
         float f = (t - STOPS[j].t) / (STOPS[j + 1].t - STOPS[j].t);

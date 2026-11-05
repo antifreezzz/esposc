@@ -2,7 +2,7 @@
 
 #include <stdio.h>
 
-#define USER_COLOR 0xe0e0e0
+#define USER_COLOR 0xe8dcc0
 
 static int user_count(const pl_model_t *m, int up, int enc)
 {

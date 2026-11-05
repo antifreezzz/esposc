@@ -1,4 +1,4 @@
-// Палитра экрана чашки: 5 опорных точек прототипа, след мутагена поверх, RGB565.
+// Палитра экрана чашки: 4 опорные точки стиля «Б. Тёплый аналог», след мутагена поверх, RGB565.
 #include "petri_color.h"
 #include "test.h"
 
@@ -10,9 +10,11 @@ TEST(palette_ends)
 {
     static uint16_t lut[256];
     petri_palette(lut);
-    CHECK(lut[0] == PETRI_RGB565(14, 19, 21));
-    CHECK(lut[255] == PETRI_RGB565(255, 247, 226));
-    CHECK(r5(lut[204]) > r5(lut[100])); // к золоту краснее
+    CHECK(lut[0] == PETRI_RGB565(0x13, 0x11, 0x0e)); // фон экрана
+    CHECK(lut[85] == PETRI_RGB565(0x4a, 0x2a, 0x14));
+    CHECK(lut[170] == PETRI_RGB565(0xe0, 0x8a, 0x3a));
+    CHECK(lut[255] == PETRI_RGB565(0xf6, 0xe7, 0xc6));
+    CHECK(r5(lut[204]) > r5(lut[100])); // к янтарю краснее
 }
 
 TEST(cell_color)

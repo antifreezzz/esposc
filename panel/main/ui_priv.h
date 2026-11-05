@@ -11,17 +11,47 @@
 #define UI_TOP_H 40
 #define UI_RING_DY 18 // центр вращения пальцем ниже центра экрана: посередине рабочей области
 
-#define C_BG 0x0b0c0e
-#define C_BAR 0x14161b
-#define C_TILE 0x161922
-#define C_TILE_EMPTY 0x0f1116
-#define C_TILE_BRD 0x252a35
-#define C_DIM 0x9aa0ad
-#define C_MUTED 0x4a505c
-#define C_TEXT 0xeeeeee
-#define C_ACCENT 0xff9900
-#define C_TRACK 0x242832
-#define C_BSP 0x66ccff
+// Стиль «Б. Тёплый аналог» (docs/design/panel-mockups.html): тёплый графит, кремовый текст, акценты-лампы.
+#define C_BG 0x13110e
+#define C_BAR 0x1b1814
+#define C_TILE 0x1d1a15
+#define C_TILE_EMPTY 0x171410
+#define C_TILE_BRD 0x2b2720
+#define C_FIELD 0x171410 // поле XY, карта Grids, диск захвата
+#define C_RING 0x3a342a  // рамка диска захвата
+#define C_TOAST 0x1a1713
+#define C_DIM 0xa99f8a
+#define C_MUTED 0x5f574a
+#define C_TEXT 0xf1e7d0
+#define C_ACCENT 0xff9d2e
+#define C_TRACK 0x2b2720
+#define C_BSP 0x8fd3e8
+#define C_OK 0xa8d672
+#define C_WARN 0xffb648
+#define C_BAD 0xff6b4a
+#define UI_R 14 // радиус карточек и плиток
+
+// Сплошной цвет между a и b (k256=0 - a, 256 - b): заранее, без прозрачности при отрисовке, как mix() в макете.
+static inline uint32_t ui_mix(uint32_t a, uint32_t b, int k256)
+{
+    uint32_t r = 0;
+    for (int s = 0; s < 24; s += 8) {
+        int ca = (a >> s) & 0xff, cb = (b >> s) & 0xff;
+        r |= (uint32_t)((ca * (256 - k256) + cb * k256 + 128) >> 8) << s;
+    }
+    return r;
+}
+
+// Шрифты Barlow Condensed (tools/fonts/build.sh): 15, 17, 22 - ASCII, 32 и 58 - цифры и заглавные.
+LV_FONT_DECLARE(bc_15)
+LV_FONT_DECLARE(bc_17)
+LV_FONT_DECLARE(bc_22)
+LV_FONT_DECLARE(bc_32)
+LV_FONT_DECLARE(bc_58)
+// Стрелки и крестик - глифы шрифта, не FontAwesome.
+#define UI_SYM_LEFT "\xE2\x80\xB9"
+#define UI_SYM_RIGHT "\xE2\x80\xBA"
+#define UI_SYM_CLOSE "\xC3\x97"
 
 lv_obj_t *ui_label(lv_obj_t *parent, const lv_font_t *font, uint32_t color);
 lv_obj_t *ui_box(lv_obj_t *parent, int x, int y, int w, int h, uint32_t bg);

@@ -236,8 +236,9 @@ int pl_labels_depend(int page)
     return (page >= 3 && page <= 7) || is_layer(page);
 }
 
-static const uint32_t PAGE_COLOR[14] = {0x6fc3ff, 0xff6f7d, 0xffb84d, 0xff7b47, 0xff9457, 0xffd24d, 0xff9900,
-                                        0x7be382, 0xc79bff, 0x5fd3e6, 0xff9900, 0x7be382, 0xff5e6c, 0x34c8a4}; // слои - цветом своего синта
+// Стиль «Б. Тёплый аналог»: цвета-лампы (docs/design/panel-mockups.html).
+static const uint32_t PAGE_COLOR[14] = {0xf2c46d, 0xff6b4a, 0xffb648, 0xff8a4c, 0xffa25e, 0xffd66b, 0xff9d2e,
+                                        0xa8d672, 0xe39bb0, 0x7fd1c0, 0xff9d2e, 0xa8d672, 0xff6b4a, 0x7fd1a0}; // слои - цветом своего синта
 
 uint32_t pl_page_color(int page)
 {
@@ -251,66 +252,66 @@ uint32_t pl_knob_color(int page, int enc, const uint8_t page_raw[16])
     }
     switch (as_synth(page)) {
     case 0: // MIX: мастер/драйв, синты, ударка, пампинг/DJ-фильтр, панорама
-        if (enc <= 2) return 0xffb547;
-        if (enc <= 4) return 0x7be382;
-        if (enc <= 8) return 0xff6f7d;
-        if (enc <= 12) return 0x6fc3ff;
-        return 0x5fd3e6;
+        if (enc <= 2) return 0xffb648;
+        if (enc <= 4) return 0xa8d672;
+        if (enc <= 8) return 0xff6b4a;
+        if (enc <= 12) return 0x8fc4d8;
+        return 0x7fd1c0;
     case 1: // DRUMS: бочка, хэты, клэп, малый, панорама
-        if (enc <= 4) return 0xff6f7d;
-        if (enc <= 7) return 0xffb84d;
-        if (enc <= 9) return 0xc79bff;
-        if (enc <= 12) return 0x6fc3ff;
-        return 0x5fd3e6;
+        if (enc <= 4) return 0xff6b4a;
+        if (enc <= 7) return 0xffb648;
+        if (enc <= 9) return 0xe39bb0;
+        if (enc <= 12) return 0x8fc4d8;
+        return 0x7fd1c0;
     case 2: // CYMBALS: крэш, райд, купол и велосити
-        if (enc <= 4) return 0xff8844;
-        if (enc <= 8) return 0xffc247;
-        return 0x6fc3ff;
+        if (enc <= 4) return 0xff8a4c;
+        if (enc <= 8) return 0xffc65a;
+        return 0x8fc4d8;
     case 3:
     case 4:
     case 5: // PERC: модель, высота/спад, тембр, грязь, выход/стерео
-        if (enc == 1) return 0xffd24d;
-        if (enc <= 5) return 0xff7b47;
-        if (enc <= 8) return 0xffb547;
-        if (enc <= 10) return 0xff5e6c;
-        return 0x5fd3e6;
+        if (enc == 1) return 0xffd66b;
+        if (enc <= 5) return 0xff8a4c;
+        if (enc <= 8) return 0xffb648;
+        if (enc <= 10) return 0xff6b4a;
+        return 0x7fd1c0;
     case 6:
     case 7: { // SYNTH 1 & 2
         if (synth_kind(page_raw) == KPETRI) { // тип, фильтр, огибающие, рельеф и орбита, перегруз
-            if (enc == 1) return 0xffd24d;
-            if (enc <= 5) return as_synth(page) == 6 ? 0xff9900 : 0x7be382;
-            if (enc <= 7) return 0x6fc3ff;
-            if (enc <= 12) return 0xc79bff;
-            return 0xff5e6c;
+            if (enc == 1) return 0xffd66b;
+            if (enc <= 5) return as_synth(page) == 6 ? 0xff9d2e : 0xa8d672;
+            if (enc <= 7) return 0x8fc4d8;
+            if (enc <= 12) return 0xe39bb0;
+            return 0xff6b4a;
         }
         int plaits = synth_kind(page_raw) == KPLAITS;
-        if (enc == 1) return 0xffd24d;
-        if (enc <= 6) return as_synth(page) == 6 ? 0xff9900 : 0x7be382;
-        if (enc <= (plaits ? 8 : 9)) return 0x6fc3ff;
-        if (enc <= 12) return 0xc79bff;
-        return 0xff5e6c;
+        if (enc == 1) return 0xffd66b;
+        if (enc <= 6) return as_synth(page) == 6 ? 0xff9d2e : 0xa8d672;
+        if (enc <= (plaits ? 8 : 9)) return 0x8fc4d8;
+        if (enc <= 12) return 0xe39bb0;
+        return 0xff6b4a;
     }
     case 8: // FX: крашер, посылы, дилэй, статтер
-        if (enc <= 2) return 0xff6f7d;
-        if (enc <= 5) return 0xffb547;
-        if (enc == 9) return 0x5fd3e6;
-        return 0xc79bff;
+        if (enc <= 2) return 0xff6b4a;
+        if (enc <= 5) return 0xffb648;
+        if (enc == 9) return 0x7fd1c0;
+        return 0xe39bb0;
     case 9: // TONAL: шагатель, лад/тоника, шаги 1..8
-        if (enc <= 5) return 0x5fd3e6;
-        if (enc <= 7) return 0xffb547;
-        return 0x7be382;
+        if (enc <= 5) return 0x7fd1c0;
+        if (enc <= 7) return 0xffb648;
+        return 0xa8d672;
     case PETRI_PG: // PETRI: колония, жители, еда и мутации, маршруты в фильтр, фриз и пересев
-        if (enc <= 4) return 0x34c8a4;
-        if (enc <= 8) return 0xffb547;
-        if (enc <= 10) return 0xff6f7d;
-        if (enc <= 13) return 0xc79bff;
-        return 0x6fc3ff;
+        if (enc <= 4) return 0x7fd1a0;
+        if (enc <= 8) return 0xffb648;
+        if (enc <= 10) return 0xff6b4a;
+        if (enc <= 13) return 0xe39bb0;
+        return 0x8fc4d8;
     case GRIDS_PAGE: // GRIDS: вкл, карта, плотности и хаос, руки, сбивки
-        if (enc == 1) return 0xffd24d;
-        if (enc <= 3) return 0x6fc3ff;
-        if (enc <= 7) return 0xff6f7d;
-        if (enc <= 9) return 0xffb84d;
-        return 0xc79bff;
+        if (enc == 1) return 0xffd66b;
+        if (enc <= 3) return 0x8fc4d8;
+        if (enc <= 7) return 0xff6b4a;
+        if (enc <= 9) return 0xffb648;
+        return 0xe39bb0;
     default:
         return 0;
     }

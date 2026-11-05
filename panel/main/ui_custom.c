@@ -40,7 +40,7 @@ static struct {
 static lv_obj_t *tile(lv_obj_t *parent, int x, int y, int w, int h)
 {
     lv_obj_t *t = ui_box(parent, x, y, w, h, C_TILE);
-    lv_obj_set_style_radius(t, 10, 0);
+    lv_obj_set_style_radius(t, UI_R, 0);
     lv_obj_set_style_border_width(t, 1, 0);
     lv_obj_set_style_border_color(t, lv_color_hex(C_TILE_BRD), 0);
     return t;
@@ -60,9 +60,9 @@ void uc_build(lv_obj_t *scr)
         int x, y;
         ui_tile_xy(p, &x, &y);
         c.sc_tile[p] = p < 9 ? tile(c.sc_box, x, y, UI_TILE_W, UI_TILE_H) : ui_box(c.sc_box, x, y, UI_TILE_W, UI_TILE_H, C_BG);
-        c.sc_name[p] = ui_label(c.sc_tile[p], &lv_font_montserrat_20, p == 8 ? C_ACCENT : C_TEXT);
+        c.sc_name[p] = ui_label(c.sc_tile[p], &bc_22, p == 8 ? C_ACCENT : C_TEXT);
         lv_obj_align(c.sc_name[p], LV_ALIGN_TOP_LEFT, 16, 12);
-        c.sc_sub[p] = ui_label(c.sc_tile[p], &lv_font_montserrat_12, C_DIM);
+        c.sc_sub[p] = ui_label(c.sc_tile[p], &bc_15, C_DIM);
         lv_obj_align(c.sc_sub[p], LV_ALIGN_BOTTOM_LEFT, 17, -11);
         if (p < 8) {
             lv_label_set_text_fmt(c.sc_name[p], "SCENE %d", p + 1);
@@ -78,40 +78,40 @@ void uc_build(lv_obj_t *scr)
     c.ed_box = ui_box(scr, 0, UI_TOP_H, UI_W, UI_W - UI_TOP_H, C_BG);
     for (int i = 0; i <= PL_TARGETS; i++) {
         c.row[i] = tile(c.ed_box, 12, ROW_Y0 + i * ROW_DY, UI_W - 24, ROW_H);
-        c.row_name[i] = ui_label(c.row[i], &lv_font_montserrat_20, i < PL_TARGETS ? C_TEXT : C_ACCENT);
+        c.row_name[i] = ui_label(c.row[i], &bc_22, i < PL_TARGETS ? C_TEXT : C_ACCENT);
         lv_obj_align(c.row_name[i], LV_ALIGN_TOP_LEFT, 16, 8);
-        c.row_sub[i] = ui_label(c.row[i], &lv_font_montserrat_12, C_DIM);
+        c.row_sub[i] = ui_label(c.row[i], &bc_15, C_DIM);
         lv_obj_align(c.row_sub[i], LV_ALIGN_BOTTOM_LEFT, 17, -8);
         if (i < PL_TARGETS) {
-            c.row_del[i] = ui_label(c.row[i], &lv_font_montserrat_20, 0xff5e6c);
-            lv_label_set_text(c.row_del[i], LV_SYMBOL_CLOSE);
+            c.row_del[i] = ui_label(c.row[i], &bc_22, C_BAD);
+            lv_label_set_text(c.row_del[i], UI_SYM_CLOSE);
             lv_obj_align(c.row_del[i], LV_ALIGN_RIGHT_MID, -18, 0);
         }
     }
-    lv_label_set_text(c.row_name[PL_TARGETS], LV_SYMBOL_PLUS "  ADD TARGET");
+    lv_label_set_text(c.row_name[PL_TARGETS], "+  ADD TARGET");
     lv_label_set_text(c.row_sub[PL_TARGETS], "PAGE, THEN KNOB");
 
     // Ход цели: плитки LO и HI сверху (тап выбирает), ниже - вращение пальцем вокруг центра.
     c.rng_box = ui_box(scr, 0, UI_TOP_H, UI_W, UI_W - UI_TOP_H, C_BG);
     for (int s = 0; s < 2; s++) {
         c.side[s] = tile(c.rng_box, 12 + s * 234, 10, UI_TILE_W, RANGE_H - 20);
-        lv_obj_t *t = ui_label(c.side[s], &lv_font_montserrat_20, C_DIM);
+        lv_obj_t *t = ui_label(c.side[s], &bc_22, C_DIM);
         lv_label_set_text(t, s ? "HI (127)" : "LO (0)");
         lv_obj_align(t, LV_ALIGN_TOP_LEFT, 16, 12);
-        c.side_val[s] = ui_label(c.side[s], &lv_font_montserrat_48, C_ACCENT);
+        c.side_val[s] = ui_label(c.side[s], &bc_58, C_ACCENT);
         lv_obj_align(c.side_val[s], LV_ALIGN_BOTTOM_LEFT, 16, -10);
     }
-    c.rng_name = ui_label(c.rng_box, &lv_font_montserrat_20, C_TEXT);
+    c.rng_name = ui_label(c.rng_box, &bc_22, C_TEXT);
     lv_obj_align(c.rng_name, LV_ALIGN_TOP_MID, 0, RANGE_H + 30);
-    lv_obj_t *hint = ui_label(c.rng_box, &lv_font_montserrat_14, C_DIM);
+    lv_obj_t *hint = ui_label(c.rng_box, &bc_17, C_DIM);
     lv_label_set_text(hint, "TURN AROUND THE CENTER");
     lv_obj_align(hint, LV_ALIGN_TOP_MID, 0, RANGE_H + 70);
     c.drawn_which = -1;
 
     // XY-пэд своей страницы: перекрестие и точка - живые значения слотов E2 (X) и E3 (Y).
     c.xy_box = ui_box(scr, 0, UI_TOP_H, UI_W, UI_W - UI_TOP_H, C_BG);
-    c.xy_field = ui_box(c.xy_box, XY_X, XY_Y - UI_TOP_H, XY_W, XY_H, 0x0e1016);
-    lv_obj_set_style_radius(c.xy_field, 10, 0);
+    c.xy_field = ui_box(c.xy_box, XY_X, XY_Y - UI_TOP_H, XY_W, XY_H, C_FIELD);
+    lv_obj_set_style_radius(c.xy_field, UI_R, 0);
     lv_obj_set_style_border_width(c.xy_field, 1, 0);
     lv_obj_set_style_border_color(c.xy_field, lv_color_hex(C_TILE_BRD), 0);
     c.xy_vl = ui_box(c.xy_field, 0, 0, 2, XY_H, C_TRACK);
@@ -119,11 +119,11 @@ void uc_build(lv_obj_t *scr)
     c.xy_dot = ui_box(c.xy_field, 0, 0, XY_DOT, XY_DOT, C_ACCENT);
     lv_obj_set_style_radius(c.xy_dot, XY_DOT / 2, 0);
     c.xy_hold = tile(c.xy_box, XY_X, XY_STRIP_Y - UI_TOP_H, XY_HOLD_W, UI_W - XY_STRIP_Y - 6);
-    c.xy_hold_lbl = ui_label(c.xy_hold, &lv_font_montserrat_14, C_DIM);
+    c.xy_hold_lbl = ui_label(c.xy_hold, &bc_17, C_DIM);
     lv_label_set_text(c.xy_hold_lbl, "HOLD");
     lv_obj_center(c.xy_hold_lbl);
     for (int a = 0; a < 2; a++) {
-        c.xy_lab[a] = ui_label(c.xy_box, &lv_font_montserrat_14, C_TEXT);
+        c.xy_lab[a] = ui_label(c.xy_box, &bc_17, C_TEXT);
         lv_obj_set_size(c.xy_lab[a], UI_W - XY_HOLD_W - 32, 18);
         lv_label_set_long_mode(c.xy_lab[a], LV_LABEL_LONG_MODE_DOTS);
         lv_obj_set_pos(c.xy_lab[a], XY_X + XY_HOLD_W + 14, XY_STRIP_Y - UI_TOP_H + 2 + a * 22);

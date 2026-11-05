@@ -73,8 +73,9 @@ def convert(path, size, cps):
         crop = img.crop(box)
         px = [level4(v) for v in crop.tobytes()]
         glyphs.append(Glyph(crop.width, crop.height, box[0] - size, pad - box[3], adv16, px))
-    top = max([g.oy + g.h for g in glyphs if g.h] + [ascent])
-    bottom = min([g.oy for g in glyphs if g.h] + [-descent])
+    # Высота строки по нарисованным глифам, как у lv_font_conv: запас шрифта под диакритику не нужен.
+    top = max([g.oy + g.h for g in glyphs if g.h] or [ascent])
+    bottom = min([g.oy for g in glyphs if g.h] + [0])
     f = Font(size, list(cps), glyphs, top - bottom, -bottom)
     f.kern = kerning(font, cps)
     return f

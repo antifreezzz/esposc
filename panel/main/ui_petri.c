@@ -44,7 +44,7 @@ void up_build(lv_obj_t *scr)
         lv_image_set_src(p.img, &p.dsc);
         lv_obj_set_pos(p.img, IMG_X, IMG_Y);
     }
-    p.info = ui_label(p.box, &lv_font_montserrat_14, C_DIM);
+    p.info = ui_label(p.box, &bc_17, C_DIM);
     lv_obj_align(p.info, LV_ALIGN_TOP_MID, 0, IMG_Y + SIDE + 10);
     p.drawn_frame = UINT32_MAX;
 }

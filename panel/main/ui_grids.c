@@ -11,9 +11,10 @@
 
 #define PAGE PL_PAGE_GRIDS
 #define DOT 20
-#define C_HIT 0x7a3a40   // удар без акцента
-#define C_ACC 0xff5e6c   // акцент
-#define C_CELL 0x1a1d25  // пусто
+#define C_HIT 0x7d3a29   // удар без акцента: цвет страницы, притушенный к фону
+#define C_ACC 0xff6b4a   // акцент: цвет страницы Grids
+#define C_CELL 0x26221c  // пусто
+#define C_CHAOS 0x7b565f // ползунок хаоса
 #define PARTS 3
 #define STEPS PL_GRIDS_STEPS
 
@@ -61,10 +62,10 @@ static lv_obj_t *tile_at(int id, int idx, lv_obj_t **lbl, const char *text)
     int x, y, w, h;
     pl_gui_rect(id, idx, &x, &y, &w, &h);
     lv_obj_t *t = ui_box(g.box, x, y - UI_TOP_H, w, h, C_TILE);
-    lv_obj_set_style_radius(t, 8, 0);
+    lv_obj_set_style_radius(t, 10, 0);
     lv_obj_set_style_border_width(t, 1, 0);
     lv_obj_set_style_border_color(t, lv_color_hex(C_TILE_BRD), 0);
-    *lbl = ui_label(t, &lv_font_montserrat_14, C_DIM);
+    *lbl = ui_label(t, &bc_17, C_DIM);
     lv_label_set_text(*lbl, text);
     lv_obj_center(*lbl);
     return t;
@@ -94,8 +95,8 @@ void ug_build(lv_obj_t *scr)
 
     int x, y, w, h;
     pl_gui_rect(PL_GUI_XY, 0, &x, &y, &w, &h);
-    g.field = ui_box(g.box, x, y - UI_TOP_H, w, h, 0x0e1016);
-    lv_obj_set_style_radius(g.field, 8, 0);
+    g.field = ui_box(g.box, x, y - UI_TOP_H, w, h, C_FIELD);
+    lv_obj_set_style_radius(g.field, 10, 0);
     lv_obj_set_style_border_width(g.field, 1, 0);
     lv_obj_set_style_border_color(g.field, lv_color_hex(C_TILE_BRD), 0);
     g.vl = ui_box(g.field, 0, 0, 2, h, C_TRACK);
@@ -108,20 +109,20 @@ void ug_build(lv_obj_t *scr)
     for (int i = 0; i < 4; i++) {
         pl_gui_rect(PL_GUI_SLIDER, i, &x, &y, &w, &h);
         g.track[i] = ui_box(g.box, x, y - UI_TOP_H, w, h, C_TILE);
-        lv_obj_set_style_radius(g.track[i], 8, 0);
-        g.bar[i] = ui_box(g.track[i], 0, h, w, 0, i < 3 ? C_HIT : 0x4a3a6a);
-        lv_obj_set_style_radius(g.bar[i], 8, 0);
-        g.sl_name[i] = ui_label(g.track[i], &lv_font_montserrat_12, C_DIM);
+        lv_obj_set_style_radius(g.track[i], 10, 0);
+        g.bar[i] = ui_box(g.track[i], 0, h, w, 0, i < 3 ? C_HIT : C_CHAOS);
+        lv_obj_set_style_radius(g.bar[i], 10, 0);
+        g.sl_name[i] = ui_label(g.track[i], &bc_15, C_DIM);
         lv_label_set_text(g.sl_name[i], SLIDER_NAME[i]);
         lv_obj_align(g.sl_name[i], LV_ALIGN_TOP_MID, 0, 6);
-        g.sl_val[i] = ui_label(g.track[i], &lv_font_montserrat_14, C_TEXT);
+        g.sl_val[i] = ui_label(g.track[i], &bc_17, C_TEXT);
         lv_obj_align(g.sl_val[i], LV_ALIGN_BOTTOM_MID, 0, -6);
         g.drawn_sl[i] = -1;
     }
 
     for (int p = 0; p < PARTS; p++) {
         pl_gui_cell(0, p, &x, &y, &w, &h);
-        lv_obj_t *l = ui_label(g.box, &lv_font_montserrat_14, C_DIM);
+        lv_obj_t *l = ui_label(g.box, &bc_17, C_DIM);
         lv_label_set_text(l, PART_NAME[p]);
         lv_obj_set_pos(l, 12, y - UI_TOP_H + h / 2 - 8);
     }
