@@ -23,14 +23,15 @@
 #define BIG_BOX 244 // круглый диск подложки под большую дугу в центре
 #define BIG_D 210   // большая дуга захваченной ручки
 #define KNOBS 15    // энкодеры 2..16 (ячейки 0..14)
-#define MENU2_TILES 8 // USER 1-6, SCENES, GRIDS
+#define MENU2_TILES 9 // USER 1-6, SCENES, GRIDS, PETRI
 #define TILE_GRIDS (PL_USER_PAGES + 1)
+#define TILE_PETRI (PL_USER_PAGES + 2)
 #define EDIT_X0 362 // кнопка EDIT в шапке своей страницы
 #define EDIT_X1 412
 #define XY_X0 88 // кнопка XY в шапке своей страницы: между «MENU» и стрелками
 #define XY_X1 140
 
-enum { MENU, MENU2, PAGE, SCENES, GRIDS };
+enum { MENU, MENU2, PAGE, SCENES, GRIDS, PETRIS };
 
 typedef struct {
     lv_obj_t *card, *num, *arc, *val, *name, *src, *pdot, *empty_dot;
@@ -224,12 +225,17 @@ static void build(void)
     u.menu2 = ui_box(scr, 0, TOP_H, W, W - TOP_H, C_BG);
     for (int p = 0; p < MENU2_TILES; p++) {
         char num[4];
-        snprintf(num, sizeof num, p < PL_USER_PAGES ? "%d" : p == TILE_GRIDS ? "G" : "S", pl_page_bsp(PL_USER_FIRST + p));
+        snprintf(num, sizeof num, p < PL_USER_PAGES ? "%d" : p == TILE_GRIDS ? "G" : p == TILE_PETRI ? "18" : "S",
+                 pl_page_bsp(PL_USER_FIRST + p));
         int x, y;
         ui_tile_xy(p, &x, &y);
-        uint32_t pc = p < PL_USER_PAGES ? pl_view_page_color(PL_USER_FIRST + p) : p == TILE_GRIDS ? pl_page_color(PL_PAGE_GRIDS) : C_ACCENT;
+        uint32_t pc = p < PL_USER_PAGES ? pl_view_page_color(PL_USER_FIRST + p)
+                      : p == TILE_GRIDS ? pl_page_color(PL_PAGE_GRIDS)
+                      : p == TILE_PETRI ? pl_page_color(PL_PAGE_PETRI)
+                                        : C_ACCENT;
         menu_tile(u.menu2, x, y, UI_TILE_H, pc, num,
-                  p < PL_USER_PAGES ? pl_user_name(p) : p == TILE_GRIDS ? "GRIDS" : "SCENES", &u.tile2_sub[p]);
+                  p < PL_USER_PAGES ? pl_user_name(p) : p == TILE_GRIDS ? "GRIDS" : p == TILE_PETRI ? "PETRI" : "SCENES",
+                  &u.tile2_sub[p]);
     }
 
     // Страница: сетка 3x5 из 15 карточек ручек (энкодеры 2..16).
@@ -299,6 +305,7 @@ static void build(void)
 
     uc_build(scr);
     ug_build(scr);
+    up_build(scr);
 
     // Всплывашка от BSP поверх всего: тёмная плашка с цветной рамкой страницы.
     u.toast = ui_box(scr, 20, W - 82, W - 40, 68, 0x161820);
@@ -446,6 +453,11 @@ static void draw_bar(const pl_model_t *m)
         nc = pl_page_color(PL_PAGE_GRIDS);
         ui_text(u.bar_left, LV_SYMBOL_LEFT " MENU");
         ui_text(u.bar_edit, "");
+    } else if (u.screen == PETRIS) {
+        snprintf(nav, sizeof nav, "PETRI");
+        nc = pl_page_color(PL_PAGE_PETRI);
+        ui_text(u.bar_left, LV_SYMBOL_LEFT " MENU");
+        ui_text(u.bar_edit, "KNOBS");
     } else if (u.screen == SCENES) {
         snprintf(nav, sizeof nav, "SCENES");
         ui_text(u.bar_left, LV_SYMBOL_LEFT " MENU");
@@ -500,6 +512,7 @@ static void draw_menu2(const pl_model_t *m)
     snprintf(buf, sizeof buf, "%d OF 8 SAVED", n);
     ui_text(u.tile2_sub[PL_USER_PAGES], m->have ? buf : "");
     ui_text(u.tile2_sub[TILE_GRIDS], m->have ? pl_page_summary(PL_PAGE_GRIDS, m->raw[PL_PAGE_GRIDS], buf) : "");
+    ui_text(u.tile2_sub[TILE_PETRI], m->have ? pl_page_summary(PL_PAGE_PETRI, m->raw[PL_PAGE_PETRI], buf) : "");
 }
 
 static void draw_page(const pl_model_t *m)
@@ -764,6 +777,11 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
                 u.page = PL_PAGE_GRIDS;
                 link_page(PL_PAGE_GRIDS);
                 pl_model_page_sent(m, ms);
+            } else if (t == TILE_PETRI) {
+                u.screen = PETRIS; // энкодеры BSP крутят «Чашку», пока не тронут энкодер 1
+                u.page = PL_PAGE_PETRI;
+                link_page(PL_PAGE_PETRI);
+                pl_model_page_sent(m, ms);
             }
         }
     } else if (u.screen == GRIDS) {
@@ -773,6 +791,15 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
             m->goto_page = -1;
         } else {
             ug_input(m, down, x, y, x0, y0, ms);
+        }
+    } else if (u.screen == PETRIS) {
+        if (head && x0 >= EDIT_X0 && x0 < EDIT_X1 + 20) {
+            send_page(m, PL_PAGE_PETRI, ms); // ручки чашки сеткой
+        } else if (head) {
+            u.screen = MENU2;
+            m->goto_page = -1;
+        } else {
+            up_input(down, x, y, x0, y0);
         }
     } else if (u.screen == SCENES) {
         if (head) {
@@ -852,7 +879,8 @@ void ui_start(void)
 void ui_step(pl_model_t *m, int down, int x, int y, uint32_t ms)
 {
     input(m, down, x, y, ms);
-    if ((u.screen == PAGE || u.screen == GRIDS) && !editing() && pl_model_page_resend(m, u.page, ms)) {
+    if ((u.screen == PAGE || u.screen == GRIDS || u.screen == PETRIS) && !editing() &&
+        pl_model_page_resend(m, u.page, ms)) {
         link_page(u.page);
         pl_model_page_sent(m, ms);
     }
@@ -865,6 +893,7 @@ void ui_step(pl_model_t *m, int down, int x, int y, uint32_t ms)
     uc_xy_show(xy_on());
     uc_scenes_show(u.screen == SCENES);
     ug_show(u.screen == GRIDS);
+    up_show(u.screen == PETRIS);
     uc_edit_draw(m, &u.ed);
     if (xy_on()) {
         uc_xy_draw(m, u.page);
@@ -876,6 +905,8 @@ void ui_step(pl_model_t *m, int down, int x, int y, uint32_t ms)
         draw_menu2(m);
     } else if (u.screen == GRIDS) {
         ug_draw(m);
+    } else if (u.screen == PETRIS) {
+        up_draw(m, ms);
     } else {
         uc_scenes_draw(m);
     }
