@@ -96,6 +96,13 @@ void petri_init(petri_t *p, uint32_t seed)
     petri_preset(0, &f, &k);
     petri_set_fk(p, f, k);
     petri_reseed(p);
+    p->appetite = 0.15f;
+    p->mutation = 1;
+    p->flip = 1;
+    static const uint8_t START[PETRI_KINDS] = {3, 1, 2, 1};
+    for (int i = 0; i < PETRI_KINDS; i++) {
+        petri_set_count(p, i, START[i]);
+    }
 }
 
 static inline int clampq(int32_t x)
