@@ -31,5 +31,9 @@ int panel_uart_receive_scene(pl_scene_t *out);
 void panel_uart_custom_due(unsigned mask);
 // Отправить состояние сцен при первой возможности.
 void panel_uart_scene_due(void);
+// Таблица чашки Петри с панели (последняя, без ожидания): 1 если пришла новая.
+int panel_uart_receive_petri(acid_petri_frame_t *out);
+// Собранных таблиц чашки с запуска (для лога).
+uint32_t panel_uart_petri_count(void);
 // Загрузка ядер для панели: последнее значение уходит при следующем обороте задачи связи (новое затирает).
 void panel_uart_send_load(const pl_load_t *l);

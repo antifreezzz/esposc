@@ -33,7 +33,28 @@ enum {
     PL_DEMO = 11,       // панель -> синт: следующая песня демо (без нагрузки; в live синт игнорирует)
     PL_GRIDS_STEP = 12, // синт -> панель: шаг паттерна Grids 0..31, 0xFF - стоит (1 байт)
     PL_SNAPSHOT2 = 13,  // синт -> панель: вторая часть снимка (позиции энкодеров BSP, подхват), сразу за PL_SNAPSHOT
+    PL_PETRI_0 = 14,    // панель -> синт: таблица чашки Петри, части 0..3 (pl_petri_split)
+    PL_PETRI_1 = 15,
+    PL_PETRI_2 = 16,
+    PL_PETRI_3 = 17,
 };
+
+// Таблица чашки (256 x int16, little-endian) в 4 кадрах по 64 точки: номер таблицы + точки; в последнем ещё
+// 6 модуляций, счётчик прыжков и флаги. Нагрузка кадра не больше 255 байт, вся таблица - 512.
+#define PL_PETRI_POINTS 256
+#define PL_PETRI_PART 129      // номер + 64 точки
+#define PL_PETRI_PART_MAX 137  // последняя: + 6 модуляций, прыжки, флаги
+typedef struct {
+    uint8_t seq, have; // номер собираемой таблицы, биты пришедших частей
+    int16_t tab[PL_PETRI_POINTS];
+    int8_t mods[6];
+    uint8_t jumps, flags;
+} pl_petri_rx_t;
+// Нагрузки 4 кадров (типы PL_PETRI_0 + k) и их длины.
+void pl_petri_split(const int16_t tab[PL_PETRI_POINTS], const int8_t mods[6], uint8_t jumps, uint8_t seq,
+                    uint8_t out[4][PL_PETRI_PART_MAX], size_t len[4]);
+// Часть таблицы; 1 - собраны все 4 части одного номера (таблица в r). Часть другого номера начинает сборку заново.
+int pl_petri_collect(pl_petri_rx_t *r, uint8_t type, const uint8_t *payload, size_t len);
 
 enum { PL_DEMO_METAL, PL_DEMO_ACID, PL_DEMO_SONGS }; // номер песни демо в снимке
 

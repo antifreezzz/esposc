@@ -14,7 +14,7 @@
 #define PIN_TX 17
 #define PIN_RX 18
 #define BAUD 1000000
-#define RX_BUF 1024
+#define RX_BUF 2048 // таблица чашки - 4 кадра, 532 байта подряд
 #define TX_BUF 4096
 #define SET_QUEUE 32
 #define KNOB_QUEUE 128
@@ -25,7 +25,8 @@ static const char *TAG = "panel";
 _Static_assert(ACID_PAGES == PL_PAGES && ACID_PAGE_GRIDS == PL_PAGE_GRIDS && ACID_USER_FIRST == PL_USER_FIRST,
                "synth and panel page numbering");
 
-static QueueHandle_t s_set_q, s_knob_q, s_page_q, s_edit_q, s_scene_q;
+static QueueHandle_t s_set_q, s_knob_q, s_page_q, s_edit_q, s_scene_q, s_petri_q;
+static volatile uint32_t s_petri_count;
 static const acid_synth_t *s_synth;
 static const acid_link_t *s_link;
 static const acid_custom_t *s_custom;
@@ -55,6 +56,16 @@ void panel_uart_custom_due(unsigned mask)
 void panel_uart_scene_due(void)
 {
     s_scene_due = 1;
+}
+
+int panel_uart_receive_petri(acid_petri_frame_t *out)
+{
+    return s_petri_q && xQueueReceive(s_petri_q, out, 0) == pdTRUE;
+}
+
+uint32_t panel_uart_petri_count(void)
+{
+    return s_petri_count;
 }
 
 int panel_uart_receive(pl_set_t *out)
@@ -157,6 +168,8 @@ static void link_task(void *arg)
 {
     (void)arg;
     static pl_rx_t rx;
+    static pl_petri_rx_t prx;
+    static acid_petri_frame_t pf;
     pl_rx_init(&rx);
     uint8_t buf[64];
     for (;;) {
@@ -177,6 +190,14 @@ static void link_task(void *arg)
                     xQueueSend(s_edit_q, p, 0);
                 } else if (type == PL_SCENE && len == sizeof(pl_scene_t)) {
                     xQueueSend(s_scene_q, p, 0);
+                } else if (type >= PL_PETRI_0 && type <= PL_PETRI_3) {
+                    if (pl_petri_collect(&prx, type, p, len)) {
+                        memcpy(pf.tab, prx.tab, sizeof pf.tab);
+                        memcpy(pf.mods, prx.mods, sizeof pf.mods);
+                        pf.jumps = prx.jumps;
+                        xQueueOverwrite(s_petri_q, &pf); // синту нужна только последняя
+                        s_petri_count++;
+                    }
                 } else if (type == PL_DEMO) {
                     s_demo_due = 1;
                 } else if (type == PL_HELLO) {
@@ -248,6 +269,7 @@ esp_err_t panel_uart_start(const acid_synth_t *s, const acid_link_t *l, const ac
     s_page_q = xQueueCreate(4, 1);
     s_edit_q = xQueueCreate(8, sizeof(pl_custom_edit_t));
     s_scene_q = xQueueCreate(4, sizeof(pl_scene_t));
+    s_petri_q = xQueueCreate(1, sizeof(acid_petri_frame_t));
     if (!s_set_q || !s_knob_q || !s_page_q || !s_edit_q || !s_scene_q) {
         return ESP_ERR_NO_MEM;
     }
