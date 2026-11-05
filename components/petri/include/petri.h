@@ -13,6 +13,11 @@ enum { PETRI_GRAZER, PETRI_SEEDER, PETRI_MUTAGEN, PETRI_VORTEX, PETRI_KINDS };
 #define PETRI_VR 9      // радиус вихря
 #define PETRI_VP (2 * PETRI_VR + 1)
 
+#define PETRI_TABLE 256 // точек таблицы волны
+#define PETRI_MODS 6    // модуляции: pop, dk, vort, energy, jump, dens
+enum { PETRI_HEIGHT, PETRI_EDGE, PETRI_FOLD, PETRI_VOID, PETRI_MODES };
+enum { PETRI_CIRCLE, PETRI_EIGHT, PETRI_LISS32, PETRI_ROSE, PETRI_EPI, PETRI_SHAPES };
+
 typedef struct {
     float x, y, h, energy; // клетки, курс в радианах
     uint8_t kind;
@@ -36,6 +41,13 @@ typedef struct {
     uint8_t jumps;   // счётчик прыжков (растёт по кругу)
     int8_t flip;
     float patch[2][PETRI_VP * PETRI_VP]; // повёрнутый патч вихря (u, v)
+    // Орбита и рельеф.
+    uint8_t mode, shape;
+    float contrast; // 0..1, c = 40^x
+    float radius;   // 2..48 клеток
+    float drift;    // скорость дрейфа центра, клеток в секунду
+    uint8_t follow; // центр едет за первым пожирателем
+    float cx, cy, ang;
 } petri_t;
 
 uint32_t petri_rand(uint32_t *s); // xorshift32
@@ -57,5 +69,12 @@ float petri_v(const petri_t *p, float x, float y);
 // Численность типа: зажать в максимум, лишних убрать с конца, недостающих родить в случайном месте.
 void petri_set_count(petri_t *p, int kind, int n);
 int petri_count(const petri_t *p, int kind);
-// Кадр чашки (20 Гц): steps шагов реакции, потом жители и затухание Δk.
+// Кадр чашки (20 Гц): steps шагов реакции, жители, затухание Δk, сдвиг центра орбиты на 50 мс.
 void petri_frame(petri_t *p, int steps);
+
+// Точка орбиты для угла a (0..2pi), без переноса через край.
+void petri_orbit_point(const petri_t *p, float a, float *x, float *y);
+// Центр орбиты: дрейф по эллипсу вокруг середины чашки или за первым пожирателем (постоянная 0.33 с).
+void petri_move_center(petri_t *p, float dt);
+// Один оборот орбиты: таблица рельефа без постоянной составляющей и модуляции ±127 = ±1.
+void petri_capture(const petri_t *p, int16_t table[PETRI_TABLE], int8_t mods[PETRI_MODS]);

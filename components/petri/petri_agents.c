@@ -265,4 +265,5 @@ void petri_frame(petri_t *p, int steps)
     } else {
         p->immigrant_t = 0;
     }
+    petri_move_center(p, 0.05f);
 }
