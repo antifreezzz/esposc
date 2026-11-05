@@ -377,10 +377,10 @@ static void synth_task(void *arg)
             int64_t slot1_mean_us = blocks ? s_slot1_sum_us / (blocks * (BLOCK / CHUNK)) : 0;
             if (u != last_underruns || worst_us > BLOCK_US * 7 / 10) {
                 ESP_LOGW(TAG, "underruns %lu (+%lu), xfer errors %lu, render worst %lld mean %lld us of %d, "
-                         "core 0 worst %lld mean %lld us of %d",
+                         "core 0 worst %lld mean %lld us of %d, petri %lu",
                          (unsigned long)u, (unsigned long)(u - last_underruns),
                          (unsigned long)audio_out_transfer_errors(), worst_us, mean_us, BLOCK_US,
-                         s_slot1_worst_us, slot1_mean_us, CHUNK * 1000000 / SR);
+                         s_slot1_worst_us, slot1_mean_us, CHUNK * 1000000 / SR, (unsigned long)panel_uart_petri_count());
             } else {
                 ESP_LOGI(TAG, "ok, render worst %lld mean %lld us of %d, core 0 worst %lld mean %lld us of %d, petri %lu",
                          worst_us, mean_us, BLOCK_US, s_slot1_worst_us, slot1_mean_us, CHUNK * 1000000 / SR,
