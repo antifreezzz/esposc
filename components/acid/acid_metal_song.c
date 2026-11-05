@@ -136,6 +136,7 @@ static const acid_demo_knob_t k_intro[] = {
     {2, 3, 127, 127, 0}, {2, 4, 64, 64, 0},
     GUITAR,
     {7, 5, 40, 40, 0},   {7, 6, 90, 90, 0},   {7, 14, 0, 0, 0},   {8, 7, 3, 3, 0},     {9, 2, 0, 0, 0},
+    {18, 15, 0, 0, 0}, // фриз чашки выкл
 };
 // 2 Рифф А: удар на входе, FM-уколы справа, дилэй в центре на уколах.
 static const acid_demo_knob_t k_riff_a[] = {
@@ -190,17 +191,19 @@ static const acid_demo_knob_t k_drop[] = {
 // Перегруз микса и ручки ударки ползут.
 static const acid_demo_knob_t k_peak[] = {
     {9, 2, 0, 0, 0},     {0, 3, 80, 100, 0},  {1, 3, 70, 100, 0}, {1, 12, 54, 90, 0}, {2, 3, 127, 70, 0},
-    {2, 4, 64, 76, 0},   {16, 2, 25, 25, 0}, {17, 2, 7, 7, 0},   {8, 14, 70, 70, 0},
+    {2, 4, 64, 76, 0},   {16, 2, 26, 26, 0}, {17, 2, 7, 7, 0},   {8, 14, 70, 70, 0},
 };
 // 10 Рифф А снова: дилэй уколов случайно по стерео.
 static const acid_demo_knob_t k_riff_a2[] = {
-    {16, 2, 25, 25, 0}, {17, 2, 25, 25, 0}, {8, 15, 0, 0, 0}, {0, 10, 0, 0, 0}, {0, 3, 60, 60, 0},
+    {16, 2, 26, 26, 0}, {17, 2, 26, 26, 0}, {8, 15, 0, 0, 0}, {0, 10, 0, 0, 0}, {0, 3, 60, 60, 0},
     {8, 11, 2, 2, 0},   {8, 5, 70, 70, 0},  {8, 7, 1, 1, 0},  {0, 5, 70, 70, 0},
 };
 // 11 Аутро: всё закрывается.
 static const acid_demo_knob_t k_outro[] = {
     {0, 12, 64, 15, 0}, {8, 5, 70, 0, 0}, {8, 6, 0, 0, 0}, {6, 4, 30, 10, 0}, {2, 3, 127, 127, 0},
     {2, 4, 64, 64, 0},  {1, 3, 70, 70, 0}, {1, 12, 54, 54, 0}, {7, 14, 0, 0, 0},
+    // Гул аутро - чашка Петри (BSP 18): Фолд по розе, вихрей больше, под конец фриз.
+    {7, 3, 70, 40, 0},  {7, 8, 110, 110, 0}, {7, 9, 2, 2, 0}, {7, 11, 3, 3, 0}, {18, 9, 1, 3, 0}, {18, 15, 0, 127, 0},
 };
 // Сбивки: модели и звук перкуссии (страницы 3 томы, 4 рим, 5 ковбелл). За круг звучат все пять моделей.
 static const acid_demo_knob_t k_fill_a[] = { // аналоговые томы пониже, ковбелл на квадратах
@@ -221,6 +224,7 @@ static const uint8_t pool_drone[] = {7, 14, 13};   // string machine, wavetable,
 static const uint8_t pool_stab[] = {11, 10, 4};    // FM 2-op, waveshaping, DX7
 static const uint8_t pool_voice[] = {16, 12, 2};   // speech, granular formant, phase distortion
 static const uint8_t pool_pluck[] = {21, 20, 6};   // modal, string, wave terrain
+static const uint8_t pool_petri[] = {25};          // чашка Петри (без панели - зашитые таблицы)
 static const uint8_t pool_riser[] = {18, 17, 19};  // шум с фильтром, swarm, particle
 static const uint8_t pool_chord[] = {15, 7, 9};    // аккорды, string machine, VA две волны
 
@@ -242,7 +246,7 @@ static const acid_demo_part_t parts[] = {
     {12, riff_c, chord, dr_c, KN(k_peak), POOL(pool_chord), 1, CR},
     {1, riff_b, NULL, dr_fill_d, KN(k_fill_d), NULL, 0, 0, 0},
     {8, riff_a, stab_a, dr_a, KN(k_riff_a2), POOL(pool_stab), 1, CR},
-    {4, outro_long, drone, dr_outro, KN(k_outro), POOL(pool_drone), 0, CR},
+    {4, outro_long, drone, dr_outro, KN(k_outro), POOL(pool_petri), 0, CR},
 };
 
 const acid_demo_song_t acid_metal_song = {parts, (int)(sizeof parts / sizeof parts[0]), 25};

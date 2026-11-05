@@ -4,6 +4,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "link.h"
+#include "petri_bench.h"
+#include "petri_task.h"
 #include "ui.h"
 
 #define STEP_MS 10 // опрос тача и UART
@@ -16,6 +18,11 @@ void app_main(void)
     ESP_ERROR_CHECK(link_start());
     pl_model_init(&s_model);
     ui_start();
+#ifdef PETRI_BENCH
+    petri_bench_start();
+#else
+    petri_task_start(&s_model);
+#endif
     ESP_LOGI("panel", "ready");
     TickType_t wake = xTaskGetTickCount();
     int64_t step_us = 0, step_max = 0;

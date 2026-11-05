@@ -50,6 +50,12 @@ void uc_xy_input(pl_model_t *m, int page, int ev, int down, int x, int y, int x0
 // Палец ушёл с пэда не отпусканием (смена вида или страницы): вернуть оси, если HOLD выкл.
 void uc_xy_release(pl_model_t *m);
 
+// ui_petri.c: экран чашки Петри (сетка, орбита, жители; тап - капля). Ввод - без лока LVGL.
+void up_build(lv_obj_t *scr);
+void up_show(int on);
+void up_draw(const pl_model_t *m, uint32_t ms);
+void up_input(int down, int x, int y, int x0, int y0);
+
 // ui_grids.c: экран Grids. Ввод - без лока LVGL, каждый опрос тача.
 void ug_build(lv_obj_t *scr);
 void ug_show(int on);

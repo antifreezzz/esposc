@@ -17,3 +17,5 @@ void link_custom_edit(const pl_custom_edit_t *e);
 void link_scene(int op, int n, int bars);
 // Тап по статусу в демо: синту - следующая песня демо.
 void link_demo(void);
+// Таблица чашки Петри синту: 4 кадра (из задачи чашки, ядро 1).
+void link_petri(const uint8_t out[4][PL_PETRI_PART_MAX], const size_t len[4]);

@@ -59,6 +59,9 @@ static pl_load_acc_t s_load; // период индикатора загрузк
 #ifdef ESPOSC_STRESS_LAYERS
 #define DEMO_SONGS {&acid_stress_layers_song} // слои не влезают целиком: здесь проверяется защита, она включена
 #define GUARD 1
+#elif defined(ESPOSC_STRESS_PETRI)
+#define DEMO_SONGS {&acid_stress_petri_song}
+#define GUARD 0
 #else
 #define DEMO_SONGS {&acid_stress_song}
 #define GUARD 0
@@ -168,6 +171,10 @@ static void render_block(float *l, float *r)
             }
         }
         custom_and_scenes();
+        acid_petri_frame_t pf;
+        if (panel_uart_receive_petri(&pf)) {
+            acid_synth_petri(&s_synth, &pf); // оба ядра свободны: ящики голосов чашки
+        }
         to_panel(acid_link_step(&s_link, &s_synth, &lev), &lev); // цели макро: не больше 4 ручек за кусок
         if (s_link.snapshot_due) {
             s_link.snapshot_due = 0; // сменился тип синта: у типа своя память, страница новая целиком
@@ -373,13 +380,14 @@ static void synth_task(void *arg)
             int64_t slot1_mean_us = blocks ? s_slot1_sum_us / (blocks * (BLOCK / CHUNK)) : 0;
             if (u != last_underruns || worst_us > BLOCK_US * 7 / 10) {
                 ESP_LOGW(TAG, "underruns %lu (+%lu), xfer errors %lu, render worst %lld mean %lld us of %d, "
-                         "core 0 worst %lld mean %lld us of %d",
+                         "core 0 worst %lld mean %lld us of %d, petri %lu",
                          (unsigned long)u, (unsigned long)(u - last_underruns),
                          (unsigned long)audio_out_transfer_errors(), worst_us, mean_us, BLOCK_US,
-                         s_slot1_worst_us, slot1_mean_us, CHUNK * 1000000 / SR);
+                         s_slot1_worst_us, slot1_mean_us, CHUNK * 1000000 / SR, (unsigned long)panel_uart_petri_count());
             } else {
-                ESP_LOGI(TAG, "ok, render worst %lld mean %lld us of %d, core 0 worst %lld mean %lld us of %d",
-                         worst_us, mean_us, BLOCK_US, s_slot1_worst_us, slot1_mean_us, CHUNK * 1000000 / SR);
+                ESP_LOGI(TAG, "ok, render worst %lld mean %lld us of %d, core 0 worst %lld mean %lld us of %d, petri %lu",
+                         worst_us, mean_us, BLOCK_US, s_slot1_worst_us, slot1_mean_us, CHUNK * 1000000 / SR,
+                         (unsigned long)panel_uart_petri_count());
             }
 #ifdef ACID_PROFILE
             if (blocks) {

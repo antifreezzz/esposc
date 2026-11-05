@@ -41,6 +41,10 @@ static void apply_snapshot(pl_model_t *m, const pl_snapshot_t *s)
     m->demo = s->demo;
     m->bsp_page = s->bsp_page;
     memcpy(m->raw, s->raw, sizeof m->raw);
+}
+
+static void apply_snapshot2(pl_model_t *m, const pl_snapshot2_t *s)
+{
     memcpy(m->bsp_pos, s->bsp_pos, sizeof m->bsp_pos);
     for (int i = 0; i < PL_PAGES * PL_KNOBS; i++) {
         m->held[i / PL_KNOBS][i % PL_KNOBS] = (s->held[i / 8] >> (i % 8)) & 1;
@@ -87,6 +91,10 @@ void pl_model_apply(pl_model_t *m, uint8_t type, const uint8_t *payload, size_t 
         pl_snapshot_t s;
         memcpy(&s, payload, sizeof s);
         apply_snapshot(m, &s);
+    } else if (type == PL_SNAPSHOT2 && len == sizeof(pl_snapshot2_t)) {
+        pl_snapshot2_t s;
+        memcpy(&s, payload, sizeof s);
+        apply_snapshot2(m, &s);
     } else if (type == PL_KNOB && len == sizeof(pl_knob_t)) {
         pl_knob_t k;
         memcpy(&k, payload, sizeof k);

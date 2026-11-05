@@ -43,6 +43,12 @@ void pl_turn_begin(pl_turn_t *t, int x, int y, int v, int lo, int hi)
     t->v = v;
     t->lo = lo;
     t->hi = hi;
+    t->skip = -1;
+}
+
+void pl_turn_skip(pl_turn_t *t, int v)
+{
+    t->skip = v;
 }
 
 int pl_turn_move(pl_turn_t *t, int x, int y)
@@ -63,15 +69,17 @@ int pl_turn_move(pl_turn_t *t, int x, int y)
     t->acc += d * (float)(t->hi - t->lo + 1) / 360.0f;
     while (t->acc >= 1.0f) {
         t->acc -= 1.0f;
-        if (++t->v > t->hi) {
-            t->v = t->hi;
+        t->v += 1 + (t->v + 1 == t->skip);
+        if (t->v > t->hi) {
+            t->v = t->hi - (t->hi == t->skip);
             t->acc = 0.0f; // упор: обратный ход сразу ведёт назад
         }
     }
     while (t->acc <= -1.0f) {
         t->acc += 1.0f;
-        if (--t->v < t->lo) {
-            t->v = t->lo;
+        t->v -= 1 + (t->v - 1 == t->skip);
+        if (t->v < t->lo) {
+            t->v = t->lo + (t->lo == t->skip);
             t->acc = 0.0f;
         }
     }

@@ -7,12 +7,12 @@
 #define TYPE_ENC 1
 #define PAGE_SYNTH1 6
 
-static const uint8_t MAGIC[4] = {'S', 'C', 'N', 3}; // 3: 13 страниц (Grids)
+static const uint8_t MAGIC[4] = {'S', 'C', 'N', 4}; // 3: 13 страниц (Grids), 4: 14 (чашка Петри)
 #define OLD_BLOB(pages) (4 + 1 + ACID_SCENES * (pages) * ACID_KNOBS + sizeof(((acid_scene_t *)0)->user))
 // Старые версии: 1 - 10 страниц (без слоёв), 2 - 12 (без Grids).
 static const struct {
     uint8_t ver, pages;
-} OLD[] = {{1, 10}, {2, 12}};
+} OLD[] = {{1, 10}, {2, 12}, {3, 13}};
 #define UNSET 0xFF // ручка в сцене не задана (старая сцена без слоёв или Grids): вызов её не трогает
 
 void acid_scene_init(acid_scene_t *sc)
@@ -241,6 +241,14 @@ static int import_old(acid_scene_t *sc, const uint8_t *b, int pages, int v1)
         memcpy(sc->knob[n], b + 5 + n * pages * ACID_KNOBS, (size_t)pages * ACID_KNOBS);
     }
     memcpy(sc->user, b + 5 + ACID_SCENES * pages * ACID_KNOBS, sizeof sc->user);
+    for (int n = 0; n < ACID_SCENES; n++) {
+        for (int k = 0; k < ACID_SLOTS; k++) {
+            uint8_t *t = &sc->knob[n][ACID_PAGE_LAYER1 + k][1];
+            if (*t == 25) {
+                *t = ACID_LAYER_OFF; // до PETRI 25 был «выкл» слоя, теперь это PETRI, которого у слоя нет
+            }
+        }
+    }
     return 1;
 }
 

@@ -15,17 +15,22 @@
 #include "acid_midi.h"
 #include "acid_osc.h"
 #include "acid_perc.h"
+#include "acid_petri.h"
 #include "acid_plaits.h"
 #include "acid_tonal.h"
 
-#define ACID_TYPES (1 + ACID_PLAITS_MODELS) // 0 - наш 303, 1..24 - модели Plaits
-#define ACID_LAYER_OFF ACID_TYPES          // тип слоя «выкл» (у синтов его нет)
+#define ACID_TYPE_PETRI (1 + ACID_PLAITS_MODELS) // 25 - чашка Петри (у слоя нет)
+#define ACID_TYPES (2 + ACID_PLAITS_MODELS)      // 0 - наш 303, 1..24 - модели Plaits, 25 - чашка Петри
+#define ACID_LAYER_OFF ACID_TYPES                // тип слоя «выкл» (у синтов его нет)
 #define ACID_KNOBS 16
-// Страницы ручек внутри: 0-9 штатные, 10-11 слои синтов, 12 Grids; свои страницы - следом (acid_custom.h).
-// На BSP номера другие: свои 10-15, слои 16-17, у Grids номера нет - перевод только на границе (энкодер 1).
-#define ACID_PAGES 13
+// Страницы ручек внутри: 0-9 штатные, 10-11 слои синтов, 12 Grids, 13 чашка Петри; свои страницы - следом
+// (acid_custom.h). На BSP номера другие: свои 10-15, слои 16-17, чашка 18, у Grids номера нет - перевод только
+// на границе (энкодер 1).
+#define ACID_PAGES 14
 #define ACID_PAGE_LAYER1 10
 #define ACID_PAGE_GRIDS 12
+#define ACID_PAGE_PETRI 13
+#define ACID_BSP_PETRI 18
 #define ACID_BSP_USER_FIRST 10
 #define ACID_BSP_LAYER1 16
 
@@ -81,6 +86,11 @@ typedef struct {
     int accented;      // текущая нота с акцентом
     float p_accent;    // насколько обычная нота тише акцентной, 0..0.75
     int idle;          // блоков тишины подряд: молчащий Plaits не считаем
+    // Чашка Петри: голоса у синтов (у слоёв NULL - слой не бывает PETRI).
+    acid_petri_t *pet;
+    float pet_env;                  // глубина огибающей фильтра 0..1 (до 6 октав)
+    float pet_cut_oct;              // log2 среза: считается при смене ручки, не в рендере
+    float pet_mod[ACID_PETRI_MODS]; // модуляции звучащей таблицы, сглаженные
 } acid_slot_t;
 
 #define ACID_SLOTS 2
@@ -96,6 +106,8 @@ typedef struct {
     // Оба слоя считаются на ядре 0 с синтом 2 (там запас): слой 1 - в его буфере, слой 0 - своим буфером,
     // сводится в шину синта 1. Тип ACID_LAYER_OFF не считается.
     acid_slot_t layer[ACID_SLOTS];
+    acid_petri_t petri[ACID_SLOTS]; // голоса чашки Петри синтов 1 и 2
+    float petri_depth[3];           // маршруты: пожиратели -> срез, мутаген -> резонанс, вихрь и прыжок -> огибающая
     float layer_gain[ACID_SLOTS]; // FX энкодеры 13-14
     int layer_half;    // FX энкодер 15 (64 и выше): слои на половинной частоте
     acid_kick_t kick;
@@ -210,5 +222,8 @@ void acid_synth_notes_off(acid_synth_t *s);
 void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev);
 // Ручка любой страницы как CC энкодера на ней, страницу BSP не меняет. enc с 0 (0 - энкодер 1, страница; игнор).
 void acid_synth_set_knob(acid_synth_t *s, int page, int enc, int v);
+// Таблица чашки Петри (с панели) обоим синтам: в фазе событий, как MIDI. Синт типа PETRI возьмёт её после
+// текущего кроссфейда.
+void acid_synth_petri(acid_synth_t *s, const acid_petri_frame_t *f);
 // Действующее значение ручки 0..127 (как на экране BSP); нетронутая - умолчание. Вне диапазона - 0.
 int acid_synth_knob(const acid_synth_t *s, int page, int enc);

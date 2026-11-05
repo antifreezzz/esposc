@@ -1111,6 +1111,28 @@ TEST(test_live_tonal_held_modes)
     }
 }
 
+// PETRI без слайда: в режимах «глайд» и «прыжок» зажатый аккорд прыгает на новый шаг весь, «держать» - стоит.
+TEST(test_live_tonal_moves_petri_chord)
+{
+    for (int mode = 0; mode <= 2; mode++) {
+        tonal_setup(mode);
+        acid_synth_set_knob(&s, 6, 1, ACID_TYPE_PETRI);
+        rms(960);
+        clk(1);
+        on(BASS, 45, 100);
+        on(BASS, 52, 100);
+        clk(95);
+        clk(1); // граница, аккорд держится
+        int shift = mode == 0 ? 0 : 5;
+        for (int k = 0; k < ACID_PETRI_VOICES; k++) {
+            const acid_petri_voice_t *v = &s.petri[0].v[k];
+            if (v->gate) {
+                CHECK_NEAR(v->hz, note_hz(v->note + shift), 0.5f);
+            }
+        }
+    }
+}
+
 TEST(test_live_tonal_early_note)
 {
     tonal_setup(0);
@@ -1415,6 +1437,7 @@ int main(void)
     RUN(test_live_tonal_page);
     RUN(test_live_tonal_shifts_next_bar);
     RUN(test_live_tonal_held_modes);
+    RUN(test_live_tonal_moves_petri_chord);
     RUN(test_live_tonal_early_note);
     RUN(test_live_tonal_release_no_stuck);
     RUN(test_live_tonal_target);

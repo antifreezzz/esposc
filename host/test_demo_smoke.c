@@ -20,6 +20,8 @@ typedef struct {
     int layer[2], layer_vol; // слои синтов звучали, их громкость крутили
     int layer_half;          // слой звучал на половинной частоте (FX 15)
     int grids, grids_fill, grids_ride; // автобарабаны играли, у них была сбивка, рука времени на райде
+    int petri, petri_knob, petri_freeze; // PETRI звучал, ручки «Чашки» крутили, фриз включали
+    double petri_rms, other_rms;          // самое громкое окно с PETRI и без него
     long silent_windows, wide_windows;
     int finite;
 } seen_t;
@@ -63,7 +65,17 @@ static void play_cycle(seen_t *z, int c)
             sd += (double)(l[i] - r[i]) * (l[i] - r[i]);
             ss += (double)(l[i] + r[i]) * (l[i] + r[i]);
         }
+        int pet = 0;
+        for (int k = 0; k < 2; k++) {
+            pet |= s.slot[k].type == ACID_TYPE_PETRI && acid_petri_active(&s.petri[k]);
+            z->petri_freeze |= s.petri[k].m > 0.5f;
+        }
+        z->petri |= pet;
+        z->petri_knob |= s.raw[ACID_PAGE_PETRI][5] != 3 || s.raw[ACID_PAGE_PETRI][8] != 1; // пожиратели, вихри
         if ((w += CH) >= WIN) {
+            double wr = sqrt(sl / (2.0 * w));
+            double *top = pet ? &z->petri_rms : &z->other_rms;
+            *top = wr > *top ? wr : *top;
             z->silent_windows += sqrt(sl / (2.0 * w)) < 1e-4;
             z->wide_windows += sqrt(sd) > 0.1 * sqrt(ss);
             sl = sd = ss = 0.0;
@@ -173,6 +185,11 @@ static void coverage(const acid_demo_song_t *song)
         CHECK(z.tonal_step && z.scale_chrom && z.scale_mode);
         CHECK(z.layer[0] && z.layer[1] && z.layer_vol && z.layer_half);
         CHECK(z.grids && z.grids_fill);
+        CHECK(z.petri);
+        CHECK(z.petri_knob);
+        CHECK(z.petri_freeze);
+        CHECK(z.petri_rms <= z.other_rms); // чашка не громче остального трека
+        printf("  cycle %d: petri rms %.3f, loudest other %.3f\n", c, z.petri_rms, z.other_rms);
         CHECK(song != &acid_metal_song || z.grids_ride); // райд - в метале, в акиде хэт вперемешку
         printf("  cycle %d: %d models\n", c, count(z.models, ACID_TYPES, 1));
     }

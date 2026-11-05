@@ -14,7 +14,7 @@
 #define PIN_TX 17
 #define PIN_RX 18
 #define BAUD 1000000
-#define RX_BUF 1024
+#define RX_BUF 2048 // таблица чашки - 4 кадра, 532 байта подряд
 #define TX_BUF 4096
 #define SET_QUEUE 32
 #define KNOB_QUEUE 128
@@ -22,10 +22,14 @@
 
 static const char *TAG = "panel";
 
+_Static_assert(ACID_PAGE_PETRI == PL_PAGE_PETRI && ACID_BSP_PETRI == 18 && ACID_TYPE_PETRI == PL_TYPE_PETRI &&
+                   ACID_LAYER_OFF == PL_LAYER_OFF && ACID_PETRI_TABLE == PL_PETRI_POINTS,
+               "petri numbers shared by synth and panel (pl_proto.h, pl_page_bsp)");
 _Static_assert(ACID_PAGES == PL_PAGES && ACID_PAGE_GRIDS == PL_PAGE_GRIDS && ACID_USER_FIRST == PL_USER_FIRST,
                "synth and panel page numbering");
 
-static QueueHandle_t s_set_q, s_knob_q, s_page_q, s_edit_q, s_scene_q;
+static QueueHandle_t s_set_q, s_knob_q, s_page_q, s_edit_q, s_scene_q, s_petri_q;
+static volatile uint32_t s_petri_count;
 static const acid_synth_t *s_synth;
 static const acid_link_t *s_link;
 static const acid_custom_t *s_custom;
@@ -55,6 +59,16 @@ void panel_uart_custom_due(unsigned mask)
 void panel_uart_scene_due(void)
 {
     s_scene_due = 1;
+}
+
+int panel_uart_receive_petri(acid_petri_frame_t *out)
+{
+    return s_petri_q && xQueueReceive(s_petri_q, out, 0) == pdTRUE;
+}
+
+uint32_t panel_uart_petri_count(void)
+{
+    return s_petri_count;
 }
 
 int panel_uart_receive(pl_set_t *out)
@@ -112,7 +126,9 @@ static void send(uint8_t type, const void *p, size_t n)
 static void send_snapshot(void)
 {
     static pl_snapshot_t snap;
+    static pl_snapshot2_t snap2;
     memset(&snap, 0, sizeof snap);
+    memset(&snap2, 0, sizeof snap2);
     snap.mode = *s_demo_on ? 0 : 1;
     snap.demo = (uint8_t)*s_demo_song;
     snap.bsp_page = (uint8_t)acid_link_page(s_link, s_synth);
@@ -120,11 +136,12 @@ static void send_snapshot(void)
         for (int e = 0; e < PL_KNOBS; e++) {
             snap.raw[p][e] = (uint8_t)acid_synth_knob(s_synth, p, e);
             int i = p * PL_KNOBS + e;
-            snap.held[i / 8] |= (uint8_t)((s_link->held[p][e] ? 1 : 0) << (i % 8));
+            snap2.held[i / 8] |= (uint8_t)((s_link->held[p][e] ? 1 : 0) << (i % 8));
         }
     }
-    memcpy(snap.bsp_pos, s_link->bsp_pos, sizeof snap.bsp_pos);
+    memcpy(snap2.bsp_pos, s_link->bsp_pos, sizeof snap2.bsp_pos);
     send(PL_SNAPSHOT, &snap, sizeof snap);
+    send(PL_SNAPSHOT2, &snap2, sizeof snap2); // весь снимок с 14 страницами не влезает в один кадр
 }
 
 static void send_custom(int up)
@@ -154,6 +171,8 @@ static void link_task(void *arg)
 {
     (void)arg;
     static pl_rx_t rx;
+    static pl_petri_rx_t prx;
+    static acid_petri_frame_t pf;
     pl_rx_init(&rx);
     uint8_t buf[64];
     for (;;) {
@@ -174,6 +193,14 @@ static void link_task(void *arg)
                     xQueueSend(s_edit_q, p, 0);
                 } else if (type == PL_SCENE && len == sizeof(pl_scene_t)) {
                     xQueueSend(s_scene_q, p, 0);
+                } else if (type >= PL_PETRI_0 && type <= PL_PETRI_3) {
+                    if (pl_petri_collect(&prx, type, p, len)) {
+                        memcpy(pf.tab, prx.tab, sizeof pf.tab);
+                        memcpy(pf.mods, prx.mods, sizeof pf.mods);
+                        pf.jumps = prx.jumps;
+                        xQueueOverwrite(s_petri_q, &pf); // синту нужна только последняя
+                        s_petri_count++;
+                    }
                 } else if (type == PL_DEMO) {
                     s_demo_due = 1;
                 } else if (type == PL_HELLO) {
@@ -245,7 +272,8 @@ esp_err_t panel_uart_start(const acid_synth_t *s, const acid_link_t *l, const ac
     s_page_q = xQueueCreate(4, 1);
     s_edit_q = xQueueCreate(8, sizeof(pl_custom_edit_t));
     s_scene_q = xQueueCreate(4, sizeof(pl_scene_t));
-    if (!s_set_q || !s_knob_q || !s_page_q || !s_edit_q || !s_scene_q) {
+    s_petri_q = xQueueCreate(1, sizeof(acid_petri_frame_t));
+    if (!s_set_q || !s_knob_q || !s_page_q || !s_edit_q || !s_scene_q || !s_petri_q) {
         return ESP_ERR_NO_MEM;
     }
     // Ниже slot1 и USB: связь с экраном подождёт, звук нет.

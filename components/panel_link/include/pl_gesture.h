@@ -19,10 +19,12 @@ typedef struct {
     float acc;      // накопленные доли шага
     int lost;       // палец у центра: опору возьмём заново
     int v, lo, hi;
+    int skip; // значение, которое крутилка перескакивает; -1 - нет
 } pl_turn_t;
 
 void pl_turn_begin(pl_turn_t *t, int x, int y, int v, int lo, int hi);
 int pl_turn_move(pl_turn_t *t, int x, int y); // новое значение
+void pl_turn_skip(pl_turn_t *t, int v);        // после begin: значение v крутилка перескакивает
 
 enum { PL_PRESS_NONE, PL_PRESS_TAP, PL_PRESS_HOLD, PL_PRESS_RELEASE, PL_PRESS_END };
 

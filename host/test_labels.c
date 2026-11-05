@@ -15,7 +15,7 @@ static int empty(int page, int enc, int type)
     case 6:
     case 7: return type == 0 && enc >= 10 && enc <= 12;
     case 10:
-    case 11: return type == 25 ? enc >= 2 : type == 0 && enc >= 10 && enc <= 12; // слой: как синт, OFF - пусто
+    case 11: return type == 26 ? enc >= 2 : type == 0 && enc >= 10 && enc <= 12; // слой: как синт, OFF (26) - пусто
     case 8: return enc >= 15;
     case 12: return enc >= 13;
     default: return 0;
@@ -27,7 +27,7 @@ TEST(test_labels_cover_synth)
     uint8_t raw[16] = {0};
     for (int page = 0; page < PL_PAGES; page++) {
         CHECK(pl_page_name(page) != NULL);
-        int variants = (page == 6 || page == 7) ? 25 : (page == 10 || page == 11) ? 26 : (page >= 3 && page <= 5) ? 5 : 1;
+        int variants = (page == 6 || page == 7) ? 26 : (page == 10 || page == 11) ? 27 : (page >= 3 && page <= 5) ? 5 : 1;
         for (int t = 0; t < variants; t++) {
             raw[1] = (uint8_t)t;
             CHECK(pl_knob_label(page, 0, raw) == NULL); // энкодер 1 - страница, на круге его нет
@@ -67,7 +67,7 @@ TEST(test_ranges)
     range(9, 6, 0, 0, 7);   // лад
     range(9, 7, 0, 0, 11);  // тоника
     range(9, 8, 0, 52, 76); // шаг 1
-    range(6, 1, 0, 0, 24);  // тип синта
+    range(6, 1, 0, 0, 25);  // тип синта (25 - PETRI)
     range(6, 7, 0, 0, 1);   // wave 303
     range(6, 9, 0, 52, 76); // transpose 303
     range(7, 8, 11, 52, 76); // transpose Plaits
@@ -148,7 +148,7 @@ TEST(test_colors)
     uint8_t raw[16] = {0};
     for (int p = 0; p < 10; p++) {
         CHECK(pl_page_color(p) != 0);
-        int variants = (p == 6 || p == 7) ? 25 : (p >= 3 && p <= 5) ? 5 : 1;
+        int variants = (p == 6 || p == 7) ? 26 : (p >= 3 && p <= 5) ? 5 : 1;
         for (int t = 0; t < variants; t++) {
             raw[1] = (uint8_t)t;
             CHECK(pl_knob_color(p, 0, raw) == 0);
@@ -247,17 +247,19 @@ TEST(test_layer_labels)
     CHECK(strcmp(pl_knob_label(10, 2, raw), "CUTOFF") == 0);
     raw[1] = 21;
     CHECK(strcmp(pl_knob_label(11, 2, raw), "HARMONICS") == 0);
-    raw[1] = 25;
+    raw[1] = 26;
     CHECK(strcmp(pl_knob_label(10, 1, raw), "TYPE") == 0);
     CHECK(pl_knob_label(10, 2, raw) == NULL);
     char buf[12];
-    CHECK(strcmp(pl_value_text(10, 1, 25, raw, buf), "OFF") == 0);
-    CHECK(strcmp(pl_value_text(6, 1, 25, raw, buf), "OFF") != 0); // у синта OFF нет
+    CHECK(strcmp(pl_value_text(10, 1, 26, raw, buf), "OFF") == 0);
+    CHECK(strcmp(pl_value_text(6, 1, 26, raw, buf), "OFF") != 0); // у синта OFF нет
     int lo, hi;
     pl_knob_range(10, 1, raw, &lo, &hi);
-    CHECK(lo == 0 && hi == 25);
+    CHECK(lo == 0 && hi == 26);
     pl_knob_range(6, 1, raw, &lo, &hi);
-    CHECK(lo == 0 && hi == 24);
+    CHECK(lo == 0 && hi == 25);
+    CHECK(pl_knob_skip(10, 1, raw) == 25 && pl_knob_skip(11, 1, raw) == 25); // слой не бывает PETRI
+    CHECK(pl_knob_skip(6, 1, raw) == -1 && pl_knob_skip(10, 2, raw) == -1);
     CHECK(pl_labels_depend(10) && pl_labels_depend(11));
     raw[1] = 0;
     CHECK(pl_knob_color(10, 3, raw) == pl_knob_color(6, 3, raw) && pl_knob_color(10, 3, raw) != 0);
@@ -304,8 +306,35 @@ TEST(test_grids_labels)
     CHECK(pl_page_color(PL_PAGE_GRIDS) != 0);
 }
 
+// Тип синта PETRI (25): свои подписи и списки, у слоя «выкл» теперь 26.
+TEST(petri_labels)
+{
+    uint8_t raw[16] = {0};
+    char buf[12];
+    raw[1] = 25;
+    CHECK(strcmp(pl_value_text(6, 1, 25, raw, buf), "PETRI") == 0);
+    CHECK(strcmp(pl_knob_label(6, 2, raw), "CUTOFF") == 0);
+    CHECK(strcmp(pl_knob_label(6, 8, raw), "RELIEF") == 0);
+    CHECK(strcmp(pl_knob_label(6, 10, raw), "ORBIT") == 0);
+    CHECK(strcmp(pl_knob_label(6, 13, raw), "DRIVE") == 0);
+    CHECK(strcmp(pl_value_text(6, 8, 3, raw, buf), "VOID") == 0);
+    CHECK(strcmp(pl_value_text(6, 10, 3, raw, buf), "ROSE") == 0);
+    CHECK(strcmp(pl_value_text(6, 12, 127, raw, buf), "FOLLOW") == 0);
+    int lo, hi;
+    pl_knob_range(6, 8, raw, &lo, &hi);
+    CHECK(lo == 0 && hi == 3);
+    pl_knob_range(6, 1, raw, &lo, &hi);
+    CHECK(hi == 25);
+    pl_knob_range(10, 1, raw, &lo, &hi);
+    CHECK(hi == 26);
+    raw[1] = 26;
+    CHECK(strcmp(pl_value_text(10, 1, 26, raw, buf), "OFF") == 0);
+    CHECK(pl_knob_label(10, 2, raw) == NULL);
+}
+
 int main(void)
 {
+    RUN(petri_labels);
     RUN(test_layer_labels);
     RUN(test_fx_layer_vol_labels);
     RUN(test_labels_cover_synth);

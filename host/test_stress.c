@@ -103,8 +103,45 @@ TEST(test_stress_layers_song)
     CHECK(held == chunks);
 }
 
+// Стенд PETRI: оба синта PETRI, все 4 голоса звучат (длинный релиз), фриз включён, перегруз на максимуме.
+TEST(test_stress_petri_song)
+{
+    static acid_midi_event_t ev[96];
+    float l[CH], r[CH];
+    acid_synth_init(&s, SR);
+    acid_demo_init(&d, &acid_stress_petri_song);
+    int finite = 1, chunks = 0, held = 0;
+    for (int k = 0; k < 10 * 48000 / CH; k++) {
+        int n = acid_demo_events(&d, ev, 96);
+        for (int i = 0; i < n; i++) {
+            acid_synth_midi(&s, &ev[i]);
+        }
+        acid_synth_render_lr(&s, l, r, CH);
+        for (int i = 0; i < CH; i++) {
+            finite &= isfinite(l[i]) && isfinite(r[i]);
+        }
+        if (k < 4 * 48000 / CH) {
+            continue;
+        }
+        chunks++;
+        int ok = acid_crush_active(&s.crush) && acid_delay_active(&s.delay);
+        for (int j = 0; j < 2; j++) {
+            int on = 0;
+            for (int v = 0; v < ACID_PETRI_VOICES; v++) {
+                on += s.petri[j].v[v].on;
+            }
+            ok &= s.slot[j].type == ACID_TYPE_PETRI && on == ACID_PETRI_VOICES && s.petri[j].m > 0.99f;
+            ok &= s.slot[j].drv.drive == 127;
+        }
+        held += ok;
+    }
+    CHECK(finite);
+    CHECK(held == chunks);
+}
+
 int main(void)
 {
+    RUN(test_stress_petri_song);
     RUN(test_stress_layers_song);
     RUN(test_stress_song_fits);
     RUN(test_stress_worst_case);

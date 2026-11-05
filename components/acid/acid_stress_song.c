@@ -78,3 +78,20 @@ static const acid_demo_part_t layer_parts[] = {
 };
 
 const acid_demo_song_t acid_stress_layers_song = {layer_parts, 2, 30};
+
+// Стенд PETRI: та же нагрузка, но оба синта PETRI. Релиз 3 с - на шестнадцатых звучат все 4 голоса, фриз
+// включён (третья таблица на голос), перегруз на максимуме. Таблицы - с панели (20 Гц) или зашитые.
+static const acid_demo_knob_t petri_knobs[] = {
+    {6, 2, 25, 25, 0}, {6, 7, 0, 0, 0}, {6, 8, 127, 127, 0}, {6, 4, 90, 90, 0}, {6, 5, 90, 90, 0},
+    {6, 14, 127, 127, 0}, {6, 15, 64, 64, 0}, {6, 16, 100, 100, 0},
+    {7, 2, 25, 25, 0}, {7, 7, 0, 0, 0}, {7, 8, 127, 127, 0}, {7, 4, 90, 90, 0}, {7, 5, 90, 90, 0},
+    {7, 14, 127, 127, 0}, {7, 15, 64, 64, 0}, {7, 16, 100, 100, 0},
+    {18, 15, 127, 127, 0},
+};
+
+static const acid_demo_part_t petri_parts[] = {
+    {1, mel1, mel2, drums, knobs, (uint8_t)(sizeof knobs / sizeof knobs[0]), NULL, 0, 0, 0},
+    {63, mel1, mel2, drums, petri_knobs, (uint8_t)(sizeof petri_knobs / sizeof petri_knobs[0]), NULL, 0, 0, 0},
+};
+
+const acid_demo_song_t acid_stress_petri_song = {petri_parts, 2, 30};

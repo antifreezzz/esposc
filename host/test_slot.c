@@ -62,7 +62,7 @@ TEST(test_slot_type_is_screen_value)
     CHECK(s.slot[0].type == 3);
     type(24);
     CHECK(s.slot[0].type == 24);
-    type(25); // вне списка: игнор
+    type(26); // вне списка (25 - PETRI, 26 - «выкл» только у слоя): игнор
     CHECK(s.slot[0].type == 24);
     type(127);
     CHECK(s.slot[0].type == 24);

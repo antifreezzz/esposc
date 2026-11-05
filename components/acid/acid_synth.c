@@ -59,10 +59,14 @@ static const uint8_t PAN_DEFAULT[ACID_PANS] = {64, 64, 80, 48, 64};
 #define DRIVE_ENC 13   // энкодеры 14-16 страницы синта: перегруз, тон, вой (у 303 и Plaits одни)
 #define DRIVE_TONE 64  // тон и вой, пока их не трогали
 #define TYPE_ENC 1       // энкодер 2 на странице синта
-static const uint8_t BLOB_MAGIC[4] = {'A', 'S', '5', 3}; // 2: + ручки слоя тональности, 3: + слои синтов
-static const uint8_t BLOB_MAGIC_V2[4] = {'A', 'S', '5', 2};
-#define BLOB_V2 (4 + ACID_SLOTS * (1 + ACID_TYPES * ACID_KNOBS) + ACID_TONAL_KNOBS)
+static const uint8_t BLOB_MAGIC[4] = {'A', 'S', '5', 4}; // 2: + ручки слоя тональности, 3: + слои синтов, 4: + PETRI
+#define OLD_TYPES 25 // версии 2-3: без PETRI, у слоя «выкл» = 25
+#define BLOB_OLD(slots) (4 + (slots) * (1 + OLD_TYPES * ACID_KNOBS) + ACID_TONAL_KNOBS)
 #define LAYER_GAIN_RAW 100 // громкость слоя после включения (FX 13-14)
+#define PETRI_MODE_ENC 8   // энкодер 9 типа PETRI: режим рельефа 0-3 (список)
+#define PETRI_SHAPE_ENC 10 // энкодер 11: форма орбиты 0-4 (список)
+#define PETRI_GAIN 1.0f    // уровень PETRI относительно 303 (подобрать на слух)
+#define PETRI_MOD_K 0.022f // сглаживание модуляций за CTRL_BLOCK: ~15 мс
 
 // Сырые значения ручек после init для панели: CC, ближайшие к умолчаниям (обратные к lin/expo, округлено).
 // По индексу энкодера с 0; страницы 3-7 и 9 берут значения из своих knob[], здесь не используются.
@@ -72,10 +76,18 @@ static const uint8_t RAW_DEFAULT[ACID_PAGES][ACID_KNOBS] = {
     [2] = {0, 28, 127, 64, 64, 35, 127, 64, 64, 40, 100, 0, 0, 0, 0, 0},
     [8] = {0, 0, 0, 0, 0, 0, 2, 53, 83, 0, 0, 127, LAYER_GAIN_RAW, LAYER_GAIN_RAW, 0, 0},
     [9] = {0, 0, 4, 0, 0, 1, 0, 0, 64, 64, 64, 64, 64, 64, 64, 64},
+    // Чашка: Митоз, F и k без сдвига, 4 шага, жители 3/1/2/1, аппетит 0.15, мутагены x1, маршруты -0.6/+0.7/+0.6.
+    [ACID_PAGE_PETRI] = {0, 0, 64, 64, 4, 3, 1, 2, 1, 38, 42, 26, 108, 102, 0, 0},
 };
+// Списки страницы «Чашка» (индекс энкодера с 0): пресет, шаги, численности. 0 - не список.
+static const uint8_t PETRI_PAGE_MAX[ACID_KNOBS] = {0, 5, 0, 0, 6, 16, 4, 4, 3, 0, 0, 0, 0, 0, 0, 1};
+#define PETRI_FREEZE_ENC 14 // энкодер 15: фриз (64 и выше вкл, каждый переход вверх - переснять)
 // Нетронутые ручки синта по типу: 303 и Plaits (перегруз 0, тон 64, вой 0 у обоих).
 static const uint8_t RAW_303[ACID_KNOBS] = {0, 0, 69, 111, 64, 60, 51, 0, 67, 64, 0, 0, 0, 0, 64, 0};
 static const uint8_t RAW_PLAITS[ACID_KNOBS] = {0, 0, 64, 64, 64, 38, 64, 67, 64, 64, 64, 64, 68, 0, 64, 0};
+// PETRI: срез ~540 Гц, рез 0.6, огибающая 0.5, спад 0.35 с, атака 10 мс, релиз 0.6 с, Высота, контраст 0, Круг,
+// радиус 18 клеток, дрейф 2 клетки/с.
+static const uint8_t RAW_PETRI[ACID_KNOBS] = {0, 0, 57, 79, 64, 74, 38, 86, 0, 0, 0, 44, 17, 0, 64, 0};
 
 static void type_defaults(acid_synth_t *s, acid_slot_t *v);
 
@@ -125,13 +137,20 @@ void acid_synth_init(acid_synth_t *s, float sr)
     for (int k = 0; k < ACID_SLOTS; k++) {
         slot_init(&s->slot[k], sr, k == 1 ? SEQ2_TYPE : 0);
         s->slot[k].idx = k;
+        acid_petri_init(&s->petri[k], sr);
+        acid_petri_use_baked(&s->petri[k], acid_petri_baked, acid_petri_nbaked);
+        s->slot[k].pet = &s->petri[k];
         type_defaults(s, &s->slot[k]);
         slot_init(&s->layer[k], sr, ACID_LAYER_OFF);
         s->layer[k].idx = k;
+        s->layer[k].pet = NULL;
         type_defaults(s, &s->layer[k]);
         s->layer_gain[k] = (float)LAYER_GAIN_RAW / 127.0f;
     }
     s->layer_half = 0;
+    s->petri_depth[0] = -0.6f;
+    s->petri_depth[1] = 0.7f;
+    s->petri_depth[2] = 0.6f;
     s->save = 0;
     acid_kick_init(&s->kick, sr);
     acid_hat_init(&s->hat, sr);
@@ -209,6 +228,9 @@ void acid_synth_init(acid_synth_t *s, float sr)
 
 int acid_page_from_bsp(int v)
 {
+    if (v == ACID_BSP_PETRI) {
+        return ACID_PAGE_PETRI;
+    }
     if (v >= 0 && v < ACID_BSP_USER_FIRST) {
         return v;
     }
@@ -223,6 +245,9 @@ int acid_page_from_bsp(int v)
 
 int acid_page_to_bsp(int page)
 {
+    if (page == ACID_PAGE_PETRI) {
+        return ACID_BSP_PETRI;
+    }
     if (page >= 0 && page < ACID_PAGE_LAYER1) {
         return page;
     }
@@ -315,6 +340,9 @@ void acid_synth_notes_off(acid_synth_t *s)
         v->nheld = 0;
         v->pend_note = -1;
         v->gliding = 0;
+        if (v->pet) {
+            acid_petri_notes_off(v->pet);
+        }
     }
 }
 
@@ -362,6 +390,11 @@ static void note_on(acid_synth_t *s, acid_slot_t *v, int note, int vel)
     v->held_at[v->nheld] = v->now;
     v->held[v->nheld++] = (int8_t)note;
     voice_note(s, v, slot_note(s, v, note), vel > ACCENT_VEL, slide);
+    if (v->type == ACID_TYPE_PETRI && v->pet) {
+        // Парафония: у каждой ноты свой голос, огибающая фильтра бьёт на каждой (слайда нет).
+        acid_petri_note_on(v->pet, note, acid_midi_to_hz(slot_note(s, v, note)), vel);
+        acid_decay_trigger(&v->fenv, 1.0f);
+    }
     v->ctrl_left = 0; // новая нота: пересчитать сразу
 }
 
@@ -369,9 +402,15 @@ static void note_off(acid_synth_t *s, acid_slot_t *v, int note)
 {
     for (int i = 0; i < v->nheld; i++) {
         if (v->held[i] == note && v->now - v->held_at[i] < (uint32_t)(BOUNCE_S * s->sr)) {
-            // Слишком короткое нажатие: отпустим позже, если не придёт повтор.
+            // Слишком короткое нажатие: отпустим позже, если не придёт повтор. Отложенная - одна: прежнюю
+            // другую ноту отпускаем сразу, иначе в коротком аккорде PETRI она висела бы до конца.
+            // Время нажатия - до отпускания: оно сдвигает held_at.
+            uint32_t at = v->held_at[i] + (uint32_t)(MERGE_S * s->sr);
+            if (v->pend_note >= 0 && v->pend_note != note) {
+                note_release(s, v, v->pend_note);
+            }
             v->pend_note = note;
-            v->pend_at = v->held_at[i] + (uint32_t)(MERGE_S * s->sr);
+            v->pend_at = at;
             return;
         }
     }
@@ -382,6 +421,9 @@ static void note_release(acid_synth_t *s, acid_slot_t *v, int note)
 {
     int top = v->nheld > 0 && v->held[v->nheld - 1] == note;
     held_remove(v, note);
+    if (v->pet) {
+        acid_petri_note_off(v->pet, note); // и после смены типа: голос не залипнет
+    }
     if (top && v->nheld > 0) {
         // Отпустили верхнюю при зажатой нижней: глайд обратно, как в 303.
         v->target_log2 = log2f(acid_midi_to_hz(slot_note(s, v, v->held[v->nheld - 1])));
@@ -565,6 +607,33 @@ static void knob_plaits(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
     }
 }
 
+// Ручки PETRI на синте: фильтр и огибающие. Режим, контраст, орбита и центр считает панель (снимает таблицу).
+static void knob_petri(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
+{
+    const uint8_t *k = sl->knob[ACID_TYPE_PETRI];
+    switch (slot) {
+    case 2:
+        sl->cut_base = expo(v, 60.0f, 8000.0f);
+        sl->pet_cut_oct = log2f(sl->cut_base);
+        break;
+    case 3: sl->res = lin(v, 0.0f, 0.97f); break;
+    case 4: sl->pet_env = lin(v, 0.0f, 1.0f); break;
+    case 5: sl->decay_s = expo(v, 0.03f, 2.0f); break;
+    case 6:
+    case 7: {
+        int a = slot == 6 ? v : (k[6] != KNOB_NONE ? k[6] : RAW_PETRI[6]);
+        int r = slot == 7 ? v : (k[7] != KNOB_NONE ? k[7] : RAW_PETRI[7]);
+        acid_petri_set_env(sl->pet, expo(a, 0.001f, 2.0f), expo(r, 0.02f, 3.0f));
+        break;
+    }
+    default: break;
+    }
+    if (slot == 5) {
+        acid_decay_set(&sl->fenv, sl->decay_s, s->sr);
+    }
+    sl->ctrl_left = 0;
+}
+
 static void knob_apply(acid_synth_t *s, acid_slot_t *v, int slot, int val)
 {
     if (v->type == ACID_LAYER_OFF || drive_knob(v, slot, val)) {
@@ -572,6 +641,10 @@ static void knob_apply(acid_synth_t *s, acid_slot_t *v, int slot, int val)
     }
     if (v->type == 0) {
         knob_303(s, v, slot, val);
+    } else if (v->type == ACID_TYPE_PETRI) {
+        if (v->pet) {
+            knob_petri(s, v, slot, val);
+        }
     } else {
         knob_plaits(s, v, slot, val);
     }
@@ -594,6 +667,11 @@ static void type_defaults(acid_synth_t *s, acid_slot_t *v)
         v->res = RES;
         acid_ladder_prep(&v->lc, v->g, v->res);
         v->wave = 0;
+    } else if (v->type == ACID_TYPE_PETRI) {
+        for (int i = TYPE_ENC + 1; i < DRIVE_ENC; i++) {
+            knob_apply(s, v, i, RAW_PETRI[i]); // умолчания - те же формулы, что у ручек
+        }
+        memset(v->pet_mod, 0, sizeof v->pet_mod);
     } else {
         acid_plaits_params_t *p = &v->pp;
         p->model = v->type - 1;
@@ -615,9 +693,17 @@ static void type_switch(acid_synth_t *s, acid_slot_t *v)
 {
     v->type = v->next_type;
     s->save = 1;
+    if (v->pet) {
+        acid_petri_kill(v->pet); // звук уже ушёл: прежние голоса чашки не всплывут
+    }
     type_defaults(s, v);
     if (v->nheld > 0) {
-        voice_note(s, v, slot_note(s, v, v->held[v->nheld - 1]), v->accented, 0);
+        int top = v->held[v->nheld - 1];
+        voice_note(s, v, slot_note(s, v, top), v->accented, 0);
+        for (int i = 0; v->type == ACID_TYPE_PETRI && v->pet && i < v->nheld; i++) {
+            int n = v->held[i]; // весь аккорд, верхняя - последней (самый новый голос)
+            acid_petri_note_on(v->pet, n, acid_midi_to_hz(slot_note(s, v, n)), 100);
+        }
         v->ctrl_left = 0;
     }
     v->ppos = ACID_PLAITS_BLOCK;
@@ -666,6 +752,9 @@ static void page_fx(acid_synth_t *s, int slot, int v)
 // Списки синта: значение вне списка звук не меняет и не запоминается (зеркало панели показывает действующее).
 static int synth_knob_ok(int type, int slot, int v)
 {
+    if (type == ACID_TYPE_PETRI) {
+        return !(slot == PETRI_MODE_ENC && v > 3) && !(slot == PETRI_SHAPE_ENC && v > 4);
+    }
     if (slot == (type == 0 ? 9 : 8)) {
         return v >= 52 && v <= 76; // transpose
     }
@@ -688,11 +777,11 @@ static void layer_sync(acid_slot_t *lv, const acid_slot_t *v)
 static void page_synth(acid_synth_t *s, acid_slot_t *sl, int slot, int v, int layer)
 {
     if (slot == TYPE_ENC) {
-        if (layer && v < ACID_TYPES && sl->type == ACID_LAYER_OFF && sl->fade == 0) {
+        if (layer && v < ACID_TYPES && v != ACID_TYPE_PETRI && sl->type == ACID_LAYER_OFF && sl->fade == 0) {
             layer_sync(sl, &s->slot[sl->idx]);
         }
-        if (v < ACID_TYPES + layer) {
-            type_request(sl, v); // значение на экране = номер типа, остальное игнор
+        if (v < ACID_TYPES + layer && !(layer && v == ACID_TYPE_PETRI)) {
+            type_request(sl, v); // значение на экране = номер типа, остальное игнор; слой не бывает PETRI
         }
     } else if (slot > TYPE_ENC && sl->sel_type != ACID_LAYER_OFF && synth_knob_ok(sl->sel_type, slot, v)) {
         // Ручка - типу на экране. Если он ещё не зазвучал (уходит прежний), применится при переключении.
@@ -706,15 +795,39 @@ static void page_synth(acid_synth_t *s, acid_slot_t *sl, int slot, int v, int la
 // Списки страниц 0-2 и 8: значение вне списка ручку не меняет.
 static int raw_ok(int page, int slot, int v)
 {
+    if (page == ACID_PAGE_PETRI) {
+        return !PETRI_PAGE_MAX[slot] || v <= PETRI_PAGE_MAX[slot];
+    }
     if (page == PAGE_FX) {
         return !((slot == 6 || slot == 9) && v > 4) && !(slot == 10 && v > 2);
     }
     return 1;
 }
 
+// Страница «Чашка»: синт берёт маршруты (11-13) и фриз (14), остальное - параметры чашки на панели (зеркало raw).
+static void page_petri(acid_synth_t *s, int slot, int v)
+{
+    if (!raw_ok(ACID_PAGE_PETRI, slot, v)) {
+        return;
+    }
+    int was = s->raw[ACID_PAGE_PETRI][slot];
+    s->raw[ACID_PAGE_PETRI][slot] = (uint8_t)v;
+    if (slot >= 11 && slot <= 13) {
+        s->petri_depth[slot - 11] = bip(v);
+    } else if (slot == PETRI_FREEZE_ENC && (was >= 64) != (v >= 64)) {
+        for (int k = 0; k < ACID_SLOTS; k++) {
+            acid_petri_freeze(&s->petri[k], v >= 64); // вверх - снимок звучащей таблицы
+        }
+    }
+}
+
 // Энкодер slot (с 1) на странице page, как будто BSP стоит на ней.
 static void apply_page(acid_synth_t *s, int page, int slot, int v)
 {
+    if (page == ACID_PAGE_PETRI) {
+        page_petri(s, slot, v); // своя проверка списков: фриз смотрит на прежнее значение
+        return;
+    }
     if (page <= PAGE_DRUMS2 || page == PAGE_FX) {
         if (raw_ok(page, slot, v)) {
             s->raw[page][slot] = (uint8_t)v;
@@ -777,6 +890,13 @@ static void control_change(acid_synth_t *s, int num, int v)
     }
 }
 
+void acid_synth_petri(acid_synth_t *s, const acid_petri_frame_t *f)
+{
+    for (int k = 0; k < ACID_SLOTS; k++) {
+        acid_petri_post(&s->petri[k], f);
+    }
+}
+
 void acid_synth_set_knob(acid_synth_t *s, int page, int enc, int v)
 {
     if (page >= 0 && page < ACID_PAGES && enc > 0 && enc < ACID_KNOBS && v >= 0 && v <= 127) {
@@ -805,7 +925,8 @@ int acid_synth_knob(const acid_synth_t *s, int page, int enc)
             return 0;
         }
         uint8_t k = sl->knob[sl->sel_type][enc];
-        return k != KNOB_NONE ? k : (sl->sel_type == 0 ? RAW_303 : RAW_PLAITS)[enc];
+        const uint8_t *def = sl->sel_type == 0 ? RAW_303 : sl->sel_type == ACID_TYPE_PETRI ? RAW_PETRI : RAW_PLAITS;
+        return k != KNOB_NONE ? k : def[enc];
     }
     return s->raw[page][enc];
 }
@@ -824,6 +945,10 @@ static void tonal_boundary(acid_synth_t *s)
             continue;
         }
         v->target_log2 = log2f(acid_midi_to_hz(slot_note(s, v, v->held[v->nheld - 1])));
+        for (int k = 0; v->type == ACID_TYPE_PETRI && v->pet && k < v->nheld; k++) {
+            int n = v->held[k]; // у PETRI слайда нет: аккорд прыгает весь и в режиме глайда
+            acid_petri_retune(v->pet, n, acid_midi_to_hz(slot_note(s, v, n)));
+        }
         if (mode == 1) {
             v->gliding = 1;
         } else {
@@ -987,6 +1112,47 @@ static float voice_next(acid_synth_t *s, acid_slot_t *v, int gate)
     return y * (amp * v->gain);
 }
 
+// Коэффициенты фильтра PETRI раз в CTRL_BLOCK: срез и огибающая в октавах, маршруты из модуляций таблицы.
+static void petri_ctrl(acid_synth_t *s, acid_slot_t *v)
+{
+    acid_petri_t *p = v->pet;
+    for (int i = 0; i < ACID_PETRI_MODS; i++) {
+        v->pet_mod[i] += (acid_petri_mod(p, i) - v->pet_mod[i]) * PETRI_MOD_K;
+    }
+    if (acid_petri_jumped(p)) {
+        acid_decay_trigger(&v->fenv, 1.0f); // прыжок сеятеля бьёт огибающую
+    }
+    const float *d = s->petri_depth, *m = v->pet_mod;
+    float env = v->pet_env + d[2] * (m[2] + m[4]); // вихрь рядом и прыжок
+    env = env < 0.0f ? 0.0f : env > 1.0f ? 1.0f : env;
+    float res = v->res + d[1] * m[1];
+    res = res < 0.0f ? 0.0f : res > 0.97f ? 0.97f : res;
+    float oct = v->pet_cut_oct + env * v->fenv.value * 6.0f + d[0] * m[0] * 4.0f;
+    float hz = acid_exp2(oct);
+    hz = hz > 0.42f * s->sr ? 0.42f * s->sr : hz;
+    v->g = acid_ladder_coef(hz, s->sr);
+    acid_ladder_prep(&v->lc, v->g, res);
+}
+
+// Сэмпл голоса PETRI с громкостью слота: сумма голосов чашки -> ladder -> перегруз.
+static float petri_next(acid_synth_t *s, acid_slot_t *v)
+{
+    if (!acid_petri_active(v->pet)) {
+        return 0.0f; // молчит: ни таблиц, ни фильтра
+    }
+    if (v->ctrl_left == 0) {
+        petri_ctrl(s, v);
+        v->ctrl_left = CTRL_BLOCK;
+    }
+    v->ctrl_left--;
+    acid_decay_next(&v->fenv);
+    float y = acid_ladder_tick(&v->flt, acid_petri_osc(v->pet), &v->lc);
+    if (acid_drive_on(&v->drv)) {
+        return acid_drive_run(&v->drv, y * PETRI_GAIN) * v->gain;
+    }
+    return y * (PETRI_GAIN * v->gain);
+}
+
 // Громкость смены типа: уход, переключение, приход.
 static float fade_step(acid_synth_t *s, acid_slot_t *v)
 {
@@ -1008,7 +1174,10 @@ static float fade_step(acid_synth_t *s, acid_slot_t *v)
 // Сэмпл слота с громкостью: голос его типа, при смене типа - с уходом и приходом.
 static float slot_next(acid_synth_t *s, acid_slot_t *v, int gate)
 {
-    float y = v->type == 0 ? voice_next(s, v, gate) : v->type == ACID_LAYER_OFF ? 0.0f : plaits_next(v, gate);
+    float y = v->type == 0                 ? voice_next(s, v, gate)
+              : v->type == ACID_LAYER_OFF  ? 0.0f
+              : v->type == ACID_TYPE_PETRI ? (v->pet ? petri_next(s, v) : 0.0f)
+                                           : plaits_next(v, gate);
     if (v->fade != 0) {
         y *= fade_step(s, v);
     }
@@ -1224,18 +1393,27 @@ size_t acid_synth_export(const acid_synth_t *s, void *buf, size_t cap)
 int acid_synth_import(acid_synth_t *s, const void *buf, size_t len)
 {
     const uint8_t *b = buf;
-    // Версия 2 (до слоёв): только синты, слои остаются как после init.
-    int v2 = len == BLOB_V2 && memcmp(b, BLOB_MAGIC_V2, sizeof BLOB_MAGIC_V2) == 0;
-    if (!v2 && (len != ACID_SYNTH_BLOB || memcmp(b, BLOB_MAGIC, sizeof BLOB_MAGIC) != 0)) {
+    // Версия 2 (до слоёв) - только синты; 2-3 - по 25 типов (без PETRI), у слоя «выкл» = 25.
+    int ver = len == ACID_SYNTH_BLOB && memcmp(b, BLOB_MAGIC, sizeof BLOB_MAGIC) == 0 ? 4
+              : len == BLOB_OLD(2 * ACID_SLOTS) && memcmp(b, "AS5\x03", 4) == 0 ? 3
+              : len == BLOB_OLD(ACID_SLOTS) && memcmp(b, "AS5\x02", 4) == 0     ? 2
+                                                                                   : 0;
+    if (!ver) {
         return 0;
     }
+    const int types = ver == 4 ? ACID_TYPES : OLD_TYPES;
     b += sizeof BLOB_MAGIC;
-    for (int k = 0; k < (v2 ? 1 : 2) * ACID_SLOTS; k++) {
+    for (int k = 0; k < (ver == 2 ? 1 : 2) * ACID_SLOTS; k++) {
         acid_slot_t *v = k < ACID_SLOTS ? &s->slot[k] : &s->layer[k - ACID_SLOTS];
-        int top = k < ACID_SLOTS ? ACID_TYPES : ACID_TYPES + 1; // у слоя есть OFF
-        v->sel_type = b[0] < top ? b[0] : (k < ACID_SLOTS ? 0 : ACID_LAYER_OFF);
-        memcpy(v->knob, b + 1, sizeof v->knob);
-        b += 1 + sizeof v->knob;
+        int t = b[0], layer = k >= ACID_SLOTS;
+        if (ver < 4 && layer && t == OLD_TYPES) {
+            t = ACID_LAYER_OFF;
+        }
+        int ok = t < types && !(layer && t == ACID_TYPE_PETRI);
+        v->sel_type = ok ? t : layer && t == ACID_LAYER_OFF ? ACID_LAYER_OFF : (layer ? ACID_LAYER_OFF : 0);
+        memset(v->knob, KNOB_NONE, sizeof v->knob);
+        memcpy(v->knob, b + 1, (size_t)types * ACID_KNOBS);
+        b += 1 + (size_t)types * ACID_KNOBS;
         v->type = v->next_type = v->sel_type;
         v->fade = 0;
         type_defaults(s, v);

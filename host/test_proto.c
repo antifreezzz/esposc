@@ -44,8 +44,7 @@ TEST(test_roundtrip)
     snap.mode = 1;
     snap.bsp_page = 6;
     snap.raw[9][15] = 127;
-    snap.bsp_pos[3] = 87;
-    snap.held[19] = 0x80;
+    snap.raw[PL_PAGE_PETRI][4] = 6;
     pl_knob_t k = {.page = 6, .enc = 2, .value = 30, .src = 2, .bsp_pos = 87, .held = 1};
     pl_set_t st = {.page = 8, .enc = 5, .value = 100};
     uint8_t page = 3;
@@ -198,7 +197,7 @@ TEST(test_demo_frame)
 
 TEST(test_snapshot_fits)
 {
-    CHECK(PL_PAGES == 13 && PL_PAGE_GRIDS == 12 && PL_USER_FIRST == 13);
+    CHECK(PL_PAGES == 14 && PL_PAGE_GRIDS == 12 && PL_PAGE_PETRI == 13 && PL_USER_FIRST == 14);
     CHECK(sizeof(pl_snapshot_t) <= PL_PAYLOAD_MAX);
 }
 
