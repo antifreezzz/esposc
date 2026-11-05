@@ -69,7 +69,7 @@ void acid_petri_notes_off(acid_petri_t *p);
 void acid_petri_kill(acid_petri_t *p);
 // Атака и релиз в секундах (при смене ручки).
 void acid_petri_set_env(acid_petri_t *p, float attack_s, float release_s);
-// Фриз: включение копирует звучащую таблицу, переход 30 мс.
+// Фриз: включение копирует звучащую таблицу (если прежний снимок отзвучал: без щелчка), переход 30 мс.
 void acid_petri_freeze(acid_petri_t *p, int on);
 // 1, если с прошлого вызова сеятель прыгнул (бьёт огибающую фильтра).
 int acid_petri_jumped(acid_petri_t *p);

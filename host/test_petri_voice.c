@@ -193,6 +193,39 @@ TEST(freeze_holds)
     CHECK(P.fz.t[0][64] == 16000);
 }
 
+// Фриз выключили и сразу включили: снимок ещё звучит (доля не ушла в ноль) - не подменяем его, иначе щелчок.
+// Отзвучал - следующее включение переснимает.
+TEST(refreeze_during_fade_keeps_snapshot)
+{
+    start();
+    sine(&F, 1, 0);
+    acid_petri_post(&P, &F);
+    acid_petri_note_on(&P, 57, 220, 100);
+    run(4800);
+    acid_petri_freeze(&P, 1);
+    sine(&F, -1, 0);
+    acid_petri_post(&P, &F);
+    run(4800);
+    acid_petri_freeze(&P, 0);
+    run(48);
+    CHECK(P.m > 0.5f);
+    acid_petri_freeze(&P, 1);
+    CHECK(P.fz.t[0][64] == 16000);
+    acid_petri_freeze(&P, 0);
+    run(48000);
+    acid_petri_freeze(&P, 1);
+    CHECK(P.fz.t[0][64] == -16000);
+    // Голоса молчат: доля не движется (в синте молчащий голос не считается), но снимок не слышен - переснимаем.
+    run(4800);
+    acid_petri_kill(&P);
+    acid_petri_freeze(&P, 0);
+    sine(&F, 1, 0);
+    acid_petri_post(&P, &F);
+    acid_petri_take(&P);
+    acid_petri_freeze(&P, 1);
+    CHECK(P.fz.t[0][64] == 16000);
+}
+
 TEST(baked_after_silence)
 {
     static acid_petri_frame_t set[2];
@@ -252,6 +285,7 @@ int main(void)
     RUN(mip_by_pitch);
     RUN(wave_build_averages);
     RUN(freeze_holds);
+    RUN(refreeze_during_fade_keeps_snapshot);
     RUN(baked_after_silence);
     RUN(dc_removed);
     RUN(jump_reported_once);

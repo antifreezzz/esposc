@@ -189,7 +189,8 @@ void acid_petri_set_env(acid_petri_t *p, float attack_s, float release_s)
 
 void acid_petri_freeze(acid_petri_t *p, int on)
 {
-    if (on && p->mt == 0.0f) {
+    // Переснимаем, только когда прежний снимок не слышен: ушёл в ноль или голоса молчат (тогда и доля стоит).
+    if (on && p->mt == 0.0f && (p->m == 0.0f || !acid_petri_active(p))) {
         p->fz = p->w[p->b];
     }
     p->mt = on ? 1.0f : 0.0f;
