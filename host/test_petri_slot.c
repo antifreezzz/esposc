@@ -76,6 +76,34 @@ TEST(petri_chord_voices)
     CHECK(on == 2);
 }
 
+static int gate_of(int note)
+{
+    for (int k = 0; k < ACID_PETRI_VOICES; k++) {
+        if (s.petri[0].v[k].gate && s.petri[0].v[k].note == note) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// Две короткие ноты аккорда подряд: вторая отпускается через MERGE_S от своего нажатия, а не от соседней.
+TEST(short_chord_release_uses_own_press)
+{
+    live();
+    acid_synth_set_knob(&s, 6, 1, PETRI);
+    rms(960);
+    send(&s, ACID_MIDI_NOTE_ON, BASS, 45, 100);
+    send(&s, ACID_MIDI_NOTE_ON, BASS, 52, 100);
+    rms(1000);
+    send(&s, ACID_MIDI_NOTE_ON, BASS, 57, 100);
+    send(&s, ACID_MIDI_NOTE_OFF, BASS, 45, 0); // короткая: отложена
+    send(&s, ACID_MIDI_NOTE_OFF, BASS, 52, 0); // короткая: 45 отпущена, 52 отложена до нажатия + 50 мс
+    rms(2000);                                 // 52 нажата 3000 сэмплов назад, окно 2400
+    CHECK(!gate_of(45));
+    CHECK(!gate_of(52));
+    CHECK(gate_of(57));
+}
+
 TEST(type_switch_kills_petri_voices)
 {
     live();
@@ -200,6 +228,7 @@ int main(void)
 {
     RUN(petri_type_sounds);
     RUN(petri_chord_voices);
+    RUN(short_chord_release_uses_own_press);
     RUN(type_switch_kills_petri_voices);
     RUN(layer_refuses_petri);
     RUN(layer_off_is_26);
