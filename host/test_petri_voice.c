@@ -177,6 +177,30 @@ TEST(wave_build_averages)
     CHECK(w.t[3][64] == 1000);
 }
 
+// Сборка копий без заворота индекса в цикле (замер на плате 56 -> 43 мкс) - бит в бит как наивная по кругу.
+TEST(wave_build_matches_naive)
+{
+    static acid_petri_wave_t w;
+    int16_t t[ACID_PETRI_TABLE], ref[ACID_PETRI_LEVELS][ACID_PETRI_TABLE];
+    uint32_t r = 12345;
+    for (int i = 0; i < ACID_PETRI_TABLE; i++) {
+        r = r * 1664525u + 1013904223u;
+        t[i] = (int16_t)(r >> 16);
+        ref[0][i] = t[i];
+    }
+    for (int k = 1; k < ACID_PETRI_LEVELS; k++) {
+        for (int i = 0; i < ACID_PETRI_TABLE; i++) {
+            ref[k][i] = (int16_t)((ref[k - 1][i] + ref[k - 1][(i + (1 << (k - 1))) % ACID_PETRI_TABLE]) / 2);
+        }
+    }
+    acid_petri_wave_build(&w, t);
+    int same = 1;
+    for (int k = 0; k < ACID_PETRI_LEVELS; k++) {
+        same &= memcmp(w.t[k], ref[k], sizeof ref[k]) == 0 && w.t[k][ACID_PETRI_TABLE] == ref[k][0];
+    }
+    CHECK(same);
+}
+
 TEST(freeze_holds)
 {
     start();
@@ -284,6 +308,7 @@ int main(void)
     RUN(four_voices_then_steal);
     RUN(mip_by_pitch);
     RUN(wave_build_averages);
+    RUN(wave_build_matches_naive);
     RUN(freeze_holds);
     RUN(refreeze_during_fade_keeps_snapshot);
     RUN(baked_after_silence);

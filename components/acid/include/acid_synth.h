@@ -89,6 +89,7 @@ typedef struct {
     // Чашка Петри: голоса у синтов (у слоёв NULL - слой не бывает PETRI).
     acid_petri_t *pet;
     float pet_env;                  // глубина огибающей фильтра 0..1 (до 6 октав)
+    float pet_cut_oct;              // log2 среза: считается при смене ручки, не в рендере
     float pet_mod[ACID_PETRI_MODS]; // модуляции звучащей таблицы, сглаженные
 } acid_slot_t;
 

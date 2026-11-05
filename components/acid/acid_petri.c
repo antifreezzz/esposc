@@ -36,11 +36,16 @@ void acid_petri_wave_build(acid_petri_wave_t *w, const int16_t tab[ACID_PETRI_TA
     w->t[0][N] = w->t[0][0];
     // Копия k - среднее двух точек копии k-1 через 2^(k-1): окно 2, 4, 8 точек.
     for (int k = 1; k < ACID_PETRI_LEVELS; k++) {
-        int d = 1 << (k - 1);
-        for (int i = 0; i < N; i++) {
-            w->t[k][i] = (int16_t)((w->t[k - 1][i] + w->t[k - 1][(i + d) % N]) / 2);
+        const int d = 1 << (k - 1);
+        const int16_t *a = w->t[k - 1];
+        int16_t *o = w->t[k];
+        for (int i = 0; i < N - d; i++) {
+            o[i] = (int16_t)((a[i] + a[i + d]) / 2);
         }
-        w->t[k][N] = w->t[k][0];
+        for (int i = N - d; i < N; i++) {
+            o[i] = (int16_t)((a[i] + a[i + d - N]) / 2); // по кругу
+        }
+        o[N] = o[0];
     }
 }
 

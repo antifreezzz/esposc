@@ -612,7 +612,10 @@ static void knob_petri(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
 {
     const uint8_t *k = sl->knob[ACID_TYPE_PETRI];
     switch (slot) {
-    case 2: sl->cut_base = expo(v, 60.0f, 8000.0f); break;
+    case 2:
+        sl->cut_base = expo(v, 60.0f, 8000.0f);
+        sl->pet_cut_oct = log2f(sl->cut_base);
+        break;
     case 3: sl->res = lin(v, 0.0f, 0.97f); break;
     case 4: sl->pet_env = lin(v, 0.0f, 1.0f); break;
     case 5: sl->decay_s = expo(v, 0.03f, 2.0f); break;
@@ -1124,7 +1127,7 @@ static void petri_ctrl(acid_synth_t *s, acid_slot_t *v)
     env = env < 0.0f ? 0.0f : env > 1.0f ? 1.0f : env;
     float res = v->res + d[1] * m[1];
     res = res < 0.0f ? 0.0f : res > 0.97f ? 0.97f : res;
-    float oct = log2f(v->cut_base) + env * v->fenv.value * 6.0f + d[0] * m[0] * 4.0f;
+    float oct = v->pet_cut_oct + env * v->fenv.value * 6.0f + d[0] * m[0] * 4.0f;
     float hz = acid_exp2(oct);
     hz = hz > 0.42f * s->sr ? 0.42f * s->sr : hz;
     v->g = acid_ladder_coef(hz, s->sr);
