@@ -22,6 +22,9 @@
 
 static const char *TAG = "panel";
 
+_Static_assert(ACID_PAGE_PETRI == PL_PAGE_PETRI && ACID_BSP_PETRI == 18 && ACID_TYPE_PETRI == 25 &&
+                   ACID_LAYER_OFF == 26 && ACID_PETRI_TABLE == PL_PETRI_POINTS,
+               "petri numbers shared by synth and panel (pl_labels, petri_knobs, petri_task, pl_page_bsp)");
 _Static_assert(ACID_PAGES == PL_PAGES && ACID_PAGE_GRIDS == PL_PAGE_GRIDS && ACID_USER_FIRST == PL_USER_FIRST,
                "synth and panel page numbering");
 

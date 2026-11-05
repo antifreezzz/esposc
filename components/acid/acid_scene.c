@@ -241,6 +241,14 @@ static int import_old(acid_scene_t *sc, const uint8_t *b, int pages, int v1)
         memcpy(sc->knob[n], b + 5 + n * pages * ACID_KNOBS, (size_t)pages * ACID_KNOBS);
     }
     memcpy(sc->user, b + 5 + ACID_SCENES * pages * ACID_KNOBS, sizeof sc->user);
+    for (int n = 0; n < ACID_SCENES; n++) {
+        for (int k = 0; k < ACID_SLOTS; k++) {
+            uint8_t *t = &sc->knob[n][ACID_PAGE_LAYER1 + k][1];
+            if (*t == 25) {
+                *t = ACID_LAYER_OFF; // до PETRI 25 был «выкл» слоя, теперь это PETRI, которого у слоя нет
+            }
+        }
+    }
     return 1;
 }
 

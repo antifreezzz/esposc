@@ -81,12 +81,42 @@ TEST(scene_imports_13_pages)
     memcpy(blob, "SCN\x03", 4);
     blob[4] = 1;
     blob[5 + 6 * ACID_KNOBS + 2] = 77; // сцена 0, страница 6, энкодер 3
+    blob[5 + 10 * ACID_KNOBS + 1] = 25; // слой 1 «выкл» по-старому
+    blob[5 + 11 * ACID_KNOBS + 1] = 7;  // слой 2 - модель 7
     memset(blob + 5 + ACID_SCENES * 13 * ACID_KNOBS, 0, user); // значения своих страниц в старом blob - 0..127
     acid_scene_init(&sc);
     CHECK(acid_scene_import(&sc, blob, sizeof blob) == 1);
     CHECK(sc.used == 1);
     CHECK(sc.knob[0][6][2] == 77);
     CHECK(sc.knob[0][ACID_PAGE_PETRI][2] == 0xFF);
+    CHECK(sc.knob[0][ACID_PAGE_LAYER1][1] == ACID_LAYER_OFF); // 25 был «выкл», теперь это PETRI
+    CHECK(sc.knob[0][ACID_PAGE_LAYER1 + 1][1] == 7);
+}
+
+// Короткий аккорд (короче окна дребезга): все голоса чашки отпускаются.
+TEST(short_chord_releases_all)
+{
+    acid_synth_init(&s, SR);
+    acid_synth_notes_off(&s);
+    acid_synth_set_knob(&s, 6, 1, 25);
+    acid_synth_render(&s, buf, 960);
+    int notes[3] = {45, 49, 52};
+    for (int i = 0; i < 3; i++) {
+        acid_midi_event_t e = {.type = ACID_MIDI_NOTE_ON, .ch = 4, .d1 = (uint8_t)notes[i], .d2 = 100};
+        acid_synth_midi(&s, &e);
+    }
+    acid_synth_render(&s, buf, 480); // 10 мс
+    for (int i = 0; i < 3; i++) {
+        acid_midi_event_t e = {.type = ACID_MIDI_NOTE_OFF, .ch = 4, .d1 = (uint8_t)notes[i], .d2 = 0};
+        acid_synth_midi(&s, &e);
+    }
+    acid_synth_render(&s, buf, 4800);
+    int gates = 0;
+    for (int k = 0; k < ACID_PETRI_VOICES; k++) {
+        gates += s.petri[0].v[k].gate;
+    }
+    CHECK(gates == 0);
+    CHECK(s.slot[0].nheld == 0);
 }
 
 TEST(model_takes_snapshot2)
@@ -132,6 +162,7 @@ int main(void)
     RUN(bsp_cc_reaches_petri_page);
     RUN(scene_imports_13_pages);
     RUN(model_takes_snapshot2);
+    RUN(short_chord_releases_all);
     RUN(petri_page_labels);
     TEST_MAIN_END();
 }

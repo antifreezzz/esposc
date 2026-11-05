@@ -402,7 +402,11 @@ static void note_off(acid_synth_t *s, acid_slot_t *v, int note)
 {
     for (int i = 0; i < v->nheld; i++) {
         if (v->held[i] == note && v->now - v->held_at[i] < (uint32_t)(BOUNCE_S * s->sr)) {
-            // Слишком короткое нажатие: отпустим позже, если не придёт повтор.
+            // Слишком короткое нажатие: отпустим позже, если не придёт повтор. Отложенная - одна: прежнюю
+            // другую ноту отпускаем сразу, иначе в коротком аккорде PETRI она висела бы до конца.
+            if (v->pend_note >= 0 && v->pend_note != note) {
+                note_release(s, v, v->pend_note);
+            }
             v->pend_note = note;
             v->pend_at = v->held_at[i] + (uint32_t)(MERGE_S * s->sr);
             return;
