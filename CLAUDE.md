@@ -64,7 +64,11 @@ python3 -m unittest discover -s tools/samples
   ```sh
   idf.py -B build-stress -DESPOSC_STRESS=1 -p /dev/ttyACM0 flash   # стенд: стресс-песня, защита выключена
   idf.py -B build-stress-layers -DESPOSC_STRESS=1 -DESPOSC_STRESS_LAYERS=1 -p /dev/ttyACM0 flash # + слои modal, защита вкл
+  idf.py -B build-stress-petri -DESPOSC_STRESS=1 -DESPOSC_STRESS_PETRI=1 -p /dev/ttyACM0 flash   # оба синта PETRI, 4 голоса, фриз
   ```
+  Стенд PETRI (панель шлёт таблицы 20 Гц, замер 2026-11-05): ядро 1 ~1435 из 2000, худший блок ~1850, синт 1 ~557
+  мкс на блок; ядро 0 ~373 из 666. Легче modal. Сборка копий таблицы `acid_petri_wave_build` ~43 мкс - в рендере,
+  раз на таблицу: в фазу событий не переносить, там она ляжет на ядро 1 и за синт 2.
   В логе раз в 10 с среднее и худшее по ядрам и разбивка ядра 1 по участкам (`acid_prof.h`). После замеров
   прошить обычную сборку (`idf.py flash`). Защита от лавины - `acid_synth_set_load`: ступень 1 перкуссия и тарелки
   на один голос, ступень 2 (не помогло или среднее выше бюджета) - слои на половинной частоте, ступень 3 - слои молчат.

@@ -9,3 +9,7 @@ endif()
 if(ESPOSC_STRESS_LAYERS)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE ESPOSC_STRESS_LAYERS)
 endif()
+# Стенд PETRI (вместе с ESPOSC_STRESS): -DESPOSC_STRESS_PETRI=1, каталог build-stress-petri.
+if(ESPOSC_STRESS_PETRI)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE ESPOSC_STRESS_PETRI)
+endif()

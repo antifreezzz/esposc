@@ -59,6 +59,9 @@ static pl_load_acc_t s_load; // период индикатора загрузк
 #ifdef ESPOSC_STRESS_LAYERS
 #define DEMO_SONGS {&acid_stress_layers_song} // слои не влезают целиком: здесь проверяется защита, она включена
 #define GUARD 1
+#elif defined(ESPOSC_STRESS_PETRI)
+#define DEMO_SONGS {&acid_stress_petri_song}
+#define GUARD 0
 #else
 #define DEMO_SONGS {&acid_stress_song}
 #define GUARD 0
