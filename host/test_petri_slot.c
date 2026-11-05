@@ -120,6 +120,20 @@ TEST(type_switch_kills_petri_voices)
     CHECK(!acid_petri_active(&s.petri[0])); // старые голоса не всплыли
 }
 
+// Аккорд зажат на 303, тип сменили на PETRI: после ухода звучат все три ноты, не только верхняя.
+TEST(type_switch_to_petri_keeps_chord)
+{
+    live();
+    send(&s, ACID_MIDI_NOTE_ON, BASS, 45, 100);
+    send(&s, ACID_MIDI_NOTE_ON, BASS, 52, 100);
+    send(&s, ACID_MIDI_NOTE_ON, BASS, 57, 100);
+    rms(960);
+    acid_synth_set_knob(&s, 6, 1, PETRI);
+    rms(960);
+    CHECK(s.slot[0].type == PETRI);
+    CHECK(gate_of(45) && gate_of(52) && gate_of(57));
+}
+
 TEST(layer_refuses_petri)
 {
     live();
@@ -230,6 +244,7 @@ int main(void)
     RUN(petri_chord_voices);
     RUN(short_chord_release_uses_own_press);
     RUN(type_switch_kills_petri_voices);
+    RUN(type_switch_to_petri_keeps_chord);
     RUN(layer_refuses_petri);
     RUN(layer_off_is_26);
     RUN(petri_knob_lists);

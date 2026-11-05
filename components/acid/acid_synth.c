@@ -697,8 +697,9 @@ static void type_switch(acid_synth_t *s, acid_slot_t *v)
     if (v->nheld > 0) {
         int top = v->held[v->nheld - 1];
         voice_note(s, v, slot_note(s, v, top), v->accented, 0);
-        if (v->type == ACID_TYPE_PETRI && v->pet) {
-            acid_petri_note_on(v->pet, top, acid_midi_to_hz(slot_note(s, v, top)), 100);
+        for (int i = 0; v->type == ACID_TYPE_PETRI && v->pet && i < v->nheld; i++) {
+            int n = v->held[i]; // весь аккорд, верхняя - последней (самый новый голос)
+            acid_petri_note_on(v->pet, n, acid_midi_to_hz(slot_note(s, v, n)), 100);
         }
         v->ctrl_left = 0;
     }
