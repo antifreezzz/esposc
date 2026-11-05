@@ -12,6 +12,7 @@
 #define TAG "petri"
 #define FRAME_MS 50
 #define IDLE_MS 200  // нет PETRI: проверяем реже
+#define RETRY_MS 2000 // не хватило внутренней RAM: пробуем снова
 #define WARMUP 600   // шагов до первой таблицы: на экране сразу живая структура
 #define DROP_R 2.0f
 
@@ -23,6 +24,7 @@ static const pl_model_t *s_model;
 static petri_t *volatile s_dish;
 static QueueHandle_t s_drops;
 static volatile uint32_t s_frames;
+static volatile int s_no_ram;
 
 void petri_task_drop(float x, float y)
 {
@@ -35,6 +37,11 @@ void petri_task_drop(float x, float y)
 const petri_t *petri_task_dish(void)
 {
     return s_dish;
+}
+
+int petri_task_no_ram(void)
+{
+    return s_no_ram;
 }
 
 uint32_t petri_task_frames(void)
@@ -89,8 +96,10 @@ static void task(void *arg)
         }
         if (!s_dish) {
             s_dish = alloc_dish();
+            s_no_ram = !s_dish;
             if (!s_dish) {
-                vTaskDelete(NULL);
+                vTaskDelay(pdMS_TO_TICKS(RETRY_MS)); // синт пока играет зашитые таблицы
+                continue;
             }
             wake = xTaskGetTickCount();
         }

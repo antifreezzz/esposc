@@ -273,7 +273,7 @@ esp_err_t panel_uart_start(const acid_synth_t *s, const acid_link_t *l, const ac
     s_edit_q = xQueueCreate(8, sizeof(pl_custom_edit_t));
     s_scene_q = xQueueCreate(4, sizeof(pl_scene_t));
     s_petri_q = xQueueCreate(1, sizeof(acid_petri_frame_t));
-    if (!s_set_q || !s_knob_q || !s_page_q || !s_edit_q || !s_scene_q) {
+    if (!s_set_q || !s_knob_q || !s_page_q || !s_edit_q || !s_scene_q || !s_petri_q) {
         return ESP_ERR_NO_MEM;
     }
     // Ниже slot1 и USB: связь с экраном подождёт, звук нет.

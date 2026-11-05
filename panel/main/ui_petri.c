@@ -111,7 +111,7 @@ void up_draw(const pl_model_t *m, uint32_t ms)
         return;
     }
     if (!d) {
-        ui_text(p.info, "GROWING THE DISH...");
+        ui_text(p.info, petri_task_no_ram() ? "NO RAM FOR THE DISH, RETRYING" : "GROWING THE DISH...");
         return;
     }
     uint32_t f = petri_task_frames();

@@ -10,5 +10,7 @@ void petri_task_start(const pl_model_t *m);
 void petri_task_drop(float x, float y);
 // Чашка для экрана: NULL - ещё не выделена. Экран читает её без лока: рваный кадр - один раз за 50 мс.
 const petri_t *petri_task_dish(void);
+// 1 - чашке не хватило внутренней RAM (задача пробует снова раз в 2 с).
+int petri_task_no_ram(void);
 // Кадров с запуска (экран перерисовывает по смене).
 uint32_t petri_task_frames(void);
