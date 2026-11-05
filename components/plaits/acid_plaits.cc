@@ -42,7 +42,7 @@ extern "C" void acid_plaits_render(acid_plaits_t *p, const acid_plaits_params_t 
     plaits::Modulations m = {};
     m.trigger = pp->trigger ? 1.0f : 0.0f;
     m.level = pp->level;
-    m.trigger_patched = true;
+    m.trigger_patched = !pp->sustained;
     m.level_patched = true;
 
     plaits::Voice::Frame frames[plaits::kMaxBlockSize];

@@ -63,6 +63,8 @@ void acid_petri_post(acid_petri_t *p, const acid_petri_frame_t *f);
 void acid_petri_note_on(acid_petri_t *p, int note, float hz, int vel);
 // Зажатая нота note - на частоту hz без перезапуска (слой тональности сменил шаг).
 void acid_petri_retune(acid_petri_t *p, int note, float hz);
+// Перенос звучащего голоса с ноты from_note на to_note и частоту hz без перезапуска (режим дрона).
+void acid_petri_move(acid_petri_t *p, int from_note, int to_note, float hz);
 void acid_petri_note_off(acid_petri_t *p, int note);
 void acid_petri_notes_off(acid_petri_t *p);
 // Голоса молчат сразу (смена типа: звук уже ушёл).

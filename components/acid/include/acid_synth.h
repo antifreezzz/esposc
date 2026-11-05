@@ -157,15 +157,20 @@ typedef struct {
     int grids_step;      // шаг паттерна Grids 0..31 последнего сыгранного шага, -1 - выключен или стоп
     uint32_t grids_hits; // нот от Grids с init
     int page; // 0 микс, 1 ударка, 2 ударка 2, 3 томы, 4 рим, 5 ковбелл, 6 синт 1, 7 синт 2, 8 эффекты, 9 тональность
+    int drone; // режим дрона: оба синта непрерывно тянут ноту, её высоту ведёт страница 9 TONAL
 
     int save;          // сменили тип или ручку слоя тональности: память ручек пора записать
 } acid_synth_t;
+
+#define ACID_DRONE_NOTE 36 // базовая нота дрона по умолчанию (C2, 65.41 Гц)
 
 // Память ручек для flash: метка, типы и сырые ручки обоих синтов.
 #define ACID_SYNTH_BLOB (4 + 2 * ACID_SLOTS * (1 + ACID_TYPES * ACID_KNOBS) + ACID_TONAL_KNOBS) // синты, слои
 
 // Умолчания всех ручек, тишина до первой ноты.
 void acid_synth_init(acid_synth_t *s, float sr);
+// Режим дрона: 1 - запустить бесконечное звучание обоих синтов (и слоёв) под управлением 9 TONAL, 0 - отпустить.
+void acid_synth_set_drone(acid_synth_t *s, int on);
 // Номер страницы на экране BSP -> страница внутри и обратно; не страница - -1.
 int acid_page_from_bsp(int v);
 int acid_page_to_bsp(int page);

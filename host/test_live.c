@@ -1370,6 +1370,101 @@ TEST(test_live_load_guard)
     CHECK(s.perc.hard_cuts == 0 && s.cym.hard_cuts == 0);
 }
 
+TEST(test_live_drone_mode)
+{
+    live();
+    acid_synth_set_knob(&s, ACID_PAGE_LAYER1, 1, 0); // слой синта 1 = 303
+    acid_synth_set_knob(&s, 7, 1, 21);               // синт 2 = Plaits MODAL (без sustained затухает)
+    rms(960);
+
+    acid_synth_set_drone(&s, 1);
+    CHECK(s.drone == 1);
+    CHECK(s.slot[0].nheld == 1 && s.slot[0].held[0] == ACID_DRONE_NOTE);
+    CHECK(s.slot[1].nheld == 1 && s.slot[1].held[0] == ACID_DRONE_NOTE);
+    CHECK(s.layer[0].nheld == 1 && s.layer[0].held[0] == ACID_DRONE_NOTE);
+    CHECK_NEAR(hz(0), note_hz(ACID_DRONE_NOTE), 0.5f);
+    CHECK_NEAR(hz(1), note_hz(ACID_DRONE_NOTE), 0.5f);
+
+    // Note Off и MIDI Stop не гасят дрон.
+    off(BASS, ACID_DRONE_NOTE);
+    off(SEQ2, ACID_DRONE_NOTE);
+    send(ACID_MIDI_STOP, 0, 0, 0);
+    CHECK(s.slot[0].nheld == 1 && s.slot[1].nheld == 1);
+
+    // За 2 секунды ударная модель Plaits MODAL в режиме дрона не затухает.
+    acid_synth_set_knob(&s, 0, 3, 0); // глушим синт 1, слушаем только синт 2 (MODAL)
+    for (int i = 0; i < 20; i++) {
+        rms(4800);
+    }
+    CHECK(rms(4800) > 0.005f);
+    acid_synth_set_knob(&s, 0, 3, 85);
+
+    // Кручение 9 TONAL сразу двигает высоту дрона даже при STEP LEN = 0.
+    CHECK(s.tonal.len == 0);
+    acid_synth_set_knob(&s, 9, 5, 2);  // HELD = JUMP
+    acid_synth_set_knob(&s, 9, 7, 7);  // ROOT = G (+7)
+    CHECK_NEAR(hz(0), note_hz(43), 0.5f);
+    CHECK_NEAR(hz(1), note_hz(43), 0.5f);
+    CHECK_NEAR(exp2f(s.layer[0].pitch_log2), note_hz(43), 0.5f);
+
+    acid_synth_set_knob(&s, 9, 6, 2);  // SCALE = MINOR
+    acid_synth_set_knob(&s, 9, 8, 66); // STEP 1 = +2 ступени в соль миноре -> Bb2 (46)
+    CHECK_NEAR(hz(0), note_hz(46), 0.5f);
+    CHECK_NEAR(hz(1), note_hz(46), 0.5f);
+
+    // TARGET = S1: синт 2 возвращается на базовую ноту без сдвига 9 TONAL.
+    acid_synth_set_knob(&s, 9, 4, 1);
+    CHECK_NEAR(hz(0), note_hz(46), 0.5f);
+    CHECK_NEAR(hz(1), note_hz(36), 0.5f);
+    acid_synth_set_knob(&s, 9, 4, 0); // BOTH
+    CHECK_NEAR(hz(1), note_hz(46), 0.5f);
+
+    // В режиме SLIDE кручение шага запускает плавный глайд.
+    acid_synth_set_knob(&s, 9, 5, 1);  // HELD = SLIDE
+    acid_synth_set_knob(&s, 9, 8, 64); // STEP 1 = 0 -> G2 (43)
+    CHECK(s.slot[0].gliding && s.slot[1].gliding);
+    CHECK_NEAR(exp2f(s.slot[0].target_log2), note_hz(43), 0.5f);
+    rms(24000);
+    CHECK_NEAR(hz(0), note_hz(43), 0.5f);
+
+    // Шаги по тактовым чертам при STEP LEN > 0.
+    acid_synth_set_knob(&s, 9, 1, 1);  // STEP LEN = 1 такт
+    acid_synth_set_knob(&s, 9, 9, 67); // STEP 2 = +3 ступени в соль миноре -> C3 (48)
+    start();
+    clk(97);
+    CHECK_NEAR(exp2f(s.slot[0].target_log2), note_hz(48), 0.5f);
+    rms(24000);
+
+    // Входящий Note On меняет базовую ноту со слайдом без перезапуска огибающей фильтра.
+    float f0 = s.slot[0].fenv.value;
+    CHECK(f0 < 0.2f);
+    on(BASS, 48, 100);
+    rms(1);
+    CHECK(s.slot[0].nheld == 1 && s.slot[0].held[0] == 48);
+    CHECK(s.slot[0].gliding);
+    CHECK(s.slot[0].fenv.value <= f0);
+    CHECK_NEAR(exp2f(s.slot[0].target_log2), note_hz(60), 0.5f);
+
+    // У PETRI смена базовой ноты переносит звучащий голос без рождения второго.
+    acid_synth_set_knob(&s, 6, 1, ACID_TYPE_PETRI);
+    rms(960);
+    on(BASS, 36, 100);
+    int gated = 0, pet_note = -1;
+    float pet_hz = 0.0f;
+    for (int k = 0; k < ACID_PETRI_VOICES; k++) {
+        if (s.petri[0].v[k].gate) {
+            gated++;
+            pet_note = s.petri[0].v[k].note;
+            pet_hz = s.petri[0].v[k].hz;
+        }
+    }
+    CHECK(gated == 1 && pet_note == 36);
+    CHECK_NEAR(pet_hz, note_hz(48), 0.5f);
+
+    acid_synth_set_drone(&s, 0);
+    CHECK(s.drone == 0 && s.slot[0].nheld == 0 && s.slot[1].nheld == 0);
+}
+
 int main(void)
 {
     RUN(test_live_load_guard);
@@ -1443,5 +1538,6 @@ int main(void)
     RUN(test_live_tonal_target);
     RUN(test_live_tonal_continue);
     RUN(test_live_tonal_off_bitexact);
+    RUN(test_live_drone_mode);
     TEST_MAIN_END();
 }

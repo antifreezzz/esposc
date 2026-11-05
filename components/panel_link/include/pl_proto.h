@@ -61,7 +61,7 @@ void pl_petri_split(const int16_t tab[PL_PETRI_POINTS], const int8_t mods[6], ui
 // Часть таблицы; 1 - собраны все 4 части одного номера (таблица в r). Часть другого номера начинает сборку заново.
 int pl_petri_collect(pl_petri_rx_t *r, uint8_t type, const uint8_t *payload, size_t len);
 
-enum { PL_DEMO_METAL, PL_DEMO_ACID, PL_DEMO_SONGS }; // номер песни демо в снимке
+enum { PL_DEMO_METAL, PL_DEMO_ACID, PL_DEMO_DRONE, PL_DEMO_SONGS = PL_DEMO_DRONE }; // песня демо или режим дрона в снимке
 
 // Нагрузки - только байты, без выравнивания.
 typedef struct {

@@ -130,7 +130,7 @@ static void send_snapshot(void)
     memset(&snap, 0, sizeof snap);
     memset(&snap2, 0, sizeof snap2);
     snap.mode = *s_demo_on ? 0 : 1;
-    snap.demo = (uint8_t)*s_demo_song;
+    snap.demo = s_synth->drone ? PL_DEMO_DRONE : (uint8_t)*s_demo_song;
     snap.bsp_page = (uint8_t)acid_link_page(s_link, s_synth);
     for (int p = 0; p < PL_PAGES; p++) {
         for (int e = 0; e < PL_KNOBS; e++) {

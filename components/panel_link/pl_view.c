@@ -133,6 +133,9 @@ const char *pl_view_status(const pl_model_t *m, int linked)
     if (!linked) {
         return "NO LINK";
     }
+    if (m->demo == PL_DEMO_DRONE) {
+        return "DRONE";
+    }
     if (m->mode) {
         return "LIVE";
     }
@@ -142,7 +145,7 @@ const char *pl_view_status(const pl_model_t *m, int linked)
 int pl_view_demo_tap(const pl_model_t *m, int linked, int x0, int y0, int x1, int y1)
 {
     // Палец можно чуть увести вниз за шапку, как у прочих кнопок шапки.
-    return linked && m->have && !m->mode && x0 >= PL_STATUS_X0 && y0 < PL_STATUS_Y1 && y1 < PL_STATUS_Y1 + 16 &&
+    return linked && m->have && x0 >= PL_STATUS_X0 && y0 < PL_STATUS_Y1 && y1 < PL_STATUS_Y1 + 16 &&
            x1 >= PL_STATUS_X0 - 16;
 }
 

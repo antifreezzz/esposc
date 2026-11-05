@@ -134,6 +134,7 @@ static void slot_init(acid_slot_t *v, float sr, int type)
 void acid_synth_init(acid_synth_t *s, float sr)
 {
     s->sr = sr;
+    s->drone = 0;
     for (int k = 0; k < ACID_SLOTS; k++) {
         slot_init(&s->slot[k], sr, k == 1 ? SEQ2_TYPE : 0);
         s->slot[k].idx = k;
@@ -363,7 +364,11 @@ static void note_release(acid_synth_t *s, acid_slot_t *v, int note);
 // Нота BSP со сдвигом слоя тональности и транспозицией синта.
 static int slot_note(const acid_synth_t *s, const acid_slot_t *v, int note)
 {
-    if (acid_tonal_moves(&s->tonal, v->idx)) {
+    if (s->drone) {
+        if (s->tonal.target == 0 || s->tonal.target == v->idx + 1) {
+            note = acid_tonal_drone_note(&s->tonal, note);
+        }
+    } else if (acid_tonal_moves(&s->tonal, v->idx)) {
         note = acid_tonal_note(&s->tonal, note);
     }
     return note + v->transpose;
@@ -371,6 +376,23 @@ static int slot_note(const acid_synth_t *s, const acid_slot_t *v, int note)
 
 static void note_on(acid_synth_t *s, acid_slot_t *v, int note, int vel)
 {
+    if (s->drone && v->nheld > 0) {
+        int old = v->held[v->nheld - 1];
+        for (int i = 0; v->pet && i < v->nheld - 1; i++) {
+            acid_petri_note_off(v->pet, v->held[i]);
+        }
+        v->pend_note = -1;
+        v->held[0] = (int8_t)note;
+        v->held_at[0] = v->now;
+        v->nheld = 1;
+        int sn = slot_note(s, v, note);
+        voice_note(s, v, sn, vel > ACCENT_VEL, 1);
+        if (v->type == ACID_TYPE_PETRI && v->pet) {
+            acid_petri_move(v->pet, old, note, acid_midi_to_hz(sn));
+        }
+        v->ctrl_left = 0;
+        return;
+    }
     if (v->pend_note == note) {
         // Дребезг: та же нота сразу после короткого нажатия - это продолжение той же ноты.
         v->pend_note = -1;
@@ -675,6 +697,7 @@ static void type_defaults(acid_synth_t *s, acid_slot_t *v)
     } else {
         acid_plaits_params_t *p = &v->pp;
         p->model = v->type - 1;
+        p->sustained = s->drone;
         p->harmonics = p->timbre = p->morph = 0.5f;
         p->decay = 0.3f; // хвост ~0.1 с: под секвенсор
         p->lpg_colour = 0.5f;
@@ -821,6 +844,8 @@ static void page_petri(acid_synth_t *s, int slot, int v)
     }
 }
 
+static void drone_retune(acid_synth_t *s);
+
 // Энкодер slot (с 1) на странице page, как будто BSP стоит на ней.
 static void apply_page(acid_synth_t *s, int page, int slot, int v)
 {
@@ -845,11 +870,20 @@ static void apply_page(acid_synth_t *s, int page, int slot, int v)
         page_fx(s, slot, v);
     } else if (page == PAGE_TONAL) {
         acid_tonal_set(&s->tonal, slot, v);
+        if (s->drone) {
+            drone_retune(s);
+        }
         s->save = 1; // квадрат - часть композиции, переживает перезагрузку
     } else if (page == PAGE_SYNTH1 || page == PAGE_SYNTH1 + 1) {
         page_synth(s, &s->slot[page - PAGE_SYNTH1], slot, v, 0);
+        if (s->drone) {
+            drone_retune(s);
+        }
     } else if (page >= ACID_PAGE_LAYER1 && page < ACID_PAGE_LAYER1 + ACID_SLOTS) {
         page_synth(s, &s->layer[page - ACID_PAGE_LAYER1], slot, v, 1);
+        if (s->drone) {
+            drone_retune(s);
+        }
     } else if (page == ACID_PAGE_GRIDS) {
         if (acid_drummer_set(&s->drummer, slot, v)) {
             s->raw[page][slot] = (uint8_t)v;
@@ -931,9 +965,72 @@ int acid_synth_knob(const acid_synth_t *s, int page, int enc)
     return s->raw[page][enc];
 }
 
+// Перестройка дрона по 9 TONAL и TRANS: на границе такта и сразу при повороте ручки.
+static void drone_retune(acid_synth_t *s)
+{
+    for (int i = 0; i < 2 * ACID_SLOTS; i++) {
+        acid_slot_t *v = i < ACID_SLOTS ? &s->slot[i] : &s->layer[i - ACID_SLOTS];
+        if (v->nheld == 0) {
+            continue;
+        }
+        int top = v->held[v->nheld - 1];
+        float target = log2f(acid_midi_to_hz(slot_note(s, v, top)));
+        for (int k = 0; v->type == ACID_TYPE_PETRI && v->pet && k < v->nheld; k++) {
+            int n = v->held[k];
+            acid_petri_retune(v->pet, n, acid_midi_to_hz(slot_note(s, v, n)));
+        }
+        if (target == v->target_log2) {
+            if (s->tonal.held_mode != 1 && v->gliding) {
+                v->pitch_log2 = target;
+                v->gliding = 0;
+                v->ctrl_left = 0;
+            }
+            continue;
+        }
+        v->target_log2 = target;
+        if (s->tonal.held_mode == 1) {
+            v->gliding = 1;
+        } else {
+            v->pitch_log2 = target;
+            v->gliding = 0;
+            v->ctrl_left = 0;
+        }
+    }
+}
+
+void acid_synth_set_drone(acid_synth_t *s, int on)
+{
+    s->drone = on != 0;
+    for (int i = 0; i < 2 * ACID_SLOTS; i++) {
+        acid_slot_t *v = i < ACID_SLOTS ? &s->slot[i] : &s->layer[i - ACID_SLOTS];
+        v->pp.sustained = s->drone;
+        if (s->drone) {
+            v->pend_note = -1;
+        }
+    }
+    if (!s->drone) {
+        acid_synth_notes_off(s);
+        return;
+    }
+    drone_retune(s);
+    for (int k = 0; k < ACID_SLOTS; k++) {
+        if (s->slot[k].nheld == 0) {
+            note_on(s, &s->slot[k], ACID_DRONE_NOTE, 100);
+        }
+        if (s->layer[k].nheld == 0) {
+            int n = s->slot[k].held[s->slot[k].nheld - 1];
+            note_on(s, &s->layer[k], n, 100);
+        }
+    }
+}
+
 // Граница шага слоя: звучащие ноты синтов по режиму энкодера 6, свежая нота - сразу на новый шаг.
 static void tonal_boundary(acid_synth_t *s)
 {
+    if (s->drone) {
+        drone_retune(s);
+        return;
+    }
     for (int i = 0; i < 2 * ACID_SLOTS; i++) {
         acid_slot_t *v = i < ACID_SLOTS ? &s->slot[i] : &s->layer[i - ACID_SLOTS]; // слой - вслед за синтом
         if (v->nheld == 0 || !acid_tonal_moves(&s->tonal, v->idx)) {
@@ -971,7 +1068,7 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
         }
         break;
     case ACID_MIDI_NOTE_OFF:
-        if (ev->ch == BASS_CH || ev->ch == SEQ2_CH) {
+        if (!s->drone && (ev->ch == BASS_CH || ev->ch == SEQ2_CH)) {
             note_off(s, &s->slot[ev->ch == SEQ2_CH], ev->d1);
             note_off(s, &s->layer[ev->ch == SEQ2_CH], ev->d1);
         }
@@ -999,6 +1096,9 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
     }
     case ACID_MIDI_START:
         acid_tonal_start(&s->tonal);
+        if (s->drone) {
+            drone_retune(s);
+        }
         acid_beat_start(&s->beat);
         acid_drummer_reset(&s->drummer);
         break;
@@ -1006,7 +1106,9 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
         acid_beat_continue(&s->beat);
         break;
     case ACID_MIDI_STOP:
-        acid_synth_notes_off(s); // защита от залипших нот
+        if (!s->drone) {
+            acid_synth_notes_off(s); // защита от залипших нот
+        }
         acid_beat_stop(&s->beat);
         acid_drummer_reset(&s->drummer);
         s->grids_step = -1;
@@ -1422,6 +1524,9 @@ int acid_synth_import(acid_synth_t *s, const void *buf, size_t len)
         if (b[i] != KNOB_NONE) {
             acid_tonal_set(&s->tonal, i, b[i]);
         }
+    }
+    if (s->drone) {
+        drone_retune(s);
     }
     return 1;
 }

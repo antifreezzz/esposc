@@ -33,11 +33,14 @@ static const char *TAG = "main";
 
 static acid_synth_t s_synth;
 static acid_demo_t s_demo;
-static volatile int s_demo_on; // играет демо: события от него, MIDI от BSP не слушаем
-static volatile int s_demo_song; // номер песни в DEMO_SONGS (PL_DEMO_* для панели)
-static acid_link_t s_link;      // панель: подхват BSP, глушение ручек демо
-static acid_custom_t s_custom;  // свои страницы: переживают смену демо <-> live
-static acid_scene_t s_scene;    // сцены: так же
+static volatile int s_demo_on;   // играет демо: события от него, MIDI от BSP не слушаем
+static volatile int s_demo_song; // номер песни в DEMO_SONGS или PL_DEMO_DRONE
+static int s_live;               // подключён MIDI-контроллер (BSP)
+static int s_drone;              // режим дрона: тянутся оба синта, их ведёт страница 9 TONAL
+static int s_drone_clk;          // кусков до следующего тика автономного клока дрона
+static acid_link_t s_link;       // панель: подхват BSP, глушение ручек демо
+static acid_custom_t s_custom;   // свои страницы: переживают смену демо <-> live
+static acid_scene_t s_scene;     // сцены: так же
 static const acid_bank_t *s_bank; // тарелки из флэша, NULL - молчат
 
 // Ядро 0 на каждый кусок c: тарелки и перкуссия куска c (ядро 1 тем временем считает синт 1 и ударку c),
@@ -158,6 +161,10 @@ static void render_block(float *l, float *r)
             for (int i = 0; i < n; i++) {
                 to_panel(acid_link_midi(&s_link, &s_synth, &demo_ev[i], ACID_SRC_DEMO, &lev), &lev);
             }
+        } else if (s_drone && !s_live && ++s_drone_clk >= ACID_DEMO_TICK) {
+            s_drone_clk = 0;
+            acid_midi_event_t clk = {.type = ACID_MIDI_CLOCK};
+            acid_synth_midi(&s_synth, &clk);
         }
         pl_set_t set;
         while (panel_uart_receive(&set)) {
@@ -210,12 +217,16 @@ static void block_fade(float *l, float *r, float g0, float g1)
     }
 }
 
-// Синт с нуля: с BSP - сохранённые ручки пользователя, без него - демо с начала (ручки не трогает).
+// Синт с нуля: с BSP или в автономном дроне - сохранённые ручки пользователя, иначе демо с начала.
 static void enter_mode(int live, const uint8_t *blob, int blob_ok)
 {
+    s_live = live;
+    if (!live) {
+        s_drone = s_demo_song == NSONGS;
+    }
     acid_synth_init(&s_synth, (float)SR);
     acid_synth_set_bank(&s_synth, s_bank);
-    if (live) {
+    if (live || s_drone) {
         if (blob_ok) {
             acid_synth_import(&s_synth, blob, ACID_SYNTH_BLOB);
         }
@@ -226,6 +237,14 @@ static void enter_mode(int live, const uint8_t *blob, int blob_ok)
     }
     acid_link_init(&s_link);
     acid_link_use_custom(&s_link, &s_custom);
+    if (s_drone) {
+        acid_synth_set_drone(&s_synth, 1);
+        if (!live) {
+            acid_midi_event_t st = {.type = ACID_MIDI_START};
+            acid_synth_midi(&s_synth, &st);
+            s_drone_clk = ACID_DEMO_TICK - 1;
+        }
+    }
     s_scene.state = 0; // переход прежнего режима не доигрываем: синт с нуля
     panel_uart_snapshot_due(); // синт с нуля: панели всё заново
 }
@@ -292,7 +311,7 @@ static void synth_task(void *arg)
             while (midi_in_receive(&stale)) {
                 // Пока свистка не было, накопились старые события: выбрасываем.
             }
-            if (live) {
+            if (live && !s_drone) {
                 acid_synth_notes_off(&s_synth); // вместе с событиями ушли и note off: чистим стек нот
             }
         }
@@ -300,18 +319,25 @@ static void synth_task(void *arg)
             fade = FADE_BLOCKS; // уходим без щелчка, потом меняем режим
             next_song = 0;
         }
-        if (panel_uart_take_demo() && !live && fade == 0 && NSONGS > 1) {
-            fade = FADE_BLOCKS; // тап по статусу панели: следующая песня с начала, синт с нуля
-            next_song = 1;
+        if (!BENCH && panel_uart_take_demo() && fade == 0) {
+            if (live) {
+                s_drone = !s_drone;
+                acid_synth_set_drone(&s_synth, s_drone);
+                panel_uart_snapshot_due();
+                ESP_LOGI(TAG, "live drone %d", s_drone);
+            } else {
+                fade = FADE_BLOCKS; // тап по статусу панели: следующая песня или дрон, синт с нуля
+                next_song = 1;
+            }
         }
         int64_t t0 = esp_timer_get_time();
         render_block(out_l, out_r);
         if (fade > 0) {
             block_fade(out_l, out_r, (float)fade / FADE_BLOCKS, (float)(fade - 1) / FADE_BLOCKS);
             if (--fade == 0 && next_song) {
-                s_demo_song = (s_demo_song + 1) % NSONGS;
+                s_demo_song = (s_demo_song + 1) % (NSONGS + 1);
                 enter_mode(0, blob, blob_ok);
-                ESP_LOGI(TAG, "demo song %d", s_demo_song);
+                ESP_LOGI(TAG, "demo mode %d", s_demo_song);
             } else if (fade == 0) {
                 live = !live;
                 enter_mode(live, blob, blob_ok);
@@ -336,7 +362,7 @@ static void synth_task(void *arg)
 
         // Сменили тип синтеза: память ручек пишем, когда выход помолчит (flash стопорит кэш).
         // Ручки демо не сохраняем.
-        save_pending |= acid_synth_take_save(&s_synth) && live;
+        save_pending |= acid_synth_take_save(&s_synth) && !s_demo_on;
         // Свои страницы и сцены - действия пользователя, пишутся и в демо.
         custom_pending |= s_custom.save;
         scene_pending |= s_scene.save;

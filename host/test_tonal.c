@@ -282,6 +282,26 @@ TEST(test_tonal_moves)
     CHECK(!acid_tonal_moves(&t, 0) && acid_tonal_moves(&t, 1));
 }
 
+TEST(test_tonal_drone_note)
+{
+    acid_tonal_init(&t);
+    CHECK(!acid_tonal_active(&t));
+    CHECK(acid_tonal_drone_note(&t, 36) == 36);
+    enc(8, 7); // тоника G даже при выключенном шагателе
+    CHECK(acid_tonal_drone_note(&t, 36) == 43);
+    step_val(1, 69); // +5 полутонов в хроматике
+    CHECK(acid_tonal_drone_note(&t, 36) == 48);
+    enc(7, 2); // натуральный минор
+    enc(8, 9); // ля минор: 36 + 9 = 45 (A2)
+    step_val(1, 66); // +2 ступени от A2 = C3 (48)
+    CHECK(acid_tonal_drone_note(&t, 36) == 48);
+    enc(2, 1);
+    step_val(2, 63); // -1 ступень от A2 = G2 (43)
+    acid_tonal_start(&t);
+    ticks(97);
+    CHECK(acid_tonal_drone_note(&t, 36) == 43);
+}
+
 int main(void)
 {
     RUN(test_tonal_defaults_inactive);
@@ -302,5 +322,6 @@ int main(void)
     RUN(test_tonal_pentatonic);
     RUN(test_tonal_step_follows_cycle);
     RUN(test_tonal_moves);
+    RUN(test_tonal_drone_note);
     TEST_MAIN_END();
 }

@@ -154,11 +154,8 @@ static int floor_div(int a, int b)
     return a >= 0 ? a / b : -((-a + b - 1) / b);
 }
 
-int acid_tonal_note(const acid_tonal_t *t, int note)
+static int shift_note(const acid_tonal_t *t, int note)
 {
-    if (t->len == 0) {
-        return note;
-    }
     int sh = t->raw[t->step];
     if (t->scale == 0) {
         return note + sh;
@@ -178,6 +175,16 @@ int acid_tonal_note(const acid_tonal_t *t, int note)
     int o = floor_div(d, n);
     d -= o * n;
     return t->tonic + (oct + o) * 12 + sc[d] + rest;
+}
+
+int acid_tonal_note(const acid_tonal_t *t, int note)
+{
+    return t->len == 0 ? note : shift_note(t, note);
+}
+
+int acid_tonal_drone_note(const acid_tonal_t *t, int note)
+{
+    return shift_note(t, note + t->tonic);
 }
 
 int acid_tonal_moves(const acid_tonal_t *t, int slot)

@@ -132,7 +132,7 @@ TEST(test_page_bsp_numbers)
     CHECK(pl_page_bsp(PL_USER_FIRST) == 10 && pl_page_bsp(PL_USER_FIRST + 5) == 15);
 }
 
-// Статус в шапке: без связи, live, в демо - имя песни.
+// Статус в шапке: без связи, дрон, live, в демо - имя песни.
 TEST(test_status_text)
 {
     static pl_model_t sm;
@@ -140,7 +140,10 @@ TEST(test_status_text)
     CHECK(strcmp(pl_view_status(&sm, 0), "NO LINK") == 0);
     sm.mode = 1;
     CHECK(strcmp(pl_view_status(&sm, 1), "LIVE") == 0);
+    sm.demo = PL_DEMO_DRONE;
+    CHECK(strcmp(pl_view_status(&sm, 1), "DRONE") == 0);
     sm.mode = 0;
+    CHECK(strcmp(pl_view_status(&sm, 1), "DRONE") == 0);
     sm.demo = PL_DEMO_METAL;
     CHECK(strcmp(pl_view_status(&sm, 1), "METAL") == 0);
     sm.demo = PL_DEMO_ACID;
@@ -149,7 +152,7 @@ TEST(test_status_text)
     CHECK(strcmp(pl_view_status(&sm, 1), "DEMO") == 0);
 }
 
-// Тап по статусу (шапка правее EDIT с запасом) меняет демо, только в демо и со связью.
+// Тап по статусу (шапка правее EDIT с запасом) меняет режим со связью и в демо, и в live.
 TEST(test_demo_tap)
 {
     static pl_model_t sm;
@@ -162,7 +165,7 @@ TEST(test_demo_tap)
     CHECK(!pl_view_demo_tap(&sm, 1, 450, 20, 450, 70)); // увёл палец вниз
     CHECK(!pl_view_demo_tap(&sm, 0, 450, 20, 450, 20)); // нет связи
     sm.mode = 1;
-    CHECK(!pl_view_demo_tap(&sm, 1, 450, 20, 450, 20)); // live
+    CHECK(pl_view_demo_tap(&sm, 1, 450, 20, 450, 20)); // live <-> дрон
 }
 
 int main(void)

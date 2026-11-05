@@ -130,6 +130,17 @@ void acid_petri_retune(acid_petri_t *p, int note, float hz)
     }
 }
 
+void acid_petri_move(acid_petri_t *p, int from_note, int to_note, float hz)
+{
+    for (int k = 0; k < ACID_PETRI_VOICES; k++) {
+        if (p->v[k].gate && p->v[k].note == from_note) {
+            p->v[k].note = (int8_t)to_note;
+            set_hz(p, &p->v[k], hz);
+            return;
+        }
+    }
+}
+
 void acid_petri_note_on(acid_petri_t *p, int note, float hz, int vel)
 {
     (void)vel;

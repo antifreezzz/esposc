@@ -16,6 +16,7 @@ typedef struct {
     float fm_env, timbre_env, morph_env; // -1..1, сколько внутренняя огибающая двигает высоту, timbre, morph
     float level;      // 0..1, уровень гейта (0 - нота отпущена)
     int trigger;      // 1 пока нота держится; фронт 0 -> 1 запускает ноту
+    int sustained;    // 1 в режиме дрона: непрерывно возбуждает и ударные/модальные модели Plaits
 } acid_plaits_params_t;
 
 typedef struct acid_plaits acid_plaits_t;
