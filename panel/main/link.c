@@ -86,3 +86,10 @@ void link_demo(void)
 {
     send(PL_DEMO, NULL, 0);
 }
+
+void link_petri(const uint8_t out[4][PL_PETRI_PART_MAX], const size_t len[4])
+{
+    for (int k = 0; k < 4; k++) {
+        send((uint8_t)(PL_PETRI_0 + k), out[k], len[k]); // uart_write_bytes под мьютексом: кадр не рвётся
+    }
+}

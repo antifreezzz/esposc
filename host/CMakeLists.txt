@@ -38,5 +38,5 @@ target_link_libraries(acid_render plaits m)
 
 # Зашитые таблицы чашки Петри для синта: host/build/petri_bake > components/acid/acid_petri_tables.c
 add_executable(petri_bake ${CMAKE_CURRENT_SOURCE_DIR}/../tools/petri_bake/petri_bake.c ${PETRI_SRCS})
-target_include_directories(petri_bake PRIVATE ${PETRI_DIR}/include)
+target_include_directories(petri_bake PRIVATE ${PETRI_DIR}/include ${PL_DIR}/include)
 target_link_libraries(petri_bake m)
