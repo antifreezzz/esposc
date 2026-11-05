@@ -7,12 +7,12 @@
 #define TYPE_ENC 1
 #define PAGE_SYNTH1 6
 
-static const uint8_t MAGIC[4] = {'S', 'C', 'N', 3}; // 3: 13 страниц (Grids)
+static const uint8_t MAGIC[4] = {'S', 'C', 'N', 4}; // 3: 13 страниц (Grids), 4: 14 (чашка Петри)
 #define OLD_BLOB(pages) (4 + 1 + ACID_SCENES * (pages) * ACID_KNOBS + sizeof(((acid_scene_t *)0)->user))
 // Старые версии: 1 - 10 страниц (без слоёв), 2 - 12 (без Grids).
 static const struct {
     uint8_t ver, pages;
-} OLD[] = {{1, 10}, {2, 12}};
+} OLD[] = {{1, 10}, {2, 12}, {3, 13}};
 #define UNSET 0xFF // ручка в сцене не задана (старая сцена без слоёв или Grids): вызов её не трогает
 
 void acid_scene_init(acid_scene_t *sc)

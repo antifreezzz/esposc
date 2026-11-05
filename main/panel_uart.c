@@ -112,7 +112,9 @@ static void send(uint8_t type, const void *p, size_t n)
 static void send_snapshot(void)
 {
     static pl_snapshot_t snap;
+    static pl_snapshot2_t snap2;
     memset(&snap, 0, sizeof snap);
+    memset(&snap2, 0, sizeof snap2);
     snap.mode = *s_demo_on ? 0 : 1;
     snap.demo = (uint8_t)*s_demo_song;
     snap.bsp_page = (uint8_t)acid_link_page(s_link, s_synth);
@@ -120,11 +122,12 @@ static void send_snapshot(void)
         for (int e = 0; e < PL_KNOBS; e++) {
             snap.raw[p][e] = (uint8_t)acid_synth_knob(s_synth, p, e);
             int i = p * PL_KNOBS + e;
-            snap.held[i / 8] |= (uint8_t)((s_link->held[p][e] ? 1 : 0) << (i % 8));
+            snap2.held[i / 8] |= (uint8_t)((s_link->held[p][e] ? 1 : 0) << (i % 8));
         }
     }
-    memcpy(snap.bsp_pos, s_link->bsp_pos, sizeof snap.bsp_pos);
+    memcpy(snap2.bsp_pos, s_link->bsp_pos, sizeof snap2.bsp_pos);
     send(PL_SNAPSHOT, &snap, sizeof snap);
+    send(PL_SNAPSHOT2, &snap2, sizeof snap2); // весь снимок с 14 страницами не влезает в один кадр
 }
 
 static void send_custom(int up)

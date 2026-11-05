@@ -414,8 +414,10 @@ TEST(test_bsp_layer_page)
     CHECK(s.page == ACID_PAGE_LAYER1 && ev.value == ACID_PAGE_LAYER1);
     CHECK(bsp(1, 17) == 1);
     CHECK(s.page == ACID_PAGE_LAYER1 + 1);
-    CHECK(bsp(1, 18) == 0);
-    CHECK(s.page == ACID_PAGE_LAYER1 + 1);
+    CHECK(bsp(1, 18) == 1); // 18 - чашка Петри
+    CHECK(s.page == ACID_PAGE_PETRI);
+    CHECK(bsp(1, 19) == 0);
+    CHECK(s.page == ACID_PAGE_PETRI);
 }
 
 TEST(test_link_layer_type_report)

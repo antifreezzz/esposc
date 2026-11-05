@@ -4,8 +4,8 @@
 
 #define N(a) ((int)(sizeof(a) / sizeof((a)[0])))
 
-static const char *const PAGE_NAME[13] = {"MIX",     "DRUMS",   "CYMBALS", "TOMS",  "RIM",     "COWBELL", "SYNTH 1",
-                                          "SYNTH 2", "FX",      "TONAL",   "LAYER 1", "LAYER 2", "GRIDS"};
+static const char *const PAGE_NAME[14] = {"MIX",     "DRUMS", "CYMBALS", "TOMS",    "RIM",     "COWBELL", "SYNTH 1",
+                                          "SYNTH 2", "FX",    "TONAL",   "LAYER 1", "LAYER 2", "GRIDS",   "PETRI"};
 
 // По индексу энкодера с 0; NULL - пусто.
 static const char *const MIX[16] = {NULL, "MASTER", "DRIVE", "SYNTH 1", "SYNTH 2", "KICK", "HATS", "CLAP",
@@ -26,6 +26,11 @@ static const char *const PLAITS[16] = {NULL, "TYPE", "HARMONICS", "TIMBRE", "MOR
                                        "TRANS", "T ENV", "M ENV", "P ENV", "ACCENT", "DRIVE", "TONE", "HOWL"};
 static const char *const PETRI_SYN[16] = {NULL,     "TYPE",     "CUTOFF", "RESO",   "ENV",   "DECAY", "ATTACK", "RELEASE",
                                           "RELIEF", "CONTRAST", "ORBIT",  "RADIUS", "CENTER", "DRIVE", "TONE",   "HOWL"};
+static const char *const PETRI_PAGE[16] = {NULL,       "PRESET",   "F FINE",  "K FINE",  "STEPS",   "GRAZERS",
+                                           "SEEDERS",  "MUTAGENS", "VORTICES", "APPETITE", "MUTATION", "GRZ>CUT",
+                                           "MUT>RESO", "VRT>ENV",  "FREEZE",  "RESEED"};
+static const char *const PRESET[6] = {"MITOSIS", "CORAL", "MAZE", "WORMS", "SOLITONS", "SKATES"};
+static const char *const RESEED[2] = {"-", "RESEED"};
 static const char *const RELIEF[4] = {"HEIGHT", "EDGE", "FOLD", "VOID"};
 static const char *const ORBIT[5] = {"CIRCLE", "EIGHT", "LISS 3:2", "ROSE", "EPI"};
 static const char *const FX[16] = {NULL, "CRUSH BITS", "CRUSH RATE", "DLY S1", "DLY S2", "DLY DRUMS", "DLY TIME",
@@ -66,6 +71,7 @@ const char *pl_page_name(int page)
 #define PETRI 25
 #define LAYER_OFF 26
 #define GRIDS_PAGE PL_PAGE_GRIDS
+#define PETRI_PG PL_PAGE_PETRI
 
 static int is_layer(int page)
 {
@@ -120,6 +126,7 @@ const char *pl_knob_label(int page, int enc, const uint8_t page_raw[16])
     case 8: return FX[enc];
     case 9: return TONAL[enc];
     case GRIDS_PAGE: return GRIDS[enc];
+    case PETRI_PG: return PETRI_PAGE[enc];
     default: return NULL;
     }
 }
@@ -164,6 +171,10 @@ static int list_of(int page, int enc, const uint8_t *raw, const char *const **wo
         *words = W[enc], *lo = LO[enc], *hi = HI[enc];
     } else if (page == 9 && enc >= 8) {
         *lo = 52, *hi = 76; // шаг тональности, 64 без сдвига
+    } else if (page == PETRI_PG && (enc == 1 || (enc >= 4 && enc <= 8) || enc == 15)) {
+        static const char *const *const W[16] = {[1] = PRESET, [15] = RESEED};
+        static const int HI[16] = {[1] = 5, [4] = 6, [5] = 16, [6] = 4, [7] = 4, [8] = 3, [15] = 1};
+        *words = W[enc], *hi = HI[enc];
     } else if (page == GRIDS_PAGE && (enc == 1 || (enc >= 8 && enc <= 12))) {
         static const char *const *const W[13] = {[1] = OFF_ON, [8] = HAT_MODE, [9] = TIME_HAND, [10] = EVERY,
                                                  [11] = FILL_LEN, [12] = FILL_NOW};
@@ -207,8 +218,8 @@ const char *pl_value_text(int page, int enc, int v, const uint8_t page_raw[16], 
     if ((as_synth(page) == 6 || as_synth(page) == 7) && synth_kind(page_raw) == KPETRI && enc == 12 && v == 127) {
         return "FOLLOW"; // центр орбиты едет за пожирателем
     }
-    if (page == 8 && enc == 14) {
-        return v >= 64 ? "ON" : "OFF"; // LYR HALF: переключатель
+    if ((page == 8 || page == PETRI_PG) && enc == 14) {
+        return v >= 64 ? "ON" : "OFF"; // LYR HALF, FREEZE: переключатели
     }
     snprintf(buf, 12, "%d", v);
     return buf;
@@ -219,8 +230,8 @@ int pl_labels_depend(int page)
     return (page >= 3 && page <= 7) || is_layer(page);
 }
 
-static const uint32_t PAGE_COLOR[13] = {0x6fc3ff, 0xff6f7d, 0xffb84d, 0xff7b47, 0xff9457, 0xffd24d, 0xff9900,
-                                        0x7be382, 0xc79bff, 0x5fd3e6, 0xff9900, 0x7be382, 0xff5e6c}; // слои - цветом своего синта
+static const uint32_t PAGE_COLOR[14] = {0x6fc3ff, 0xff6f7d, 0xffb84d, 0xff7b47, 0xff9457, 0xffd24d, 0xff9900,
+                                        0x7be382, 0xc79bff, 0x5fd3e6, 0xff9900, 0x7be382, 0xff5e6c, 0x34c8a4}; // слои - цветом своего синта
 
 uint32_t pl_page_color(int page)
 {
@@ -282,6 +293,12 @@ uint32_t pl_knob_color(int page, int enc, const uint8_t page_raw[16])
         if (enc <= 5) return 0x5fd3e6;
         if (enc <= 7) return 0xffb547;
         return 0x7be382;
+    case PETRI_PG: // PETRI: колония, жители, еда и мутации, маршруты в фильтр, фриз и пересев
+        if (enc <= 4) return 0x34c8a4;
+        if (enc <= 8) return 0xffb547;
+        if (enc <= 10) return 0xff6f7d;
+        if (enc <= 13) return 0xc79bff;
+        return 0x6fc3ff;
     case GRIDS_PAGE: // GRIDS: вкл, карта, плотности и хаос, руки, сбивки
         if (enc == 1) return 0xffd24d;
         if (enc <= 3) return 0x6fc3ff;
@@ -315,6 +332,7 @@ int pl_knob_bipolar(int page, int enc, const uint8_t page_raw[16])
         }
         return (enc >= 8 && enc <= 11) || enc == 14;
     case 9: return enc >= 8 && enc <= 15;
+    case PETRI_PG: return enc == 2 || enc == 3 || (enc >= 11 && enc <= 13);
     default: return 0;
     }
 }
@@ -329,6 +347,7 @@ const char *pl_page_summary(int page, const uint8_t page_raw[16], char buf[24])
         }
         return "LEVELS & DJF";
     case 1: return "808 / 909";
+    case PETRI_PG: return pl_value_text(page, 1, page_raw[1], page_raw, buf);
     case 2: return "CRASH & RIDE";
     case 3:
     case 4:

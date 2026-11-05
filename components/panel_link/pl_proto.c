@@ -47,6 +47,7 @@ static int payload_len(uint8_t type)
     case PL_LOAD: return (int)sizeof(pl_load_t);
     case PL_DEMO: return 0;
     case PL_GRIDS_STEP: return 1;
+    case PL_SNAPSHOT2: return (int)sizeof(pl_snapshot2_t);
     default: return -1;
     }
 }
@@ -115,6 +116,9 @@ int pl_page_bsp(int page)
     }
     if (page == PL_PAGE_GRIDS) {
         return -1;
+    }
+    if (page == PL_PAGE_PETRI) {
+        return 18;
     }
     if (page >= PL_USER_FIRST) {
         return 10 + page - PL_USER_FIRST;

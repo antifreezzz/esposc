@@ -23,11 +23,14 @@
 #define ACID_TYPES (2 + ACID_PLAITS_MODELS)      // 0 - наш 303, 1..24 - модели Plaits, 25 - чашка Петри
 #define ACID_LAYER_OFF ACID_TYPES                // тип слоя «выкл» (у синтов его нет)
 #define ACID_KNOBS 16
-// Страницы ручек внутри: 0-9 штатные, 10-11 слои синтов, 12 Grids; свои страницы - следом (acid_custom.h).
-// На BSP номера другие: свои 10-15, слои 16-17, у Grids номера нет - перевод только на границе (энкодер 1).
-#define ACID_PAGES 13
+// Страницы ручек внутри: 0-9 штатные, 10-11 слои синтов, 12 Grids, 13 чашка Петри; свои страницы - следом
+// (acid_custom.h). На BSP номера другие: свои 10-15, слои 16-17, чашка 18, у Grids номера нет - перевод только
+// на границе (энкодер 1).
+#define ACID_PAGES 14
 #define ACID_PAGE_LAYER1 10
 #define ACID_PAGE_GRIDS 12
+#define ACID_PAGE_PETRI 13
+#define ACID_BSP_PETRI 18
 #define ACID_BSP_USER_FIRST 10
 #define ACID_BSP_LAYER1 16
 

@@ -76,7 +76,12 @@ static const uint8_t RAW_DEFAULT[ACID_PAGES][ACID_KNOBS] = {
     [2] = {0, 28, 127, 64, 64, 35, 127, 64, 64, 40, 100, 0, 0, 0, 0, 0},
     [8] = {0, 0, 0, 0, 0, 0, 2, 53, 83, 0, 0, 127, LAYER_GAIN_RAW, LAYER_GAIN_RAW, 0, 0},
     [9] = {0, 0, 4, 0, 0, 1, 0, 0, 64, 64, 64, 64, 64, 64, 64, 64},
+    // Чашка: Митоз, F и k без сдвига, 4 шага, жители 3/1/2/1, аппетит 0.15, мутагены x1, маршруты -0.6/+0.7/+0.6.
+    [ACID_PAGE_PETRI] = {0, 0, 64, 64, 4, 3, 1, 2, 1, 38, 42, 26, 108, 102, 0, 0},
 };
+// Списки страницы «Чашка» (индекс энкодера с 0): пресет, шаги, численности. 0 - не список.
+static const uint8_t PETRI_PAGE_MAX[ACID_KNOBS] = {0, 5, 0, 0, 6, 16, 4, 4, 3, 0, 0, 0, 0, 0, 0, 1};
+#define PETRI_FREEZE_ENC 14 // энкодер 15: фриз (64 и выше вкл, каждый переход вверх - переснять)
 // Нетронутые ручки синта по типу: 303 и Plaits (перегруз 0, тон 64, вой 0 у обоих).
 static const uint8_t RAW_303[ACID_KNOBS] = {0, 0, 69, 111, 64, 60, 51, 0, 67, 64, 0, 0, 0, 0, 64, 0};
 static const uint8_t RAW_PLAITS[ACID_KNOBS] = {0, 0, 64, 64, 64, 38, 64, 67, 64, 64, 64, 64, 68, 0, 64, 0};
@@ -223,6 +228,9 @@ void acid_synth_init(acid_synth_t *s, float sr)
 
 int acid_page_from_bsp(int v)
 {
+    if (v == ACID_BSP_PETRI) {
+        return ACID_PAGE_PETRI;
+    }
     if (v >= 0 && v < ACID_BSP_USER_FIRST) {
         return v;
     }
@@ -237,6 +245,9 @@ int acid_page_from_bsp(int v)
 
 int acid_page_to_bsp(int page)
 {
+    if (page == ACID_PAGE_PETRI) {
+        return ACID_BSP_PETRI;
+    }
     if (page >= 0 && page < ACID_PAGE_LAYER1) {
         return page;
     }
@@ -774,15 +785,39 @@ static void page_synth(acid_synth_t *s, acid_slot_t *sl, int slot, int v, int la
 // Списки страниц 0-2 и 8: значение вне списка ручку не меняет.
 static int raw_ok(int page, int slot, int v)
 {
+    if (page == ACID_PAGE_PETRI) {
+        return !PETRI_PAGE_MAX[slot] || v <= PETRI_PAGE_MAX[slot];
+    }
     if (page == PAGE_FX) {
         return !((slot == 6 || slot == 9) && v > 4) && !(slot == 10 && v > 2);
     }
     return 1;
 }
 
+// Страница «Чашка»: синт берёт маршруты (11-13) и фриз (14), остальное - параметры чашки на панели (зеркало raw).
+static void page_petri(acid_synth_t *s, int slot, int v)
+{
+    if (!raw_ok(ACID_PAGE_PETRI, slot, v)) {
+        return;
+    }
+    int was = s->raw[ACID_PAGE_PETRI][slot];
+    s->raw[ACID_PAGE_PETRI][slot] = (uint8_t)v;
+    if (slot >= 11 && slot <= 13) {
+        s->petri_depth[slot - 11] = bip(v);
+    } else if (slot == PETRI_FREEZE_ENC && (was >= 64) != (v >= 64)) {
+        for (int k = 0; k < ACID_SLOTS; k++) {
+            acid_petri_freeze(&s->petri[k], v >= 64); // вверх - снимок звучащей таблицы
+        }
+    }
+}
+
 // Энкодер slot (с 1) на странице page, как будто BSP стоит на ней.
 static void apply_page(acid_synth_t *s, int page, int slot, int v)
 {
+    if (page == ACID_PAGE_PETRI) {
+        page_petri(s, slot, v); // своя проверка списков: фриз смотрит на прежнее значение
+        return;
+    }
     if (page <= PAGE_DRUMS2 || page == PAGE_FX) {
         if (raw_ok(page, slot, v)) {
             s->raw[page][slot] = (uint8_t)v;
