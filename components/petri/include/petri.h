@@ -1,4 +1,5 @@
 #pragma once
+#include <math.h>
 #include <stdint.h>
 
 // Чашка Петри: реакция Грея-Скотта на торе 96x96 и её жители. Чистый C без выделений памяти: общий для панели
@@ -54,6 +55,13 @@ typedef struct {
     uint8_t follow; // центр едет за первым пожирателем
     float cx, cy, ang;
 } petri_t;
+
+// Перенос координаты на тор в [0, PETRI_N). Без поправки -1e-6 округляется ровно до 96.
+static inline float petri_wrapf(float a)
+{
+    float r = a - PETRI_N * floorf(a * (1.0f / PETRI_N));
+    return r >= PETRI_N ? 0 : r;
+}
 
 uint32_t petri_rand(uint32_t *s); // xorshift32
 float petri_randf(uint32_t *s);   // [0, 1)

@@ -9,11 +9,6 @@
 
 static const float MODE_GAIN[PETRI_MODES] = {1, 2.5f, 1, 2.5f}; // Край и Пустота тише Высоты (подобрать на слух)
 
-static inline float wrapf(float a)
-{
-    return a - N * floorf(a * (1.0f / N));
-}
-
 // Кратчайшее смещение на торе.
 static inline float wd(float d)
 {
@@ -69,8 +64,8 @@ void petri_move_center(petri_t *p, float dt)
         ty = N / 2 + r * sinf(p->ang * 0.77f);
         k = 1 - expf(-dt * 2);
     }
-    p->cx = wrapf(p->cx + wd(tx - p->cx) * k);
-    p->cy = wrapf(p->cy + wd(ty - p->cy) * k);
+    p->cx = petri_wrapf(p->cx + wd(tx - p->cx) * k);
+    p->cy = petri_wrapf(p->cy + wd(ty - p->cy) * k);
 }
 
 // Статический шум для Пустоты: хеш клетки в -1..1, без массива.
@@ -85,8 +80,8 @@ static float cell_noise(int x, int y)
 
 static float noise_at(float x, float y)
 {
-    x = wrapf(x);
-    y = wrapf(y);
+    x = petri_wrapf(x);
+    y = petri_wrapf(y);
     int x0 = (int)x % N, y0 = (int)y % N, x1 = (x0 + 1) % N, y1 = (y0 + 1) % N;
     float fx = x - (int)x, fy = y - (int)y;
     float a = cell_noise(x0, y0), b = cell_noise(x1, y0), c = cell_noise(x0, y1), d = cell_noise(x1, y1);
@@ -95,8 +90,8 @@ static float noise_at(float x, float y)
 
 static float dk_at(const petri_t *p, float x, float y)
 {
-    x = wrapf(x);
-    y = wrapf(y);
+    x = petri_wrapf(x);
+    y = petri_wrapf(y);
     int x0 = (int)x % N, y0 = (int)y % N, x1 = (x0 + 1) % N, y1 = (y0 + 1) % N;
     float fx = x - (int)x, fy = y - (int)y;
     float a = p->dk[y0 * N + x0], b = p->dk[y0 * N + x1], c = p->dk[y1 * N + x0], d = p->dk[y1 * N + x1];

@@ -10,11 +10,6 @@
 
 static const uint8_t MAX[PETRI_KINDS] = {16, 4, 4, 3};
 
-static inline float wrapf(float a)
-{
-    return a - N * floorf(a * (1.0f / N));
-}
-
 static inline int wrapi(int a)
 {
     a %= N;
@@ -33,8 +28,8 @@ static inline int clampq(int x)
 
 static float bilin(const int16_t *g, float x, float y)
 {
-    x = wrapf(x);
-    y = wrapf(y);
+    x = petri_wrapf(x);
+    y = petri_wrapf(y);
     int x0 = (int)x % N, y0 = (int)y % N;
     float fx = x - (int)x, fy = y - (int)y;
     int x1 = x0 + 1 < N ? x0 + 1 : 0, y1 = y0 + 1 < N ? y0 + 1 : 0;
@@ -107,8 +102,8 @@ void petri_set_count(petri_t *p, int kind, int n)
 
 static void walk(petri_agent_t *a, float speed)
 {
-    a->x = wrapf(a->x + speed * cosf(a->h));
-    a->y = wrapf(a->y + speed * sinf(a->h));
+    a->x = petri_wrapf(a->x + speed * cosf(a->h));
+    a->y = petri_wrapf(a->y + speed * sinf(a->h));
 }
 
 static void grazer(petri_t *p, petri_agent_t *a, int pop, int *count)

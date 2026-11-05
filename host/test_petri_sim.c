@@ -215,6 +215,18 @@ TEST(step_golden)
     CHECK(dish_hash(&P) == GOLDEN);
 }
 
+// Крошечный минус не должен дать ровно 96: экран по такой координате рисует за краем.
+TEST(wrap_stays_below_n)
+{
+    float xs[] = {-1e-6f, -2e-6f, -3e-6f, -1e-7f, 96.0f, 192.0f, -96.0f, 0.0f};
+    for (unsigned i = 0; i < sizeof xs / sizeof *xs; i++) {
+        float w = petri_wrapf(xs[i]);
+        CHECK(w >= 0 && w < PETRI_N);
+    }
+    CHECK_NEAR(petri_wrapf(-0.5f), 95.5, 1e-4);
+    CHECK_NEAR(petri_wrapf(97.25f), 1.25, 1e-4);
+}
+
 TEST(bilinear_read)
 {
     petri_init(&P, 1);
@@ -239,6 +251,7 @@ int main(void)
     RUN(matches_float_reference);
     RUN(presets_stay_alive);
     RUN(step_golden);
+    RUN(wrap_stays_below_n);
     RUN(bilinear_read);
     TEST_MAIN_END();
 }

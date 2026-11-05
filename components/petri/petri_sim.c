@@ -35,11 +35,6 @@ static inline int wrapi(int a)
     return a < 0 ? a + N : a;
 }
 
-static inline float wrapf(float a)
-{
-    return a - N * floorf(a * (1.0f / N));
-}
-
 static inline int16_t q15(float x)
 {
     return (int16_t)lrintf(x * PETRI_Q);
@@ -174,8 +169,8 @@ void petri_step(petri_t *p)
 
 float petri_v(const petri_t *p, float x, float y)
 {
-    x = wrapf(x);
-    y = wrapf(y);
+    x = petri_wrapf(x);
+    y = petri_wrapf(y);
     int x0 = (int)x, y0 = (int)y;
     float fx = x - x0, fy = y - y0;
     int x1 = x0 + 1 < N ? x0 + 1 : 0, y1 = y0 + 1 < N ? y0 + 1 : 0;
