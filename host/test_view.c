@@ -26,6 +26,11 @@ TEST(test_standard_cell)
     CHECK(c.src == NULL); // штатная страница: источник - она сама
     pl_view_cell(&m, 0, 15, &c);
     CHECK(c.label == NULL);
+    CHECK(c.skip == -1);
+    pl_view_cell(&m, PL_PAGE_LAYER1, 1, &c);
+    CHECK(c.skip == 25); // TYPE слоя: PETRI крутилка перескакивает
+    pl_view_cell(&m, 8, 6, &c);
+    CHECK(c.skip == -1);
 }
 
 TEST(test_alias_cell_shows_target)

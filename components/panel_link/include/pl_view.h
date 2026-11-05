@@ -13,6 +13,7 @@ typedef struct {
     const char *src;   // своя страница: откуда цели ("SYNTH 1", "2 PAGES"), у штатных NULL
     uint32_t src_color;
     int v, lo, hi, bipolar, held;
+    int skip; // значение внутри хода, которого у ручки нет (pl_knob_skip), -1 - нет
     uint32_t color;
     char lbuf[20], vbuf[12], sbuf[12]; // label и text могут указывать сюда: структуру не копировать
 } pl_cell_t;

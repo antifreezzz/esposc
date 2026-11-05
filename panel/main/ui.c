@@ -846,6 +846,7 @@ static void knob_input(pl_model_t *m, int ev, int down, int x, int y, int x0, in
         pl_view_cell(m, u.page, i + 1, &cell);
         if (i >= 0 && i < KNOBS && cell.label && m->have) { // без снимка значения нули: ручка прыгнула бы в 0
             pl_turn_begin(&u.turn, x, y - RING_DY, cell.v, cell.lo, cell.hi);
+            pl_turn_skip(&u.turn, cell.skip);
             u.grab = i;
             u.sent = cell.v;
         }

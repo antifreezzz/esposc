@@ -258,6 +258,8 @@ TEST(test_layer_labels)
     CHECK(lo == 0 && hi == 26);
     pl_knob_range(6, 1, raw, &lo, &hi);
     CHECK(lo == 0 && hi == 25);
+    CHECK(pl_knob_skip(10, 1, raw) == 25 && pl_knob_skip(11, 1, raw) == 25); // слой не бывает PETRI
+    CHECK(pl_knob_skip(6, 1, raw) == -1 && pl_knob_skip(10, 2, raw) == -1);
     CHECK(pl_labels_depend(10) && pl_labels_depend(11));
     raw[1] = 0;
     CHECK(pl_knob_color(10, 3, raw) == pl_knob_color(6, 3, raw) && pl_knob_color(10, 3, raw) != 0);

@@ -195,6 +195,12 @@ void pl_knob_range(int page, int enc, const uint8_t page_raw[16], int *lo, int *
     }
 }
 
+int pl_knob_skip(int page, int enc, const uint8_t page_raw[16])
+{
+    (void)page_raw;
+    return is_layer(page) && enc == 1 ? PETRI : -1;
+}
+
 const char *pl_value_text(int page, int enc, int v, const uint8_t page_raw[16], char buf[12])
 {
     const char *const *w;

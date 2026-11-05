@@ -110,6 +110,30 @@ TEST(test_turn_list)
     CHECK(sweep(&t, 0, -100, 180) == 1);
 }
 
+// Слой: TYPE 0..26, но 25 (PETRI) слою не бывает - крутилка его перескакивает в обе стороны.
+TEST(test_turn_skips_value)
+{
+    pl_turn_t t;
+    begin(&t, 0, 24, 0, 26);
+    pl_turn_skip(&t, 25);
+    int v = 24, seen25 = 0;
+    for (double d = 0; d <= 60; d += 3) {
+        int x, y;
+        at(d, 180, &x, &y);
+        v = pl_turn_move(&t, x, y);
+        seen25 |= v == 25;
+    }
+    CHECK(!seen25 && v == 26);
+    begin(&t, 0, 26, 0, 26);
+    pl_turn_skip(&t, 25);
+    int x, y;
+    at(-14, 180, &x, &y); // один шаг назад: 360/27 ~ 13.3°
+    CHECK(pl_turn_move(&t, x, y) == 24);
+    begin(&t, 0, 24, 0, 25);
+    pl_turn_skip(&t, 25); // пропуск на упоре: упор - соседнее значение
+    CHECK(sweep(&t, 0, 90, 180) == 24);
+}
+
 TEST(test_press_hold)
 {
     pl_press_t p = {0};
@@ -188,6 +212,7 @@ int main(void)
     RUN(test_turn_dead_center);
     RUN(test_turn_clamp_and_back);
     RUN(test_turn_list);
+    RUN(test_turn_skips_value);
     RUN(test_press_hold);
     RUN(test_press_moved_is_not_hold);
     RUN(test_press_tap);

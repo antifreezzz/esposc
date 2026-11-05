@@ -60,6 +60,7 @@ void pl_view_cell(const pl_model_t *m, int page, int enc, pl_cell_t *c)
     c->src_color = 0;
     c->v = c->lo = c->bipolar = c->held = 0;
     c->hi = 127;
+    c->skip = -1;
     c->color = 0;
     if (page >= 0 && page < PL_PAGES) {
         const uint8_t *raw = m->raw[page];
@@ -69,6 +70,7 @@ void pl_view_cell(const pl_model_t *m, int page, int enc, pl_cell_t *c)
         }
         c->v = raw[enc];
         pl_knob_range(page, enc, raw, &c->lo, &c->hi);
+        c->skip = pl_knob_skip(page, enc, raw);
         c->bipolar = pl_knob_bipolar(page, enc, raw);
         c->color = pl_knob_color(page, enc, raw);
         c->text = pl_value_text(page, enc, c->v, raw, c->vbuf);
