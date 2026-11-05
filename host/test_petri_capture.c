@@ -114,14 +114,15 @@ TEST(table_in_range_at_max_contrast)
     }
 }
 
-// Одно пятно на пустой орбите: среднее почти 0, пик Края x2.5 выходит за int16 и должен упереться в край.
+// Одно пятно на пустой орбите, Высота на максимуме контраста: фон -1, пятно +1, разница x1.5 выходит за int16
+// и должна упереться в край, а не перевернуть знак.
 TEST(edge_spike_clamped)
 {
     petri_init(&P, 1);
     empty(&P);
     P.cx = P.cy = 48;
     P.radius = 18;
-    P.mode = PETRI_EDGE;
+    P.mode = PETRI_HEIGHT;
     P.contrast = 1;
     for (int y = 46; y <= 50; y++) {
         for (int x = 64; x <= 68; x++) {
