@@ -1,4 +1,5 @@
 #pragma once
+#include <stddef.h>
 #include <stdint.h>
 
 #include "esp_lvgl_port.h"
@@ -93,3 +94,13 @@ void ug_draw(const pl_model_t *m);
 void ug_input(pl_model_t *m, int down, int x, int y, int x0, int y0, uint32_t ms);
 // Палец ушёл с экрана не отпусканием (смена вида): отпустить сбивку и карту.
 void ug_release(pl_model_t *m);
+
+// ui_seq.c: экран секвенсера (такт полосами, песня строками). Ввод - без лока LVGL, каждый опрос тача.
+void us_build(lv_obj_t *scr);
+void us_show(int on);
+void us_draw(const pl_model_t *m);
+void us_input(pl_model_t *m, int down, int x, int y, int x0, int y0, uint32_t ms);
+void us_release(void); // палец ушёл с экрана не отпусканием (смена вида)
+void us_title(const pl_model_t *m, char *buf, size_t n); // заголовок шапки
+const char *us_action(const pl_model_t *m);              // кнопка действия шапки: PLAY / STOP
+void us_play(pl_model_t *m);                             // тап по ней

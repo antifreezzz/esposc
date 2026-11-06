@@ -19,3 +19,9 @@ void link_scene(int op, int n, int bars);
 void link_demo(void);
 // Таблица чашки Петри синту: 4 кадра (из задачи чашки, ядро 1).
 void link_petri(const uint8_t out[4][PL_PETRI_PART_MAX], const size_t len[4]);
+// Секвенсер: шаг такта, окно, строка песни, ▶/■ и такт экрана, темп (pl_proto.h, PL_SEQ_*).
+void link_seq_step(int synth, int pat, int step, int v);
+void link_seq_oct(int synth, int pat, int oct);
+void link_seq_row(int synth, int row, const uint8_t cells[PL_SEQ_CELLS], int rep);
+void link_seq_ctrl(int synth, int run, int edit);
+void link_seq_bpm(int bpm);

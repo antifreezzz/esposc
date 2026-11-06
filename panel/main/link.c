@@ -1,5 +1,7 @@
 #include "link.h"
 
+#include <string.h>
+
 #include "driver/gpio.h"
 #include "driver/uart.h"
 #include "esp_check.h"
@@ -92,4 +94,38 @@ void link_petri(const uint8_t out[4][PL_PETRI_PART_MAX], const size_t len[4])
     for (int k = 0; k < 4; k++) {
         send((uint8_t)(PL_PETRI_0 + k), out[k], len[k]); // uart_write_bytes под мьютексом: кадр не рвётся
     }
+}
+
+void link_seq_step(int synth, int pat, int step, int v)
+{
+    uint8_t p[4] = {(uint8_t)synth, (uint8_t)pat, (uint8_t)step, (uint8_t)v};
+    send(PL_SEQ_STEP, p, sizeof p);
+}
+
+void link_seq_oct(int synth, int pat, int oct)
+{
+    uint8_t p[3] = {(uint8_t)synth, (uint8_t)pat, (uint8_t)(oct + 2)};
+    send(PL_SEQ_OCT, p, sizeof p);
+}
+
+void link_seq_row(int synth, int row, const uint8_t cells[PL_SEQ_CELLS], int rep)
+{
+    uint8_t p[3 + PL_SEQ_CELLS];
+    p[0] = (uint8_t)synth;
+    p[1] = (uint8_t)row;
+    memcpy(p + 2, cells, PL_SEQ_CELLS);
+    p[2 + PL_SEQ_CELLS] = (uint8_t)rep;
+    send(PL_SEQ_ROW, p, sizeof p);
+}
+
+void link_seq_ctrl(int synth, int run, int edit)
+{
+    uint8_t p[3] = {(uint8_t)synth, (uint8_t)run, (uint8_t)edit};
+    send(PL_SEQ_CTRL, p, sizeof p);
+}
+
+void link_seq_bpm(int bpm)
+{
+    uint8_t b = (uint8_t)bpm;
+    send(PL_SEQ_BPM, &b, 1);
 }
