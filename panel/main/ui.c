@@ -37,8 +37,8 @@ enum { MENU, MENU2, PAGE, SCENES, GRIDS, PETRIS };
 
 typedef struct {
     lv_obj_t *card, *num, *arc, *val, *name, *src, *pdot, *empty_dot;
-    lv_obj_t *pill, *pill_txt, *mark; // кнопка переключателя или триггера; метка списка
     int v, held, grabbed, kind, lit; // нарисовано
+    char pill[12]; // подпись кнопки переключателя или триггера (рисует card_draw, без объектов LVGL)
     int lo, hi, bipolar;
     uint32_t color, src_color;
     char srcs[12]; // строка-источник своей страницы, "" - нет
@@ -248,6 +248,42 @@ static void pick_draw(lv_event_t *e)
     }
 }
 
+// Поверх карточки: у переключателя и триггера - плашка-кнопка на месте дуги, у списка - черта внизу справа
+// (тап откроет сетку значений). Рисуется сама: 15 карточек x 3 объекта LVGL съели бы кучу панели.
+static void card_draw(lv_event_t *e)
+{
+    const knob_t *k = lv_event_get_user_data(e);
+    if (!k->lab[0] || k->kind == PL_PICK_NONE) {
+        return;
+    }
+    lv_layer_t *layer = lv_event_get_layer(e);
+    lv_area_t c;
+    lv_obj_get_coords(k->card, &c);
+    lv_draw_fill_dsc_t f;
+    lv_draw_fill_dsc_init(&f);
+    if (k->kind == PL_PICK_GRID) {
+        f.radius = 2;
+        f.color = lv_color_hex(C_MUTED);
+        lv_area_t a = {c.x1 + 124, c.y1 + 68, c.x1 + 139, c.y1 + 70};
+        lv_draw_fill(layer, &f, &a);
+        return;
+    }
+    int lit = k->lit > 0;
+    f.radius = 16;
+    f.color = lv_color_hex(lit ? k->color : C_TRACK);
+    lv_area_t a = {c.x1 + 6, c.y1 + 24, c.x1 + 65, c.y1 + 55};
+    lv_draw_fill(layer, &f, &a);
+    lv_draw_label_dsc_t l;
+    lv_draw_label_dsc_init(&l);
+    l.font = &bc_17;
+    l.align = LV_TEXT_ALIGN_CENTER;
+    l.color = lv_color_hex(lit ? C_BG : C_TEXT);
+    l.text = k->pill;
+    l.text_local = 1;
+    lv_area_t ta = {a.x1, a.y1 + 7, a.x2, a.y2};
+    lv_draw_label(layer, &l, &ta);
+}
+
 static void build(void)
 {
     lv_obj_t *scr = lv_screen_active();
@@ -347,16 +383,8 @@ static void build(void)
         k->empty_dot = ui_box(k->card, 72, 37, 6, 6, C_TRACK);
         lv_obj_set_style_radius(k->empty_dot, 3, 0);
 
-        // Переключатель и триггер: плашка-кнопка на месте дуги.
-        k->pill = ui_box(k->card, 6, 24, 60, 32, C_TRACK);
-        lv_obj_set_style_radius(k->pill, 16, 0);
-        k->pill_txt = ui_label(k->pill, &bc_17, C_TEXT);
-        lv_obj_center(k->pill_txt);
-        ui_show(k->pill, 0);
-        // Список: короткая черта внизу справа - тап откроет сетку значений.
-        k->mark = ui_box(k->card, 124, 68, 16, 3, C_MUTED);
-        lv_obj_set_style_radius(k->mark, 2, 0);
-        ui_show(k->mark, 0);
+        lv_obj_add_event_cb(k->card, card_draw, LV_EVENT_DRAW_POST, k);
+        k->pill[0] = 0;
         k->v = k->held = k->grabbed = k->kind = k->lit = -1;
         k->color = 0;
         k->lo = k->hi = -1;
@@ -442,10 +470,9 @@ static void card_setup(knob_t *k, const pl_cell_t *c, int kind)
     snprintf(k->lab, sizeof k->lab, "%s", on ? c->label : "");
     lv_obj_set_style_bg_color(k->card, lv_color_hex(on ? C_TILE : C_TILE_EMPTY), 0);
     ui_show(k->arc, on && !button);
-    ui_show(k->pill, on && button);
-    ui_show(k->mark, on && kind == PL_PICK_GRID);
-    k->kind = kind;
+    k->kind = on ? kind : PL_PICK_NONE;
     k->lit = -1;
+    lv_obj_invalidate(k->card);
     ui_show(k->name, on);
     ui_show(k->num, on);
     ui_show(k->pdot, on);
@@ -699,7 +726,10 @@ static void draw_page(const pl_model_t *m)
         if (cell.v != k->v) {
             lv_arc_set_value(k->arc, cell.v);
             ui_text(k->val, cell.text);
-            ui_text(k->pill_txt, kind == PL_PICK_TRIGGER ? "GO" : cell.text);
+            if (kind == PL_PICK_TOGGLE || kind == PL_PICK_TRIGGER) {
+                snprintf(k->pill, sizeof k->pill, "%s", kind == PL_PICK_TRIGGER ? "GO" : cell.text);
+                lv_obj_invalidate(k->card);
+            }
             k->v = cell.v;
         }
         // Переключатель горит цветом ручки, когда не в нижнем положении; триггер - коротко после тапа.
@@ -707,9 +737,8 @@ static void draw_page(const pl_model_t *m)
                   : kind == PL_PICK_TOGGLE ? pl_pick_next(tp, te, m->raw[tp], cell.v) < cell.v
                                            : 0;
         if (lit != k->lit) {
-            lv_obj_set_style_bg_color(k->pill, lv_color_hex(lit ? k->color : C_TRACK), 0);
-            lv_obj_set_style_text_color(k->pill_txt, lv_color_hex(lit ? C_BG : C_TEXT), 0);
             k->lit = lit;
+            lv_obj_invalidate(k->card);
         }
         int held = cell.held && m->bsp_pos[enc] != 0xFF;
         if (held != k->held) {
