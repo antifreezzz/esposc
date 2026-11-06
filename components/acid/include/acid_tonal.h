@@ -32,5 +32,7 @@ int acid_tonal_active(const acid_tonal_t *t);
 int acid_tonal_step(const acid_tonal_t *t);             // 0..7
 int acid_tonal_note(const acid_tonal_t *t, int note);       // нота со сдвигом текущего шага
 int acid_tonal_drone_note(const acid_tonal_t *t, int note); // нота дрона: тоника + шаг (даже при len == 0)
+// Ступень лада degree (0 - тоника) от ноты base, кругом по октавам; в хроматике ступень - полутон.
+int acid_tonal_degree_note(const acid_tonal_t *t, int base, int degree);
 int acid_tonal_moves(const acid_tonal_t *t, int slot);      // двигать ли синт slot
 uint32_t acid_tonal_ticks_left(const acid_tonal_t *t);      // тиков до границы

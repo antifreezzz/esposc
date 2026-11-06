@@ -196,3 +196,11 @@ uint32_t acid_tonal_ticks_left(const acid_tonal_t *t)
 {
     return (uint32_t)((t->cur_len - t->bars - 1) * ACID_TONAL_BAR + ACID_TONAL_BAR - t->phase + t->armed);
 }
+
+int acid_tonal_degree_note(const acid_tonal_t *t, int base, int degree)
+{
+    int n = SCALE_N[t->scale];
+    int o = floor_div(degree, n);
+    int d = degree - o * n;
+    return base + o * 12 + (t->scale == 0 ? d : SCALES[t->scale][d]);
+}

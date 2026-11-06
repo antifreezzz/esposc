@@ -302,6 +302,22 @@ TEST(test_tonal_drone_note)
     CHECK(acid_tonal_drone_note(&t, 36) == 43);
 }
 
+TEST(test_degree_note)
+{
+    acid_tonal_t t;
+    acid_tonal_init(&t);
+    CHECK(acid_tonal_degree_note(&t, 36, 0) == 36); // хроматика: ступень = полутон
+    CHECK(acid_tonal_degree_note(&t, 36, 14) == 50);
+    acid_tonal_set(&t, 6, 1); // мажор
+    CHECK(acid_tonal_degree_note(&t, 36, 0) == 36);
+    CHECK(acid_tonal_degree_note(&t, 36, 2) == 40);
+    CHECK(acid_tonal_degree_note(&t, 36, 7) == 48);
+    CHECK(acid_tonal_degree_note(&t, 36, 14) == 60);
+    acid_tonal_set(&t, 6, 7); // пентатоника, 5 ступеней
+    CHECK(acid_tonal_degree_note(&t, 36, 5) == 48);
+    CHECK(acid_tonal_degree_note(&t, 36, 6) == 51);
+}
+
 int main(void)
 {
     RUN(test_tonal_defaults_inactive);
@@ -323,5 +339,6 @@ int main(void)
     RUN(test_tonal_step_follows_cycle);
     RUN(test_tonal_moves);
     RUN(test_tonal_drone_note);
+    RUN(test_degree_note);
     TEST_MAIN_END();
 }
