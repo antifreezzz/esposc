@@ -134,6 +134,7 @@ static void slot_init(acid_slot_t *v, float sr, int type)
 void acid_synth_init(acid_synth_t *s, float sr)
 {
     s->sr = sr;
+    s->seq = NULL;
     s->drone = 0;
     for (int k = 0; k < ACID_SLOTS; k++) {
         slot_init(&s->slot[k], sr, k == 1 ? SEQ2_TYPE : 0);
@@ -1056,21 +1057,55 @@ static void tonal_boundary(acid_synth_t *s)
     }
 }
 
+// Нота синта idx (0 или 1): слот и слой с одним стеком нот. Путь общий у BSP и секвенсера.
+static void synth_note(acid_synth_t *s, int idx, int on, int note, int vel)
+{
+    if (on) {
+        note_on(s, &s->slot[idx], note, vel);
+        note_on(s, &s->layer[idx], note, vel); // тот же стек нот, что у синта
+    } else if (!s->drone) {
+        note_off(s, &s->slot[idx], note);
+        note_off(s, &s->layer[idx], note);
+    }
+}
+
+static void seq_notes(acid_synth_t *s, const acid_seq_ev_t *ev, int n)
+{
+    for (int i = 0; i < n; i++) {
+        synth_note(s, ev[i].synth, ev[i].on, ev[i].note, ev[i].vel);
+    }
+}
+
+void acid_synth_use_seq(acid_synth_t *s, acid_seq_t *q)
+{
+    s->seq = q;
+    if (q) {
+        acid_seq_rewind(q);
+    }
+}
+
+void acid_synth_seq_run(acid_synth_t *s, int synth, int on)
+{
+    if (!s->seq) {
+        return;
+    }
+    acid_seq_ev_t ev[2];
+    seq_notes(s, ev, acid_seq_run(s->seq, synth, on, !s->beat.stopped, ev));
+}
+
 void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
 {
     switch (ev->type) {
     case ACID_MIDI_NOTE_ON:
         if (ev->ch == BASS_CH || ev->ch == SEQ2_CH) {
-            note_on(s, &s->slot[ev->ch == SEQ2_CH], ev->d1, ev->d2);
-            note_on(s, &s->layer[ev->ch == SEQ2_CH], ev->d1, ev->d2); // тот же стек нот, что у синта
+            synth_note(s, ev->ch == SEQ2_CH, 1, ev->d1, ev->d2);
         } else if (ev->ch == DRUM_CH) {
             drum_on(s, ev->d1, ev->d2);
         }
         break;
     case ACID_MIDI_NOTE_OFF:
-        if (!s->drone && (ev->ch == BASS_CH || ev->ch == SEQ2_CH)) {
-            note_off(s, &s->slot[ev->ch == SEQ2_CH], ev->d1);
-            note_off(s, &s->layer[ev->ch == SEQ2_CH], ev->d1);
+        if (ev->ch == BASS_CH || ev->ch == SEQ2_CH) {
+            synth_note(s, ev->ch == SEQ2_CH, 0, ev->d1, 0);
         }
         break;
     case ACID_MIDI_CC:
@@ -1089,8 +1124,14 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
         if (acid_tonal_tick(&s->tonal)) {
             tonal_boundary(s);
         }
+        int beat_step = -1;
         if (acid_beat_tick(&s->beat)) {
+            beat_step = s->beat.step;
             grids_play(s);
+        }
+        if (s->seq) {
+            acid_seq_ev_t sev[4];
+            seq_notes(s, sev, acid_seq_clock(s->seq, beat_step, &s->tonal, sev));
         }
         break;
     }
@@ -1101,6 +1142,9 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
         }
         acid_beat_start(&s->beat);
         acid_drummer_reset(&s->drummer);
+        if (s->seq) {
+            acid_seq_rewind(s->seq);
+        }
         break;
     case ACID_MIDI_CONTINUE:
         acid_beat_continue(&s->beat);
@@ -1112,6 +1156,9 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
         acid_beat_stop(&s->beat);
         acid_drummer_reset(&s->drummer);
         s->grids_step = -1;
+        for (int k = 0; s->seq && k < ACID_SEQ_SYNTHS; k++) {
+            acid_synth_seq_run(s, k, 0);
+        }
         break;
     default:
         break;
