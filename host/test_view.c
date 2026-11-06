@@ -152,22 +152,6 @@ TEST(test_status_text)
     CHECK(strcmp(pl_view_status(&sm, 1), "DEMO") == 0);
 }
 
-// Тап по статусу (шапка правее EDIT с запасом) меняет режим со связью и в демо, и в live.
-TEST(test_demo_tap)
-{
-    static pl_model_t sm;
-    pl_model_init(&sm);
-    sm.have = 1;
-    sm.mode = 0;
-    CHECK(pl_view_demo_tap(&sm, 1, 450, 20, 452, 22));
-    CHECK(!pl_view_demo_tap(&sm, 1, 420, 20, 420, 20)); // EDIT и его запас
-    CHECK(!pl_view_demo_tap(&sm, 1, 450, 60, 450, 60)); // ниже шапки
-    CHECK(!pl_view_demo_tap(&sm, 1, 450, 20, 450, 70)); // увёл палец вниз
-    CHECK(!pl_view_demo_tap(&sm, 0, 450, 20, 450, 20)); // нет связи
-    sm.mode = 1;
-    CHECK(pl_view_demo_tap(&sm, 1, 450, 20, 450, 20)); // live <-> дрон
-}
-
 int main(void)
 {
     RUN(test_page_bsp_numbers);
@@ -180,6 +164,5 @@ int main(void)
     RUN(test_page_names_and_colors);
     RUN(test_page_step_stays_in_group);
     RUN(test_status_text);
-    RUN(test_demo_tap);
     TEST_MAIN_END();
 }

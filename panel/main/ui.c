@@ -10,6 +10,7 @@
 #include "link.h"
 #include "pl_gesture.h"
 #include "pl_labels.h"
+#include "pl_nav.h"
 #include "pl_pick.h"
 #include "pl_view.h"
 #include "ui_priv.h"
@@ -30,10 +31,6 @@
 #define MENU2_TILES 9 // USER 1-6, SCENES, GRIDS, PETRI
 #define TILE_GRIDS (PL_USER_PAGES + 1)
 #define TILE_PETRI (PL_USER_PAGES + 2)
-#define EDIT_X0 362 // кнопка EDIT в шапке своей страницы
-#define EDIT_X1 412
-#define XY_X0 88 // кнопка XY в шапке своей страницы: между «MENU» и стрелками
-#define XY_X1 140
 #define FLASH_MS 150 // подсветка триггера после тапа
 
 enum { MENU, MENU2, PAGE, SCENES, GRIDS, PETRIS };
@@ -54,9 +51,11 @@ static struct {
     pl_turn_t turn;
     pl_edit_t ed;
     int sent; // последнее отправленное значение захваченной ручки
-    lv_obj_t *bar_left, *bar_nav, *bar_right, *bar_edit, *bar_xy, *bar_load;
+    lv_obj_t *bar_left, *bar_nav, *bar_right, *bar_load;
     lv_obj_t *bar_line; // подчёркивание имени страницы цветом страницы
-    int line_w;
+    lv_obj_t *btn[PL_NAV_STATUS + 1], *btn_lbl[PL_NAV_STATUS + 1]; // кнопки шапки по коду PL_NAV_*
+    int btn_x[PL_NAV_STATUS + 1], btn_on[PL_NAV_STATUS + 1];       // нарисовано: левый край, подсветка
+    int line_w, title_cx;
     uint32_t load_color;
     uint8_t xy_view; // бит своей страницы: вместо сетки XY-пэд
     lv_obj_t *menu, *menu2, *grid;
@@ -262,19 +261,26 @@ static void build(void)
     u.bar_line = ui_box(bar, W / 2, TOP_H - 4, 0, 3, C_ACCENT);
     lv_obj_set_style_radius(u.bar_line, 2, 0);
     u.line_w = 0;
-    u.bar_left = ui_label(bar, &bc_17, C_TEXT);
+    u.bar_left = ui_label(bar, &bc_17, C_DIM);
     lv_obj_align(u.bar_left, LV_ALIGN_LEFT_MID, 14, 0);
     u.bar_nav = ui_label(bar, &bc_22, C_ACCENT);
-    lv_obj_align(u.bar_nav, LV_ALIGN_CENTER, 0, 0);
-    u.bar_right = ui_label(bar, &bc_17, C_ACCENT);
-    lv_obj_align(u.bar_right, LV_ALIGN_RIGHT_MID, -14, -8);
-    // Под режимом - худшая загрузка ядер синта за полсекунды: ядро 1, ядро 0 (проценты бюджета).
+    lv_obj_set_y(u.bar_nav, 7);
+    u.title_cx = -1;
+    // Кнопки шапки - плашки; где какая, решает pl_nav по виду экрана.
+    for (int n = PL_NAV_MENU; n <= PL_NAV_STATUS; n++) {
+        u.btn[n] = ui_box(bar, 0, 5, 44, TOP_H - 10, C_TILE);
+        lv_obj_set_style_radius(u.btn[n], 8, 0);
+        lv_obj_set_style_border_width(u.btn[n], 1, 0);
+        lv_obj_set_style_border_color(u.btn[n], lv_color_hex(C_TILE_BRD), 0);
+        u.btn_lbl[n] = ui_label(u.btn[n], &bc_17, C_TEXT);
+        lv_obj_center(u.btn_lbl[n]);
+        ui_show(u.btn[n], 0);
+        u.btn_x[n] = u.btn_on[n] = -1;
+    }
+    u.bar_right = u.btn_lbl[PL_NAV_STATUS]; // режим или имя демо-песни: тап - следующая
+    // Слева от режима - худшая загрузка ядер синта за полсекунды: ядро 1, ядро 0 (проценты бюджета).
     u.bar_load = ui_label(bar, &bc_15, C_TEXT);
-    lv_obj_align(u.bar_load, LV_ALIGN_RIGHT_MID, -14, 10);
-    u.bar_edit = ui_label(bar, &bc_17, C_TEXT);
-    lv_obj_align(u.bar_edit, LV_ALIGN_LEFT_MID, EDIT_X0 + 4, 0);
-    u.bar_xy = ui_label(bar, &bc_17, C_TEXT);
-    lv_obj_align(u.bar_xy, LV_ALIGN_LEFT_MID, XY_X0 + 4, 0);
+    lv_obj_align(u.bar_load, LV_ALIGN_RIGHT_MID, -(W - 400), 0);
 
     // Меню: 2 столбца по 5 плиток с цветной полоской и сводкой состояния.
     u.menu = ui_box(scr, 0, TOP_H, W, W - TOP_H, C_BG);
@@ -523,15 +529,52 @@ static void place_mark(int pos, int lo, int hi)
                    c + (int)lroundf(r * sinf(a)) - 8);
 }
 
+// Вид шапки: какие кнопки и где (pl_nav).
+static int bar_kind(void)
+{
+    if (editing() || (u.screen == PAGE && u.pick_page >= 0)) {
+        return PL_BAR_SCREEN;
+    }
+    if (u.screen == MENU || u.screen == MENU2) {
+        return PL_BAR_MENU;
+    }
+    if (u.screen == PAGE) {
+        return u.page >= PL_USER_FIRST ? PL_BAR_USER : PL_BAR_PAGE;
+    }
+    return PL_BAR_SCREEN;
+}
+
+// Кнопка шапки: на месте из таблицы вида, "" или нет места - спрятана; on - подсвечена цветом c.
+static void bar_btn(int bar, int nav, const char *text, int on, uint32_t c)
+{
+    int x0, x1;
+    pl_nav_rect(bar, nav, &x0, &x1);
+    int show = x1 > x0 && text[0];
+    ui_show(u.btn[nav], show);
+    if (!show) {
+        return;
+    }
+    if (u.btn_x[nav] != x0 * 1000 + x1) {
+        lv_obj_set_x(u.btn[nav], x0);
+        lv_obj_set_width(u.btn[nav], x1 - x0);
+        u.btn_x[nav] = x0 * 1000 + x1;
+    }
+    ui_text(u.btn_lbl[nav], text);
+    int key = on ? (int)(c & 0xffffff) : -2;
+    if (u.btn_on[nav] != key) {
+        lv_obj_set_style_border_color(u.btn[nav], lv_color_hex(on ? c : C_TILE_BRD), 0);
+        lv_obj_set_style_text_color(u.btn_lbl[nav], lv_color_hex(on ? c : C_TEXT), 0);
+        u.btn_on[nav] = key;
+    }
+}
+
 static void draw_bar(const pl_model_t *m)
 {
     static const char *const STEP[] = {"", "EDIT: TAP A KNOB", "TARGETS", "PICK PAGE", "PICK KNOB", "RANGE"};
     char nav[40];
     uint32_t nc = C_ACCENT;
-    int user = u.page >= PL_USER_FIRST;
-    if (editing() || u.screen != PAGE) {
-        ui_text(u.bar_xy, "");
-    }
+    int user = u.page >= PL_USER_FIRST, bar = bar_kind();
+    const char *left = UI_SYM_LEFT " MENU", *act = "", *xy = "";
     if (editing()) {
         snprintf(nav, sizeof nav, "%s", STEP[u.ed.state]);
         if (u.ed.state == PL_EDIT_TARGETS) {
@@ -539,51 +582,54 @@ static void draw_bar(const pl_model_t *m)
         } else if (u.ed.state == PL_EDIT_PICK_KNOB) {
             snprintf(nav, sizeof nav, "PICK: %s", pl_page_name(u.ed.page));
         }
-        ui_text(u.bar_left, UI_SYM_LEFT " MENU");
-        ui_text(u.bar_edit, u.ed.state == PL_EDIT_SLOTS ? "DONE" : "BACK");
+        act = u.ed.state == PL_EDIT_SLOTS ? "DONE" : "BACK";
     } else if (u.screen == PAGE && u.pick_page >= 0) {
         pl_cell_t c;
         pl_view_cell(m, u.page, u.pick_enc, &c);
         snprintf(nav, sizeof nav, "%s / %s", pl_view_page_name(u.page), c.label ? c.label : "?");
         nc = pl_view_page_color(u.page);
-        ui_text(u.bar_left, UI_SYM_CLOSE " CLOSE");
-        ui_text(u.bar_edit, "");
+        left = UI_SYM_CLOSE " CLOSE";
     } else if (u.screen == PAGE) {
-        snprintf(nav, sizeof nav, UI_SYM_LEFT "  %d %s  " UI_SYM_RIGHT, pl_page_bsp(u.page), pl_view_page_name(u.page));
+        snprintf(nav, sizeof nav, "%d %s", pl_page_bsp(u.page), pl_view_page_name(u.page));
         nc = pl_view_page_color(u.page);
-        ui_text(u.bar_left, UI_SYM_LEFT " MENU");
-        ui_text(u.bar_edit, user ? ((m->user_have >> (u.page - PL_USER_FIRST) & 1) ? "EDIT" : "")
-                                 : pl_view_dish(m, u.page) ? "DISH" : "");
-        ui_text(u.bar_xy, !user ? "" : xy_on() ? "GRID" : "XY");
+        act = user ? ((m->user_have >> (u.page - PL_USER_FIRST) & 1) ? "EDIT" : "") : pl_view_dish(m, u.page) ? "DISH" : "";
+        xy = xy_on() ? "GRID" : "XY";
     } else if (u.screen == GRIDS) {
         snprintf(nav, sizeof nav, "GRIDS");
         nc = pl_page_color(PL_PAGE_GRIDS);
-        ui_text(u.bar_left, UI_SYM_LEFT " MENU");
-        ui_text(u.bar_edit, "");
     } else if (u.screen == PETRIS) {
         snprintf(nav, sizeof nav, "PETRI");
         nc = pl_page_color(PL_PAGE_PETRI);
-        ui_text(u.bar_left, UI_SYM_LEFT " MENU");
-        ui_text(u.bar_edit, "KNOBS");
+        act = "KNOBS";
     } else if (u.screen == SCENES) {
         snprintf(nav, sizeof nav, "SCENES");
-        ui_text(u.bar_left, UI_SYM_LEFT " MENU");
-        ui_text(u.bar_edit, "");
     } else {
-        snprintf(nav, sizeof nav, u.screen == MENU ? "USER  " UI_SYM_RIGHT : UI_SYM_LEFT "  PAGES");
-        ui_text(u.bar_left, "ESPOSC");
-        ui_text(u.bar_edit, "");
+        nav[0] = 0; // в меню вместо заголовка - вкладки
+        left = "";
     }
-    if (strcmp(lv_label_get_text(u.bar_nav), nav) != 0) {
+    ui_text(u.bar_left, bar == PL_BAR_MENU ? "ESPOSC" : "");
+    bar_btn(bar, PL_NAV_MENU, left, 0, 0);
+    bar_btn(bar, PL_NAV_PREV, UI_SYM_LEFT, 0, 0);
+    bar_btn(bar, PL_NAV_NEXT, UI_SYM_RIGHT, 0, 0);
+    bar_btn(bar, PL_NAV_XY, xy, xy_on(), C_ACCENT);
+    bar_btn(bar, PL_NAV_ACTION, act, 0, 0);
+    bar_btn(bar, PL_NAV_TAB_PAGES, "PAGES", u.screen == MENU, C_ACCENT);
+    bar_btn(bar, PL_NAV_TAB_USER, "USER", u.screen == MENU2, C_ACCENT);
+    bar_btn(bar, PL_NAV_STATUS, lv_label_get_text(u.bar_right)[0] ? lv_label_get_text(u.bar_right) : "-", 0, 0);
+    ui_show(u.bar_load, bar == PL_BAR_MENU);
+    int t0, t1;
+    pl_nav_title(bar, &t0, &t1);
+    int cx = (t0 + t1) / 2;
+    if (strcmp(lv_label_get_text(u.bar_nav), nav) != 0 || cx != u.title_cx) {
         lv_label_set_text(u.bar_nav, nav);
         lv_point_t sz;
         lv_text_get_size(&sz, nav, &bc_22, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
         int w = nav[0] ? (int)sz.x : 0;
-        if (w != u.line_w) {
-            lv_obj_set_width(u.bar_line, w);
-            lv_obj_set_x(u.bar_line, (W - w) / 2);
-            u.line_w = w;
-        }
+        lv_obj_set_x(u.bar_nav, cx - w / 2);
+        lv_obj_set_width(u.bar_line, w);
+        lv_obj_set_x(u.bar_line, cx - w / 2);
+        u.line_w = w;
+        u.title_cx = cx;
     }
     if (u.nav_color != nc) {
         lv_obj_set_style_text_color(u.bar_nav, lv_color_hex(nc), 0);
@@ -839,14 +885,15 @@ static void draw_toast(const pl_model_t *m, uint32_t ms)
 static void knob_input(pl_model_t *m, int ev, int down, int x, int y, int x0, int y0);
 
 // Шаги редактора на сетке и в меню; списки целей и ход - в ui_custom.c.
-static void edit_input(pl_model_t *m, int ev, int down, int x, int y, int x0, int y0, int x1, int y1, int tap)
+static void edit_input(pl_model_t *m, int ev, int down, int x, int y, int x0, int y0, int x1, int y1, int tap,
+                       int nav)
 {
     pl_custom_edit_t out;
-    if (tap && y0 < TOP_H && y1 < TOP_H + 16) {
-        if (x0 < 140) {
+    if (y0 < TOP_H) {
+        if (nav == PL_NAV_MENU) {
             u.ed.state = PL_EDIT_OFF; // в меню, правки уже у синта
             u.screen = MENU2;
-        } else if (x0 >= EDIT_X0 && x0 < EDIT_X1 + 20) {
+        } else if (nav == PL_NAV_ACTION) {
             pl_edit_back(&u.ed);
         }
         return;
@@ -930,19 +977,22 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
     pl_press_where(&u.press, &x0, &y0);
     pl_press_last(&u.press, &x1, &y1);
     int tap = pl_press_tap(ev) && u.grab < 0; // отпустили крутилку - не тап
-    int head = tap && y0 < TOP_H && y1 < TOP_H + 16;
-    if (tap && pl_view_demo_tap(m, pl_model_linked(m, ms), x0, y0, x1, y1)) {
-        link_demo(); // снимок с новой песней придёт от синта
+    int head = y0 < TOP_H;                   // касание в шапке: только кнопки, мимо - ничего
+    int nav = tap ? pl_nav_tap(bar_kind(), x0, y0, x1, y1) : PL_NAV_NONE;
+    if (nav == PL_NAV_STATUS) {
+        if (pl_model_linked(m, ms)) {
+            link_demo(); // снимок с новой песней придёт от синта
+        }
     } else if (editing()) {
-        edit_input(m, ev, down, x, y, x0, y0, x1, y1, tap);
+        edit_input(m, ev, down, x, y, x0, y0, x1, y1, tap, nav);
         if (editing()) {
             u.screen = u.ed.state == PL_EDIT_PICK_PAGE ? MENU : PAGE; // выбор страницы цели - на меню
         }
     } else if (u.screen == MENU || u.screen == MENU2) {
         int (*at)(int, int) = u.screen == MENU ? menu_page_at : ui_tile_at;
         int t = at(x0, y0);
-        if (head && x0 >= 140 && x0 < 360) {
-            u.screen = u.screen == MENU ? MENU2 : MENU;
+        if (head) {
+            u.screen = nav == PL_NAV_TAB_PAGES ? MENU : nav == PL_NAV_TAB_USER ? MENU2 : u.screen;
         } else if (tap && t >= 0 && t == at(x1, y1)) {
             if (u.screen == MENU) {
                 send_page(m, t, ms);
@@ -960,48 +1010,46 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
             }
         }
     } else if (u.screen == GRIDS) {
-        if (head) {
+        if (nav == PL_NAV_MENU) {
             ug_release(m);
             u.screen = MENU2;
             m->goto_page = -1;
-        } else {
+        } else if (!head) {
             ug_input(m, down, x, y, x0, y0, ms);
         }
     } else if (u.screen == PETRIS) {
-        if (head && x0 >= EDIT_X0 && x0 < EDIT_X1 + 20) {
+        if (nav == PL_NAV_ACTION) {
             send_page(m, PL_PAGE_PETRI, ms); // ручки чашки сеткой
-        } else if (head) {
+        } else if (nav == PL_NAV_MENU) {
             u.screen = MENU2;
             m->goto_page = -1;
-        } else {
+        } else if (!head) {
             up_input(down, x, y, x0, y0);
         }
     } else if (u.screen == SCENES) {
-        if (head) {
+        if (nav == PL_NAV_MENU) {
             u.screen = MENU2;
-        } else {
+        } else if (!head) {
             uc_scenes_input(m, ev, x0, y0, x1, y1, ms - u.press.t0);
         }
     } else if (u.pick_page >= 0) {
         pick_input(m, tap, x0, y0, x1, y1);
     } else if (head) {
         int user = u.page >= PL_USER_FIRST;
-        uc_xy_release(m);
-        if (user && x0 >= XY_X0 && x0 < XY_X1) {
+        if (nav != PL_NAV_NONE) {
+            uc_xy_release(m);
+            u.grab = -1;
+        }
+        if (nav == PL_NAV_XY) {
             u.xy_view ^= (uint8_t)(1 << (u.page - PL_USER_FIRST));
-            u.grab = -1;
-        } else if (x0 >= 140 && x0 < 215) {
-            send_page(m, pl_view_page_step(u.page, -1), ms);
-        } else if (x0 >= 265 && x0 < 360) {
-            send_page(m, pl_view_page_step(u.page, 1), ms);
-        } else if (user && x0 >= EDIT_X0 && x0 < EDIT_X1 && (m->user_have >> (u.page - PL_USER_FIRST) & 1)) {
+        } else if (nav == PL_NAV_PREV || nav == PL_NAV_NEXT) {
+            send_page(m, pl_view_page_step(u.page, nav == PL_NAV_PREV ? -1 : 1), ms);
+        } else if (nav == PL_NAV_ACTION && user && (m->user_have >> (u.page - PL_USER_FIRST) & 1)) {
             pl_edit_start(&u.ed, u.page - PL_USER_FIRST);
-            u.grab = -1;
-        } else if (!user && x0 >= EDIT_X0 && x0 < EDIT_X1 + 20 && pl_view_dish(m, u.page)) {
+        } else if (nav == PL_NAV_ACTION && !user && pl_view_dish(m, u.page)) {
             open_dish(m, ms);
-        } else {
+        } else if (nav == PL_NAV_MENU) {
             u.screen = user ? MENU2 : MENU;
-            u.grab = -1;
             m->goto_page = -1; // тап «в меню» новее листания на BSP
         }
     } else if (xy_on()) {
