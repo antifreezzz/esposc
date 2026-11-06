@@ -1,1 +1,1 @@
-idf_component_register(SRCS "pl_proto.c" "pl_labels.c" "pl_gesture.c" "pl_model.c" "pl_edit.c" "pl_view.c" "pl_xy.c" "pl_load.c" "pl_grids.c" "pl_grids_map.c" "pl_grids_ui.c" "pl_typepick.c" "pl_pick.c" INCLUDE_DIRS "include")
+idf_component_register(SRCS "pl_proto.c" "pl_labels.c" "pl_gesture.c" "pl_model.c" "pl_edit.c" "pl_view.c" "pl_xy.c" "pl_load.c" "pl_grids.c" "pl_grids_map.c" "pl_grids_ui.c" "pl_pick.c" INCLUDE_DIRS "include")

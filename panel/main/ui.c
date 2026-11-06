@@ -2,6 +2,7 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "esp_heap_caps.h"
@@ -9,13 +10,14 @@
 #include "link.h"
 #include "pl_gesture.h"
 #include "pl_labels.h"
-#include "pl_typepick.h"
+#include "pl_pick.h"
 #include "pl_view.h"
 #include "ui_priv.h"
 
 // Вариант Б: модульная сетка 3x5 (все 15 карточек - ручки E2..E16) + круговой захват в центре.
 // Меню в два экрана: штатные страницы и свои (USER 1-6, сцены). На своей странице - редактор (EDIT).
-// TYPE синта и слоя - тап по карточке, выбор сеткой типов поверх страницы.
+// Списки (TYPE, лад, время дилэя, транспозиция) - тап по карточке, выбор сеткой значений поверх страницы;
+// переключатели и триггеры (WAVE, FREEZE, RESEED, FILL) - тапом, карточка-кнопка без дуги.
 
 #define W UI_W
 #define TOP_H UI_TOP_H
@@ -32,12 +34,14 @@
 #define EDIT_X1 412
 #define XY_X0 88 // кнопка XY в шапке своей страницы: между «MENU» и стрелками
 #define XY_X1 140
+#define FLASH_MS 150 // подсветка триггера после тапа
 
 enum { MENU, MENU2, PAGE, SCENES, GRIDS, PETRIS };
 
 typedef struct {
     lv_obj_t *card, *num, *arc, *val, *name, *src, *pdot, *empty_dot;
-    int v, held, grabbed; // нарисовано
+    lv_obj_t *pill, *pill_txt, *mark; // кнопка переключателя или триггера; метка списка
+    int v, held, grabbed, kind, lit; // нарисовано
     int lo, hi, bipolar;
     uint32_t color, src_color;
     char srcs[12]; // строка-источник своей страницы, "" - нет
@@ -67,9 +71,12 @@ static struct {
     uint32_t toast_color;
     int toast_tall;
     int drawn_grab;
-    lv_obj_t *pick; // сетка типов: один объект, клетки рисует сам
-    int pick_page;  // страница, чей TYPE выбираем, -1 - сетка закрыта
-    int drawn_pick; // страница * 32 + тип, что нарисованы
+    lv_obj_t *pick;          // сетка значений: один объект, клетки рисует сам
+    int pick_page, pick_enc; // чья ручка выбирается, -1 - сетка закрыта
+    int pick_tp, pick_te;    // откуда значения: у псевдонима своей страницы - его цель
+    int drawn_pick;          // ((страница * 16 + ручка) * 128 + значение), что нарисовано
+    int flash_cell;          // триггер, подсвеченный после тапа, -1 нет
+    uint32_t flash_until, now;
 } u;
 
 lv_obj_t *ui_label(lv_obj_t *parent, const lv_font_t *font, uint32_t color)
@@ -198,17 +205,21 @@ static lv_obj_t *menu_tile(lv_obj_t *parent, int x, int y, int h, uint32_t pc, c
     return t;
 }
 
-// Сетка типов: клетки с подписью, у текущего типа рамка и подпись цветом страницы.
+static const pl_model_t *pick_m; // модель для отрисовки сетки: задаётся в ui_step под локом
+
+// Сетка значений: клетки с подписью, у текущего значения рамка и подпись цветом страницы.
 static void pick_draw(lv_event_t *e)
 {
-    if (u.drawn_pick < 0) {
+    if (u.drawn_pick < 0 || !pick_m) {
         return;
     }
     lv_layer_t *layer = lv_event_get_layer(e);
     lv_area_t base;
     lv_obj_get_coords(u.pick, &base);
-    int page = u.drawn_pick / 32, cur = u.drawn_pick % 32;
-    uint32_t pc = pl_page_color(page);
+    int page = u.pick_tp, enc = u.pick_te;
+    const uint8_t *raw = pick_m->raw[page];
+    int cur = raw[enc], n = pl_pick_count(page, enc, raw);
+    uint32_t pc = pl_view_page_color(u.pick_page);
     lv_draw_fill_dsc_t f;
     lv_draw_fill_dsc_init(&f);
     f.radius = 10;
@@ -220,18 +231,17 @@ static void pick_draw(lv_event_t *e)
     lv_draw_label_dsc_init(&l);
     l.font = &bc_17;
     l.align = LV_TEXT_ALIGN_CENTER;
-    uint8_t raw[PL_KNOBS] = {0};
     char buf[12];
-    for (int s = 0; s < pl_tp_count(page); s++) {
-        int t = pl_tp_type(page, s), x, y, w, h;
-        pl_tp_rect(s, &x, &y, &w, &h);
+    for (int s = 0; s < n; s++) {
+        int t = pl_pick_value(page, enc, raw, s), x, y, w, h;
+        pl_pick_rect(n, s, &x, &y, &w, &h);
         y -= TOP_H;
         lv_area_t a = {base.x1 + x, base.y1 + y, base.x1 + x + w - 1, base.y1 + y + h - 1};
         lv_draw_fill(layer, &f, &a);
         b.width = t == cur ? 2 : 1;
         b.color = lv_color_hex(t == cur ? pc : C_TILE_BRD);
         lv_draw_border(layer, &b, &a);
-        l.text = pl_value_text(page, 1, t, raw, buf);
+        l.text = pl_value_text(page, enc, t, raw, buf);
         l.text_local = 1; // LVGL копирует текст: buf живёт только здесь
         l.color = lv_color_hex(t == cur ? pc : C_TEXT);
         lv_area_t ta = {a.x1 + 2, a.y1 + (h - 16) / 2, a.x2 - 2, a.y2};
@@ -330,7 +340,18 @@ static void build(void)
 
         k->empty_dot = ui_box(k->card, 72, 37, 6, 6, C_TRACK);
         lv_obj_set_style_radius(k->empty_dot, 3, 0);
-        k->v = k->held = k->grabbed = -1;
+
+        // Переключатель и триггер: плашка-кнопка на месте дуги.
+        k->pill = ui_box(k->card, 6, 24, 60, 32, C_TRACK);
+        lv_obj_set_style_radius(k->pill, 16, 0);
+        k->pill_txt = ui_label(k->pill, &bc_17, C_TEXT);
+        lv_obj_center(k->pill_txt);
+        ui_show(k->pill, 0);
+        // Список: короткая черта внизу справа - тап откроет сетку значений.
+        k->mark = ui_box(k->card, 124, 68, 16, 3, C_MUTED);
+        lv_obj_set_style_radius(k->mark, 2, 0);
+        ui_show(k->mark, 0);
+        k->v = k->held = k->grabbed = k->kind = k->lit = -1;
         k->color = 0;
         k->lo = k->hi = -1;
         strcpy(k->lab, "?"); // первая отрисовка настроит карточку
@@ -362,7 +383,7 @@ static void build(void)
     u.pick = ui_box(scr, 0, TOP_H, W, W - TOP_H, C_BG);
     lv_obj_add_event_cb(u.pick, pick_draw, LV_EVENT_DRAW_MAIN, NULL);
     ui_show(u.pick, 0);
-    u.pick_page = u.drawn_pick = -1;
+    u.pick_page = u.drawn_pick = u.flash_cell = -1;
 
     uc_build(scr);
     ug_build(scr);
@@ -409,12 +430,16 @@ static void style_knob_grab(knob_t *k, int grabbed)
 }
 
 // Карточка под новую подпись, ход или цвет (сменили тип синта, модель перкуссии, цели своей страницы).
-static void card_setup(knob_t *k, const pl_cell_t *c)
+static void card_setup(knob_t *k, const pl_cell_t *c, int kind)
 {
-    int on = c->label != NULL;
+    int on = c->label != NULL, button = kind == PL_PICK_TOGGLE || kind == PL_PICK_TRIGGER;
     snprintf(k->lab, sizeof k->lab, "%s", on ? c->label : "");
     lv_obj_set_style_bg_color(k->card, lv_color_hex(on ? C_TILE : C_TILE_EMPTY), 0);
-    ui_show(k->arc, on);
+    ui_show(k->arc, on && !button);
+    ui_show(k->pill, on && button);
+    ui_show(k->mark, on && kind == PL_PICK_GRID);
+    k->kind = kind;
+    k->lit = -1;
     ui_show(k->name, on);
     ui_show(k->num, on);
     ui_show(k->pdot, on);
@@ -465,6 +490,7 @@ static void open_page(int page)
     u.page = page;
     u.grab = -1;
     u.pick_page = -1;
+    u.flash_cell = -1;
 }
 
 // Экран чашки: энкодеры BSP крутят её ручки, пока не тронут энкодер 1.
@@ -516,7 +542,9 @@ static void draw_bar(const pl_model_t *m)
         ui_text(u.bar_left, UI_SYM_LEFT " MENU");
         ui_text(u.bar_edit, u.ed.state == PL_EDIT_SLOTS ? "DONE" : "BACK");
     } else if (u.screen == PAGE && u.pick_page >= 0) {
-        snprintf(nav, sizeof nav, "%s TYPE", pl_view_page_name(u.page));
+        pl_cell_t c;
+        pl_view_cell(m, u.page, u.pick_enc, &c);
+        snprintf(nav, sizeof nav, "%s / %s", pl_view_page_name(u.page), c.label ? c.label : "?");
         nc = pl_view_page_color(u.page);
         ui_text(u.bar_left, UI_SYM_CLOSE " CLOSE");
         ui_text(u.bar_edit, "");
@@ -613,10 +641,11 @@ static void draw_page(const pl_model_t *m)
         knob_t *k = &u.knob[i];
         int enc = i + 1;
         pl_view_cell(m, page, enc, &cell);
-        if (strcmp(k->lab, cell.label ? cell.label : "") != 0 || k->color != cell.color || k->lo != cell.lo ||
+        int tp, te, kind = pl_pick_view(m, page, enc, &tp, &te);
+        if (k->kind != kind || strcmp(k->lab, cell.label ? cell.label : "") != 0 || k->color != cell.color || k->lo != cell.lo ||
             k->hi != cell.hi || k->bipolar != cell.bipolar || strcmp(k->srcs, cell.src ? cell.src : "") != 0 ||
             k->src_color != cell.src_color) {
-            card_setup(k, &cell);
+            card_setup(k, &cell, kind);
         }
         if (!k->lab[0]) {
             continue;
@@ -624,7 +653,17 @@ static void draw_page(const pl_model_t *m)
         if (cell.v != k->v) {
             lv_arc_set_value(k->arc, cell.v);
             ui_text(k->val, cell.text);
+            ui_text(k->pill_txt, kind == PL_PICK_TRIGGER ? "GO" : cell.text);
             k->v = cell.v;
+        }
+        // Переключатель горит цветом ручки, когда не в нижнем положении; триггер - коротко после тапа.
+        int lit = kind == PL_PICK_TRIGGER ? (u.flash_cell == i && (int32_t)(u.flash_until - u.now) > 0)
+                  : kind == PL_PICK_TOGGLE ? pl_pick_next(tp, te, m->raw[tp], cell.v) < cell.v
+                                           : 0;
+        if (lit != k->lit) {
+            lv_obj_set_style_bg_color(k->pill, lv_color_hex(lit ? k->color : C_TRACK), 0);
+            lv_obj_set_style_text_color(k->pill_txt, lv_color_hex(lit ? C_BG : C_TEXT), 0);
+            k->lit = lit;
         }
         int held = cell.held && m->bsp_pos[enc] != 0xFF;
         if (held != k->held) {
@@ -843,11 +882,45 @@ static void pick_input(pl_model_t *m, int tap, int x0, int y0, int x1, int y1)
     if (!tap) {
         return;
     }
-    int s = pl_tp_at(x0, y0), t = s == pl_tp_at(x1, y1) ? pl_tp_type(u.pick_page, s) : -1;
-    if (t >= 0 && pl_model_local_set(m, u.pick_page, 1, t)) {
-        link_set(u.pick_page, 1, t);
+    const uint8_t *raw = m->raw[u.pick_tp];
+    int n = pl_pick_count(u.pick_tp, u.pick_te, raw);
+    int s = pl_pick_at(n, x0, y0), t = s == pl_pick_at(n, x1, y1) ? pl_pick_value(u.pick_tp, u.pick_te, raw, s) : -1;
+    if (t >= 0 && pl_model_local_set(m, u.pick_page, u.pick_enc, t)) {
+        link_set(u.pick_page, u.pick_enc, t);
     }
     u.pick_page = -1;
+}
+
+static void set_knob(pl_model_t *m, int page, int enc, int v)
+{
+    if (pl_model_local_set(m, page, enc, v)) {
+        link_set(page, enc, v);
+    }
+}
+
+// Тап по карточке: список - сетка значений, переключатель - следующее положение, триггер - фронт 0 -> 1 и назад.
+static void card_tap(pl_model_t *m, int cell, uint32_t ms)
+{
+    int enc = cell + 1, tp, te;
+    switch (pl_pick_view(m, u.page, enc, &tp, &te)) {
+    case PL_PICK_GRID:
+        u.pick_page = u.page, u.pick_enc = enc, u.pick_tp = tp, u.pick_te = te;
+        break;
+    case PL_PICK_TOGGLE:
+        set_knob(m, u.page, enc, pl_pick_next(tp, te, m->raw[tp], m->raw[tp][te]));
+        break;
+    case PL_PICK_TRIGGER: {
+        int lo, hi;
+        pl_knob_range(tp, te, m->raw[tp], &lo, &hi);
+        set_knob(m, u.page, enc, hi); // синт ловит фронт: порядок кадров UART сохраняется
+        set_knob(m, u.page, enc, lo);
+        u.flash_cell = cell;
+        u.flash_until = ms + FLASH_MS;
+        break;
+    }
+    default:
+        break;
+    }
 }
 
 static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
@@ -856,7 +929,7 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
     int x0, y0, x1, y1;
     pl_press_where(&u.press, &x0, &y0);
     pl_press_last(&u.press, &x1, &y1);
-    int tap = pl_press_tap(ev) && (ev != PL_PRESS_RELEASE || u.grab < 0); // отпустили крутилку - не тап
+    int tap = pl_press_tap(ev) && u.grab < 0; // отпустили крутилку - не тап
     int head = tap && y0 < TOP_H && y1 < TOP_H + 16;
     if (tap && pl_view_demo_tap(m, pl_model_linked(m, ms), x0, y0, x1, y1)) {
         link_demo(); // снимок с новой песней придёт от синта
@@ -935,8 +1008,8 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
         uc_xy_input(m, u.page, ev, down, x, y, x0, y0, ms);
     } else {
         int cell = pl_grid_cell(x0, y0);
-        if (tap && m->have && cell >= 0 && cell == pl_grid_cell(x1, y1) && pl_tp_on(u.page, cell + 1)) {
-            u.pick_page = u.page;
+        if (tap && m->have && cell >= 0 && cell == pl_grid_cell(x1, y1)) {
+            card_tap(m, cell, ms);
         }
         knob_input(m, ev, down, x, y, x0, y0);
     }
@@ -950,11 +1023,17 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
 static void knob_input(pl_model_t *m, int ev, int down, int x, int y, int x0, int y0)
 {
     // Захват по удержанию 50 мс или сразу при начале сдвига пальца внутри рабочей области страницы.
-    if (down && u.grab < 0 && y0 >= TOP_H && (ev == PL_PRESS_HOLD || u.press.state == 2)) {
-        int i = pl_grid_cell(x0, y0);
+    // У списков удержание - это тап (сетка значений): крутилка только когда палец поехал, в том числе после удержания.
+    int moved = abs(x - x0) > PL_SLOP_PX || abs(y - y0) > PL_SLOP_PX;
+    int drag = u.press.state == 2 || (u.press.state == 3 && moved);
+    if (down && u.grab < 0 && y0 >= TOP_H && (ev == PL_PRESS_HOLD || drag)) {
+        int i = pl_grid_cell(x0, y0), tp, te;
         pl_cell_t cell;
         pl_view_cell(m, u.page, i + 1, &cell);
-        if (i >= 0 && i < KNOBS && cell.label && m->have && !pl_tp_on(u.page, i + 1)) { // TYPE - сеткой // без снимка значения нули: ручка прыгнула бы в 0
+        int kind = pl_pick_view(m, u.page, i + 1, &tp, &te);
+        int can = kind == PL_PICK_NONE || pl_pick_grab(tp, te, m->raw[tp], !drag);
+        // без снимка значения нули: ручка прыгнула бы в 0
+        if (i >= 0 && i < KNOBS && cell.label && m->have && can) {
             pl_turn_begin(&u.turn, x, y - RING_DY, cell.v, cell.lo, cell.hi);
             pl_turn_skip(&u.turn, cell.skip);
             u.grab = i;
@@ -1000,6 +1079,8 @@ void ui_step(pl_model_t *m, int down, int x, int y, uint32_t ms)
     }
     ui_show(u.menu, u.screen == MENU);
     ui_show(u.menu2, u.screen == MENU2);
+    u.now = ms;
+    pick_m = m;
     int picking = u.screen == PAGE && u.pick_page == u.page;
     ui_show(u.grid, u.screen == PAGE && !xy_on() && !picking);
     ui_show(u.pick, picking);
@@ -1011,7 +1092,7 @@ void ui_step(pl_model_t *m, int down, int x, int y, uint32_t ms)
     if (xy_on()) {
         uc_xy_draw(m, u.page);
     } else if (picking) {
-        int d = u.page * 32 + m->raw[u.page][1];
+        int d = (u.pick_tp * 16 + u.pick_te) * 128 + m->raw[u.pick_tp][u.pick_te];
         if (d != u.drawn_pick) {
             u.drawn_pick = d;
             lv_obj_invalidate(u.pick);
