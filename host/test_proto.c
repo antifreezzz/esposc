@@ -223,6 +223,26 @@ TEST(test_grids_step_frame)
     CHECK(frames == 0);
 }
 
+TEST(test_seq_frames)
+{
+    static const struct {
+        uint8_t type;
+        size_t len;
+    } T[] = {{PL_SEQ_STEP, 4}, {PL_SEQ_OCT, 3}, {PL_SEQ_ROW, 11}, {PL_SEQ_CTRL, 3}, {PL_SEQ_BPM, 1},
+             {PL_SEQ_DUMP, sizeof(pl_seq_dump_t)}, {PL_SEQ_POS, sizeof(pl_seq_pos_t)}};
+    CHECK(sizeof(pl_seq_dump_t) == 212);
+    CHECK(sizeof(pl_seq_pos_t) == 8);
+    static uint8_t pl[PL_PAYLOAD_MAX], f[PL_FRAME_MAX];
+    for (size_t i = 0; i < sizeof T / sizeof T[0]; i++) {
+        start();
+        feed(f, pl_encode(T[i].type, pl, T[i].len, f));
+        CHECK(frames == 1 && got_type == T[i].type && got_len == T[i].len);
+        start();
+        feed(f, pl_encode(T[i].type, pl, T[i].len + 1, f));
+        CHECK(frames == 0);
+    }
+}
+
 int main(void)
 {
     RUN(test_roundtrip);
@@ -237,5 +257,6 @@ int main(void)
     RUN(test_snapshot_fits);
     RUN(test_page_bsp);
     RUN(test_grids_step_frame);
+    RUN(test_seq_frames);
     TEST_MAIN_END();
 }

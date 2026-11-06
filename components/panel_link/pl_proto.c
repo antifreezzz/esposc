@@ -52,6 +52,13 @@ static int payload_len(uint8_t type)
     case PL_PETRI_1:
     case PL_PETRI_2: return PL_PETRI_PART;
     case PL_PETRI_3: return PL_PETRI_PART_MAX;
+    case PL_SEQ_STEP: return 4;
+    case PL_SEQ_OCT: return 3;
+    case PL_SEQ_ROW: return 3 + PL_SEQ_CELLS;
+    case PL_SEQ_CTRL: return 3;
+    case PL_SEQ_BPM: return 1;
+    case PL_SEQ_DUMP: return (int)sizeof(pl_seq_dump_t);
+    case PL_SEQ_POS: return (int)sizeof(pl_seq_pos_t);
     default: return -1;
     }
 }
