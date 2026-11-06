@@ -1,6 +1,7 @@
 #pragma once
 #include "acid_link.h"
 #include "acid_scene.h"
+#include "acid_seq.h"
 #include "esp_err.h"
 #include "pl_load.h"
 #include "pl_proto.h"
@@ -10,9 +11,17 @@
 
 // Синт и связку задача читает без лока для снимка: устаревшая цифра на экране до следующего события, звук не трогает.
 // demo_on - режим для снимка (1 демо), demo_song - номер песни демо (PL_DEMO_*).
-// Свои страницы и сцены (c, sc) - так же для кадров PL_CUSTOM и PL_SCENE_STATE.
+// Свои страницы и сцены (c, sc) - так же для кадров PL_CUSTOM и PL_SCENE_STATE, секвенсер q - для PL_SEQ_*.
 esp_err_t panel_uart_start(const acid_synth_t *s, const acid_link_t *l, const acid_custom_t *c, const acid_scene_t *sc,
-                           const volatile int *demo_on, const volatile int *demo_song);
+                           const acid_seq_t *q, const volatile int *demo_on, const volatile int *live,
+                           const volatile int *demo_song);
+// Кадр секвенсера с панели (PL_SEQ_STEP..PL_SEQ_BPM, PL_SEQ_SCALE): 1 если есть (без ожидания), нагрузка в p.
+#define PANEL_SEQ_MAX 11
+int panel_uart_receive_seq(uint8_t *type, uint8_t p[PANEL_SEQ_MAX]);
+// Темп клока BSP для панели (0 - клока BSP нет, панель показывает свой темп).
+void panel_uart_set_bsp_bpm(int bpm);
+// Прислать панели позицию секвенсеров заново (в ней run), даже если не менялась.
+void panel_uart_seq_pos_due(void);
 // Панель попросила следующую песню демо: 1 один раз на просьбу (без ожидания).
 int panel_uart_take_demo(void);
 // Правка с панели: 1 если есть (без ожидания).

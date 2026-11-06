@@ -40,7 +40,41 @@ enum {
     PL_PETRI_1 = 15,
     PL_PETRI_2 = 16,
     PL_PETRI_3 = 17,
+    PL_SEQ_STEP = 18, // панель -> синт: шаг такта {synth, pat, step, v}
+    PL_SEQ_OCT = 19,  // панель -> синт: окно такта {synth, pat, oct + 2}
+    PL_SEQ_ROW = 20,  // панель -> синт: строка песни {synth, row, cell[8], rep}
+    PL_SEQ_CTRL = 21, // панель -> синт: ▶/■ и такт экрана {synth, run, edit}; run PL_SEQ_KEEP - не трогать
+    PL_SEQ_BPM = 22,  // панель -> синт: темп внутреннего клока {bpm}
+    PL_SEQ_DUMP = 23, // синт -> панель: всё одного синта (pl_seq_dump_t), после PL_HELLO
+    PL_SEQ_POS = 24,  // синт -> панель: позиция игры и темп (pl_seq_pos_t), при изменении
+    PL_SEQ_SCALE = 25, // панель -> синт: лад такта {synth, pat, scale} (0 - со страницы 9, 1 + k - лад k)
 };
+
+// Секвенсер: байт шага - ступень 0..14 (PL_SEQ_REST - пауза) и флаги; совпадает с ACID_SEQ_* синта.
+#define PL_SEQ_SYNTHS 2
+#define PL_SEQ_PATS 8
+#define PL_SEQ_STEPS 16
+#define PL_SEQ_ROWS 8
+#define PL_SEQ_CELLS 8
+#define PL_SEQ_REST 0x0F
+#define PL_SEQ_DEG 0x0F
+#define PL_SEQ_ACC 0x10
+#define PL_SEQ_SLIDE 0x20
+#define PL_SEQ_UP 0x40 // нота на октаву выше
+#define PL_SEQ_SCALES 9
+#define PL_SEQ_EMPTY 0xFF
+#define PL_SEQ_KEEP 0xFF // run в PL_SEQ_CTRL: только такт экрана, ▶/■ как есть
+typedef struct {
+    uint8_t synth;
+    uint8_t pat[PL_SEQ_PATS][PL_SEQ_STEPS];
+    uint8_t oct[PL_SEQ_PATS]; // окно + 2 (0..4)
+    uint8_t scale[PL_SEQ_PATS];
+    uint8_t cell[PL_SEQ_ROWS][PL_SEQ_CELLS], rep[PL_SEQ_ROWS];
+    uint8_t run, edit, bpm;
+} pl_seq_dump_t;
+typedef struct {
+    uint8_t synth, pat, step, row, cell, n, run, bpm; // n - проход строки; bpm - темп, по которому идём
+} pl_seq_pos_t;
 
 // Таблица чашки (256 x int16, little-endian) в 4 кадрах по 64 точки: номер таблицы + точки; в последнем ещё
 // 6 модуляций, счётчик прыжков и флаги. Нагрузка кадра не больше 255 байт, вся таблица - 512.
@@ -61,7 +95,8 @@ void pl_petri_split(const int16_t tab[PL_PETRI_POINTS], const int8_t mods[6], ui
 // Часть таблицы; 1 - собраны все 4 части одного номера (таблица в r). Часть другого номера начинает сборку заново.
 int pl_petri_collect(pl_petri_rx_t *r, uint8_t type, const uint8_t *payload, size_t len);
 
-enum { PL_DEMO_METAL, PL_DEMO_ACID, PL_DEMO_DRONE, PL_DEMO_SONGS = PL_DEMO_DRONE }; // песня демо или режим дрона в снимке
+// Песня демо, режим дрона или режим секвенсера в снимке.
+enum { PL_DEMO_METAL, PL_DEMO_ACID, PL_DEMO_DRONE, PL_DEMO_SEQ, PL_DEMO_SONGS = PL_DEMO_DRONE };
 
 // Нагрузки - только байты, без выравнивания.
 typedef struct {

@@ -136,6 +136,9 @@ const char *pl_view_status(const pl_model_t *m, int linked)
     if (m->demo == PL_DEMO_DRONE) {
         return "DRONE";
     }
+    if (m->demo == PL_DEMO_SEQ && !m->mode) {
+        return "SEQ";
+    }
     if (m->mode) {
         return "LIVE";
     }

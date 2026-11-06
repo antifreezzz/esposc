@@ -17,6 +17,7 @@
 #include "acid_perc.h"
 #include "acid_petri.h"
 #include "acid_plaits.h"
+#include "acid_seq.h"
 #include "acid_tonal.h"
 
 #define ACID_TYPE_PETRI (1 + ACID_PLAITS_MODELS) // 25 - чашка Петри (у слоя нет)
@@ -156,6 +157,8 @@ typedef struct {
     acid_drummer_t drummer;
     int grids_step;      // шаг паттерна Grids 0..31 последнего сыгранного шага, -1 - выключен или стоп
     uint32_t grids_hits; // нот от Grids с init
+    acid_seq_t *seq;     // встроенный секвенсер (живёт вне синта), NULL - нет (демо, дрон)
+    uint32_t bsp_held[2][4]; // ноты, зажатые BSP на синте 1 и 2 (бит ноты): общую ноту отпускает последний
     int page; // 0 микс, 1 ударка, 2 ударка 2, 3 томы, 4 рим, 5 ковбелл, 6 синт 1, 7 синт 2, 8 эффекты, 9 тональность
     int drone; // режим дрона: оба синта непрерывно тянут ноту, её высоту ведёт страница 9 TONAL
 
@@ -223,6 +226,10 @@ int acid_synth_import(acid_synth_t *s, const void *buf, size_t len);
 // s перед первым init должен быть обнулён (static): init создаёт голоса Plaits один раз.
 // Отпустить все ноты обоих синтов (BSP переподключился, демо сменилось на BSP). Хвосты доигрывают.
 void acid_synth_notes_off(acid_synth_t *s);
+// Встроенный секвенсер: играет с тика клока в фазе событий. NULL - отключить. Позиция с начала песни.
+void acid_synth_use_seq(acid_synth_t *s, acid_seq_t *q);
+// ▶/■ секвенсера синта (0 или 1) с панели; стоп сразу отпускает его ноту.
+void acid_synth_seq_run(acid_synth_t *s, int synth, int on);
 // Событие MIDI (от BSP или демо): синт 1 канал 5, синт 2 канал 6, барабаны канал 2, CC с любого.
 void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev);
 // Ручка любой страницы как CC энкодера на ней, страницу BSP не меняет. enc с 0 (0 - энкодер 1, страница; игнор).

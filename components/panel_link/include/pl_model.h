@@ -34,6 +34,9 @@ typedef struct {
     uint32_t load_ms;
     int have_load;
     int grids_step; // шаг паттерна Grids 0..31, -1 - нет данных или стоит
+    pl_seq_dump_t seq[PL_SEQ_SYNTHS]; // секвенсеры синтов: копия с синта и свои правки
+    pl_seq_pos_t seq_pos[PL_SEQ_SYNTHS];
+    int seq_have; // бит синта: дамп пришёл
 } pl_model_t;
 
 void pl_model_init(pl_model_t *m);
@@ -51,3 +54,11 @@ void pl_model_page_sent(pl_model_t *m, uint32_t ms);
 // 1 - правка принята и её надо слать синту; 0 - снимка ещё нет (значения не настоящие) или не ручка.
 // page 10..15 - своя страница (нужен её кадр определений).
 int pl_model_local_set(pl_model_t *m, int page, int enc, int v);
+
+// Правки секвенсера с панели: сразу в модели. 1 - принято, слать синту; 0 - дампа синта ещё нет или вне диапазона.
+int pl_model_seq_step(pl_model_t *m, int synth, int pat, int step, uint8_t v);
+int pl_model_seq_oct(pl_model_t *m, int synth, int pat, int oct); // -2..+2
+int pl_model_seq_scale(pl_model_t *m, int synth, int pat, int scale); // 0..PL_SEQ_SCALES-1
+int pl_model_seq_row(pl_model_t *m, int synth, int row, const uint8_t cell[PL_SEQ_CELLS], int rep);
+int pl_model_seq_ctrl(pl_model_t *m, int synth, int run, int edit); // run PL_SEQ_KEEP - как есть
+int pl_model_seq_bpm(pl_model_t *m, int bpm); // общий у обоих синтов, 60..200

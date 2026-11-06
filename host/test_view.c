@@ -152,6 +152,15 @@ TEST(test_status_text)
     CHECK(strcmp(pl_view_status(&sm, 1), "DEMO") == 0);
 }
 
+TEST(test_status_seq)
+{
+    pl_model_t sm;
+    pl_model_init(&sm);
+    sm.have = 1;
+    sm.demo = PL_DEMO_SEQ;
+    CHECK(strcmp(pl_view_status(&sm, 1), "SEQ") == 0);
+}
+
 int main(void)
 {
     RUN(test_page_bsp_numbers);
@@ -164,5 +173,6 @@ int main(void)
     RUN(test_page_names_and_colors);
     RUN(test_page_step_stays_in_group);
     RUN(test_status_text);
+    RUN(test_status_seq);
     TEST_MAIN_END();
 }

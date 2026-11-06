@@ -4,6 +4,7 @@
 
 #include "acid_custom.h"
 #include "acid_scene.h"
+#include "acid_seq.h"
 #include "acid_synth.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -14,7 +15,7 @@
 
 #define NS "acid"
 #define MAX3(a, b, c) ((a) > (b) ? ((a) > (c) ? (a) : (c)) : ((b) > (c) ? (b) : (c)))
-#define BLOB_MAX MAX3(ACID_SYNTH_BLOB, ACID_CUSTOM_BLOB, ACID_SCENE_BLOB)
+#define BLOB_MAX MAX3(ACID_SYNTH_BLOB, ACID_CUSTOM_BLOB, ACID_SCENE_BLOB > ACID_SEQ_BLOB ? ACID_SCENE_BLOB : ACID_SEQ_BLOB)
 
 static const char *TAG = "store";
 
@@ -25,7 +26,9 @@ typedef struct {
     int dirty;
 } slot_t;
 
-static slot_t s_slots[] = {{.key = STORE_KNOBS}, {.key = STORE_CUSTOM}, {.key = STORE_SCENES}};
+// Ключ без слота store_save молча не пишет: каждый ключ store.h - здесь.
+static slot_t s_slots[] = {{.key = STORE_KNOBS}, {.key = STORE_CUSTOM}, {.key = STORE_SCENES}, {.key = STORE_SEQ},
+                           {.key = STORE_MODE}};
 #define NSLOTS ((int)(sizeof s_slots / sizeof s_slots[0]))
 
 static TaskHandle_t s_task;

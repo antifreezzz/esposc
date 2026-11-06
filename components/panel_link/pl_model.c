@@ -111,6 +111,13 @@ void pl_model_apply(pl_model_t *m, uint8_t type, const uint8_t *payload, size_t 
         m->have_load = 1;
     } else if (type == PL_GRIDS_STEP && len == 1) {
         m->grids_step = payload[0] < 32 ? payload[0] : -1;
+    } else if (type == PL_SEQ_DUMP && len == sizeof(pl_seq_dump_t) && payload[0] < PL_SEQ_SYNTHS) {
+        memcpy(&m->seq[payload[0]], payload, len);
+        m->seq_have |= 1 << payload[0];
+    } else if (type == PL_SEQ_POS && len == sizeof(pl_seq_pos_t) && payload[0] < PL_SEQ_SYNTHS) {
+        pl_seq_pos_t *p = &m->seq_pos[payload[0]];
+        memcpy(p, payload, len);
+        m->seq[payload[0]].run = p->run; // Stop BSP останавливает и секвенсер: кнопка ▶ видит
     } else {
         return;
     }
@@ -167,4 +174,69 @@ void pl_model_page_sent(pl_model_t *m, uint32_t ms)
     m->page_sent = 1;
     m->page_sent_ms = ms;
     m->goto_page = -1; // страницу выбрали на экране: это новее листания на BSP
+}
+
+static int seq_ok(const pl_model_t *m, int synth)
+{
+    return synth >= 0 && synth < PL_SEQ_SYNTHS && (m->seq_have >> synth & 1);
+}
+
+int pl_model_seq_step(pl_model_t *m, int synth, int pat, int step, uint8_t v)
+{
+    if (!seq_ok(m, synth) || pat < 0 || pat >= PL_SEQ_PATS || step < 0 || step >= PL_SEQ_STEPS) {
+        return 0;
+    }
+    m->seq[synth].pat[pat][step] = v;
+    return 1;
+}
+
+int pl_model_seq_oct(pl_model_t *m, int synth, int pat, int oct)
+{
+    if (!seq_ok(m, synth) || pat < 0 || pat >= PL_SEQ_PATS || oct < -2 || oct > 2) {
+        return 0;
+    }
+    m->seq[synth].oct[pat] = (uint8_t)(oct + 2);
+    return 1;
+}
+
+int pl_model_seq_scale(pl_model_t *m, int synth, int pat, int scale)
+{
+    if (!seq_ok(m, synth) || pat < 0 || pat >= PL_SEQ_PATS || scale < 0 || scale >= PL_SEQ_SCALES) {
+        return 0;
+    }
+    m->seq[synth].scale[pat] = (uint8_t)scale;
+    return 1;
+}
+
+int pl_model_seq_row(pl_model_t *m, int synth, int row, const uint8_t cell[PL_SEQ_CELLS], int rep)
+{
+    if (!seq_ok(m, synth) || row < 0 || row >= PL_SEQ_ROWS || rep < 1 || rep > 16) {
+        return 0;
+    }
+    memcpy(m->seq[synth].cell[row], cell, PL_SEQ_CELLS);
+    m->seq[synth].rep[row] = (uint8_t)rep;
+    return 1;
+}
+
+int pl_model_seq_ctrl(pl_model_t *m, int synth, int run, int edit)
+{
+    if (!seq_ok(m, synth) || edit < 0 || edit >= PL_SEQ_PATS) {
+        return 0;
+    }
+    if (run != PL_SEQ_KEEP) {
+        m->seq[synth].run = run ? 1 : 0;
+    }
+    m->seq[synth].edit = (uint8_t)edit;
+    return 1;
+}
+
+int pl_model_seq_bpm(pl_model_t *m, int bpm)
+{
+    if (!m->seq_have || bpm < 60 || bpm > 200) {
+        return 0;
+    }
+    for (int k = 0; k < PL_SEQ_SYNTHS; k++) {
+        m->seq[k].bpm = (uint8_t)bpm;
+    }
+    return 1;
 }

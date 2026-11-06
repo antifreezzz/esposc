@@ -6,7 +6,7 @@
 #define STEP_ENC 8 // энкодеры 9-16 (индексы 8..15) - шаги
 
 // Ступени ладов в полутонах от тоники; 0 - хроматика, ладов нет.
-static const int8_t SCALES[8][8] = {
+static const int8_t SCALES[ACID_TONAL_SCALES][8] = {
     {0},
     {0, 2, 4, 5, 7, 9, 11},
     {0, 2, 3, 5, 7, 8, 10},
@@ -16,7 +16,7 @@ static const int8_t SCALES[8][8] = {
     {0, 2, 3, 5, 7, 8, 11},
     {0, 3, 5, 7, 10},
 };
-static const int SCALE_N[8] = {12, 7, 7, 7, 7, 7, 7, 5};
+static const int SCALE_N[ACID_TONAL_SCALES] = {12, 7, 7, 7, 7, 7, 7, 5};
 
 void acid_tonal_init(acid_tonal_t *t)
 {
@@ -195,4 +195,18 @@ int acid_tonal_moves(const acid_tonal_t *t, int slot)
 uint32_t acid_tonal_ticks_left(const acid_tonal_t *t)
 {
     return (uint32_t)((t->cur_len - t->bars - 1) * ACID_TONAL_BAR + ACID_TONAL_BAR - t->phase + t->armed);
+}
+
+int acid_tonal_scale_note(int scale, int base, int degree)
+{
+    scale = scale < 0 || scale >= ACID_TONAL_SCALES ? 0 : scale;
+    int n = SCALE_N[scale];
+    int o = floor_div(degree, n);
+    int d = degree - o * n;
+    return base + o * 12 + (scale == 0 ? d : SCALES[scale][d]);
+}
+
+int acid_tonal_degree_note(const acid_tonal_t *t, int base, int degree)
+{
+    return acid_tonal_scale_note(t->scale, base, degree);
 }

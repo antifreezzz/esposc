@@ -27,8 +27,22 @@ _Static_assert(ACID_PAGE_PETRI == PL_PAGE_PETRI && ACID_BSP_PETRI == 18 && ACID_
                "petri numbers shared by synth and panel (pl_proto.h, pl_page_bsp)");
 _Static_assert(ACID_PAGES == PL_PAGES && ACID_PAGE_GRIDS == PL_PAGE_GRIDS && ACID_USER_FIRST == PL_USER_FIRST,
                "synth and panel page numbering");
+_Static_assert(ACID_SEQ_REST == PL_SEQ_REST && ACID_SEQ_DEG == PL_SEQ_DEG && ACID_SEQ_ACC == PL_SEQ_ACC &&
+                   ACID_SEQ_SLIDE == PL_SEQ_SLIDE && ACID_SEQ_EMPTY == PL_SEQ_EMPTY && ACID_SEQ_SYNTHS == PL_SEQ_SYNTHS &&
+                   ACID_SEQ_PATS == PL_SEQ_PATS && ACID_SEQ_STEPS == PL_SEQ_STEPS && ACID_SEQ_ROWS == PL_SEQ_ROWS &&
+                   ACID_SEQ_CELLS == PL_SEQ_CELLS && PANEL_SEQ_MAX == 3 + PL_SEQ_CELLS && ACID_SEQ_UP == PL_SEQ_UP &&
+                   ACID_SEQ_SCALES == PL_SEQ_SCALES,
+               "step sequencer byte format shared by synth and panel");
 
-static QueueHandle_t s_set_q, s_knob_q, s_page_q, s_edit_q, s_scene_q, s_petri_q;
+typedef struct {
+    uint8_t type, p[PANEL_SEQ_MAX];
+} seq_frame_t;
+
+static QueueHandle_t s_set_q, s_knob_q, s_page_q, s_edit_q, s_scene_q, s_petri_q, s_seq_q;
+static const acid_seq_t *s_seq;
+static volatile int s_bsp_bpm;
+static volatile int s_seq_pos_due;
+static const volatile int *s_live;
 static volatile uint32_t s_petri_count;
 static const acid_synth_t *s_synth;
 static const acid_link_t *s_link;
@@ -69,6 +83,27 @@ int panel_uart_receive_petri(acid_petri_frame_t *out)
 uint32_t panel_uart_petri_count(void)
 {
     return s_petri_count;
+}
+
+int panel_uart_receive_seq(uint8_t *type, uint8_t p[PANEL_SEQ_MAX])
+{
+    seq_frame_t f;
+    if (!s_seq_q || xQueueReceive(s_seq_q, &f, 0) != pdTRUE) {
+        return 0;
+    }
+    *type = f.type;
+    memcpy(p, f.p, PANEL_SEQ_MAX);
+    return 1;
+}
+
+void panel_uart_seq_pos_due(void)
+{
+    s_seq_pos_due = 1;
+}
+
+void panel_uart_set_bsp_bpm(int bpm)
+{
+    s_bsp_bpm = bpm;
 }
 
 int panel_uart_receive(pl_set_t *out)
@@ -129,8 +164,8 @@ static void send_snapshot(void)
     static pl_snapshot2_t snap2;
     memset(&snap, 0, sizeof snap);
     memset(&snap2, 0, sizeof snap2);
-    snap.mode = *s_demo_on ? 0 : 1;
-    snap.demo = s_synth->drone ? PL_DEMO_DRONE : (uint8_t)*s_demo_song;
+    snap.mode = *s_live ? 1 : 0; // демо, дрон и секвенсер без BSP - 0: статус панели по demo
+    snap.demo = s_synth->drone ? PL_DEMO_DRONE : (uint8_t)*s_demo_song; // за дроном - режим секвенсера (PL_DEMO_SEQ)
     snap.bsp_page = (uint8_t)acid_link_page(s_link, s_synth);
     for (int p = 0; p < PL_PAGES; p++) {
         for (int e = 0; e < PL_KNOBS; e++) {
@@ -167,6 +202,33 @@ static void send_scene_state(void)
     send(PL_SCENE_STATE, &st, sizeof st);
 }
 
+// Всё секвенсера синта k: ядро 1 может править посреди копии - старое значение до следующего HELLO, звук не трогает.
+static void send_seq_dump(int k)
+{
+    static pl_seq_dump_t d;
+    const acid_seq_track_t *t = &s_seq->t[k];
+    d.synth = (uint8_t)k;
+    memcpy(d.pat, t->pat, sizeof d.pat);
+    for (int i = 0; i < PL_SEQ_PATS; i++) {
+        d.oct[i] = (uint8_t)(t->oct[i] + 2);
+    }
+    memcpy(d.scale, t->scale, sizeof d.scale);
+    memcpy(d.cell, t->cell, sizeof d.cell);
+    memcpy(d.rep, t->rep, sizeof d.rep);
+    d.run = t->run;
+    d.edit = t->edit;
+    d.bpm = s_seq->bpm;
+    send(PL_SEQ_DUMP, &d, sizeof d);
+}
+
+static void seq_pos(int k, pl_seq_pos_t *p)
+{
+    const acid_seq_track_t *t = &s_seq->t[k];
+    int bpm = s_bsp_bpm;
+    *p = (pl_seq_pos_t){(uint8_t)k, t->cur_pat, t->step, t->row, t->c, t->n, t->run,
+                        (uint8_t)(bpm > 0 ? bpm : s_seq->bpm)};
+}
+
 static void link_task(void *arg)
 {
     (void)arg;
@@ -201,6 +263,10 @@ static void link_task(void *arg)
                         xQueueOverwrite(s_petri_q, &pf); // синту нужна только последняя
                         s_petri_count++;
                     }
+                } else if (((type >= PL_SEQ_STEP && type <= PL_SEQ_BPM) || type == PL_SEQ_SCALE) && len <= PANEL_SEQ_MAX) {
+                    seq_frame_t f = {.type = type};
+                    memcpy(f.p, p, len);
+                    xQueueSend(s_seq_q, &f, 0);
                 } else if (type == PL_DEMO) {
                     s_demo_due = 1;
                 } else if (type == PL_HELLO) {
@@ -215,6 +281,9 @@ static void link_task(void *arg)
             send_snapshot();
             due = (1u << ACID_USER_PAGES) - 1; // за снимком - свои страницы и сцены
             s_scene_due = 1;
+            for (int k = 0; k < ACID_SEQ_SYNTHS; k++) {
+                send_seq_dump(k);
+            }
         }
         for (int up = 0; up < ACID_USER_PAGES; up++) {
             if (due & (1u << up)) {
@@ -238,6 +307,20 @@ static void link_task(void *arg)
             uint8_t b = g < 0 ? 0xFF : (uint8_t)g;
             send(PL_GRIDS_STEP, &b, 1);
         }
+        // Позиция секвенсеров: шаг меняется раз в шестнадцатую, опрос раз в 10 мс успевает.
+        static pl_seq_pos_t seq_sent[ACID_SEQ_SYNTHS];
+        if (s_seq_pos_due) {
+            s_seq_pos_due = 0;
+            memset(seq_sent, 0xFF, sizeof seq_sent); // такой позиции не бывает: уйдёт заново
+        }
+        for (int k = 0; k < ACID_SEQ_SYNTHS; k++) {
+            pl_seq_pos_t pos;
+            seq_pos(k, &pos);
+            if (memcmp(&pos, &seq_sent[k], sizeof pos) != 0) {
+                seq_sent[k] = pos;
+                send(PL_SEQ_POS, &pos, sizeof pos);
+            }
+        }
         acid_link_ev_t ev;
         while (xQueueReceive(s_knob_q, &ev, 0) == pdTRUE) {
             pl_knob_t k = {ev.page, ev.enc, ev.value, ev.src, ev.bsp_pos, ev.held};
@@ -247,9 +330,12 @@ static void link_task(void *arg)
 }
 
 esp_err_t panel_uart_start(const acid_synth_t *s, const acid_link_t *l, const acid_custom_t *c, const acid_scene_t *sc,
-                           const volatile int *demo_on, const volatile int *demo_song)
+                           const acid_seq_t *q, const volatile int *demo_on, const volatile int *live,
+                           const volatile int *demo_song)
 {
+    s_live = live;
     s_synth = s;
+    s_seq = q;
     s_link = l;
     s_custom = c;
     s_scene = sc;
@@ -273,7 +359,8 @@ esp_err_t panel_uart_start(const acid_synth_t *s, const acid_link_t *l, const ac
     s_edit_q = xQueueCreate(8, sizeof(pl_custom_edit_t));
     s_scene_q = xQueueCreate(4, sizeof(pl_scene_t));
     s_petri_q = xQueueCreate(1, sizeof(acid_petri_frame_t));
-    if (!s_set_q || !s_knob_q || !s_page_q || !s_edit_q || !s_scene_q || !s_petri_q) {
+    s_seq_q = xQueueCreate(32, sizeof(seq_frame_t)); // рисование пальцем: шаг за шагом, кадр на шаг
+    if (!s_set_q || !s_knob_q || !s_page_q || !s_edit_q || !s_scene_q || !s_petri_q || !s_seq_q) {
         return ESP_ERR_NO_MEM;
     }
     // Ниже slot1 и USB: связь с экраном подождёт, звук нет.

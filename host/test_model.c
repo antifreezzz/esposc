@@ -297,6 +297,40 @@ TEST(test_grids_step_frame)
     CHECK(m.grids_step == -1);
 }
 
+TEST(test_seq_dump_pos_and_local_edits)
+{
+    pl_model_t m;
+    pl_model_init(&m);
+    CHECK(pl_model_seq_step(&m, 1, 2, 3, 5) == 0); // дампа ещё нет
+    static pl_seq_dump_t d;
+    memset(&d, 0, sizeof d);
+    d.synth = 1;
+    d.pat[2][3] = PL_SEQ_REST;
+    d.bpm = 133;
+    pl_model_apply(&m, PL_SEQ_DUMP, (const uint8_t *)&d, sizeof d, 10);
+    CHECK(m.seq_have == 2);
+    CHECK(m.seq[1].bpm == 133 && m.seq[1].pat[2][3] == PL_SEQ_REST);
+    CHECK(pl_model_seq_step(&m, 1, 2, 3, 5 | PL_SEQ_ACC) == 1);
+    CHECK(m.seq[1].pat[2][3] == (5 | PL_SEQ_ACC));
+    CHECK(pl_model_seq_step(&m, 0, 2, 3, 5) == 0); // синт 0 без дампа
+    CHECK(pl_model_seq_oct(&m, 1, 2, -1) == 1 && m.seq[1].oct[2] == 1); // как в кадре: oct + 2
+    CHECK(pl_model_seq_scale(&m, 1, 2, 8) == 1 && m.seq[1].scale[2] == 8);
+    CHECK(pl_model_seq_scale(&m, 1, 2, PL_SEQ_SCALES) == 0 && m.seq[1].scale[2] == 8);
+    uint8_t cells[8] = {0, 0, 0, 1, PL_SEQ_EMPTY, PL_SEQ_EMPTY, PL_SEQ_EMPTY, PL_SEQ_EMPTY};
+    CHECK(pl_model_seq_row(&m, 1, 0, cells, 3) == 1 && m.seq[1].cell[0][3] == 1 && m.seq[1].rep[0] == 3);
+    CHECK(pl_model_seq_ctrl(&m, 1, 1, 4) == 1 && m.seq[1].run == 1 && m.seq[1].edit == 4);
+    CHECK(pl_model_seq_ctrl(&m, 1, 0, 4) == 1 && m.seq[1].run == 0);
+    CHECK(pl_model_seq_ctrl(&m, 1, PL_SEQ_KEEP, 6) == 1 && m.seq[1].run == 0 && m.seq[1].edit == 6); // такт без ▶/■
+    CHECK(pl_model_seq_ctrl(&m, 1, 1, 4) == 1);
+    CHECK(pl_model_seq_bpm(&m, 150) == 1 && m.seq[0].bpm == 150 && m.seq[1].bpm == 150);
+    pl_seq_pos_t p = {1, 4, 7, 0, 3, 2, 0, 99};
+    pl_model_apply(&m, PL_SEQ_POS, (const uint8_t *)&p, sizeof p, 20);
+    CHECK(m.seq_pos[1].step == 7 && m.seq_pos[1].bpm == 99);
+    CHECK(m.seq[1].run == 0); // синт остановил (Stop BSP): экран видит
+    pl_model_apply(&m, PL_SEQ_DUMP, (const uint8_t *)&d, sizeof d - 1, 30); // чужая длина - мимо
+    CHECK(m.seq[1].pat[2][3] == (5 | PL_SEQ_ACC));
+}
+
 int main(void)
 {
     RUN(test_load_frame_stored);
@@ -319,5 +353,6 @@ int main(void)
     RUN(test_local_set_user_needs_frame);
     RUN(test_local_set_alias_moves_target);
     RUN(test_scene_state_applied);
+    RUN(test_seq_dump_pos_and_local_edits);
     TEST_MAIN_END();
 }
