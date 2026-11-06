@@ -55,3 +55,19 @@ int acid_seq_run(acid_seq_t *q, int synth, int on, int beat_running, acid_seq_ev
 // Возвращает число событий в out (не больше 4: по on и off на синт).
 int acid_seq_clock(acid_seq_t *q, int beat_step, const acid_tonal_t *tonal, acid_seq_ev_t out[4]);
 void acid_seq_rewind(acid_seq_t *q); // START BSP и смена режима: позиции в начало (run не трогает)
+
+// Blob во flash: магия {'S','Q','1',1}, такты, окна, песня, run и edit обоих синтов, темп. Позиция не хранится.
+#define ACID_SEQ_TRACK_BLOB (ACID_SEQ_PATS * ACID_SEQ_STEPS + ACID_SEQ_PATS + ACID_SEQ_ROWS * ACID_SEQ_CELLS + ACID_SEQ_ROWS + 2)
+#define ACID_SEQ_BLOB (4 + ACID_SEQ_SYNTHS * ACID_SEQ_TRACK_BLOB + 1)
+size_t acid_seq_export(const acid_seq_t *q, void *buf, size_t cap); // 0 - не влезло
+int acid_seq_import(acid_seq_t *q, const void *buf, size_t len);    // 0 - чужая магия или длина, q не тронут
+
+// Внутренний клок 24 PPQN, когда клока BSP нет. Счёт в сэмплах, остаток копится (без дрейфа темпа).
+typedef struct {
+    uint32_t acc;      // в единицах bpm * 24 сэмплов: тик - каждые sr * 60
+    uint32_t ext_left; // сэмплов, пока молчим после тика BSP
+} acid_seq_clk_t;
+void acid_seq_clk_init(acid_seq_clk_t *c);
+void acid_seq_clk_ext(acid_seq_clk_t *c, int sr); // пришёл тик BSP: 0.5 с внутренний молчит
+// Кусок из n сэмплов: сколько внутренних тиков выдать при bpm (0, если клок BSP жив).
+int acid_seq_clk_run(acid_seq_clk_t *c, int bpm, int n, int sr);

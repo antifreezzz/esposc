@@ -233,3 +233,84 @@ int acid_seq_clock(acid_seq_t *q, int beat_step, const acid_tonal_t *tonal, acid
     }
     return k;
 }
+
+static const uint8_t SEQ_MAGIC[4] = {'S', 'Q', '1', 1};
+
+size_t acid_seq_export(const acid_seq_t *q, void *buf, size_t cap)
+{
+    if (cap < ACID_SEQ_BLOB) {
+        return 0;
+    }
+    uint8_t *p = buf;
+    memcpy(p, SEQ_MAGIC, 4);
+    p += 4;
+    for (int s = 0; s < ACID_SEQ_SYNTHS; s++) {
+        const acid_seq_track_t *t = &q->t[s];
+        memcpy(p, t->pat, sizeof t->pat), p += sizeof t->pat;
+        memcpy(p, t->oct, sizeof t->oct), p += sizeof t->oct;
+        memcpy(p, t->cell, sizeof t->cell), p += sizeof t->cell;
+        memcpy(p, t->rep, sizeof t->rep), p += sizeof t->rep;
+        *p++ = t->run;
+        *p++ = t->edit;
+    }
+    *p++ = q->bpm;
+    return ACID_SEQ_BLOB;
+}
+
+int acid_seq_import(acid_seq_t *q, const void *buf, size_t len)
+{
+    const uint8_t *p = buf;
+    if (len != ACID_SEQ_BLOB || memcmp(p, SEQ_MAGIC, 4) != 0) {
+        return 0;
+    }
+    p += 4;
+    acid_seq_init(q);
+    for (int s = 0; s < ACID_SEQ_SYNTHS; s++) {
+        acid_seq_track_t *t = &q->t[s];
+        for (int pat = 0; pat < ACID_SEQ_PATS; pat++) {
+            for (int st = 0; st < ACID_SEQ_STEPS; st++) {
+                acid_seq_set_step(q, s, pat, st, *p++);
+            }
+        }
+        for (int pat = 0; pat < ACID_SEQ_PATS; pat++) {
+            acid_seq_set_oct(q, s, pat, (int8_t)*p++);
+        }
+        for (int r = 0; r < ACID_SEQ_ROWS; r++) {
+            acid_seq_set_row(q, s, r, p + r * ACID_SEQ_CELLS, p[ACID_SEQ_ROWS * ACID_SEQ_CELLS + r]);
+        }
+        p += ACID_SEQ_ROWS * ACID_SEQ_CELLS + ACID_SEQ_ROWS;
+        t->run = *p++ ? 1 : 0;
+        acid_seq_set_edit(q, s, *p++);
+        song_start(t);
+    }
+    acid_seq_set_bpm(q, *p);
+    return 1;
+}
+
+void acid_seq_clk_init(acid_seq_clk_t *c)
+{
+    c->acc = 0;
+    c->ext_left = 0;
+}
+
+void acid_seq_clk_ext(acid_seq_clk_t *c, int sr)
+{
+    c->ext_left = (uint32_t)sr / 2;
+    c->acc = 0;
+}
+
+int acid_seq_clk_run(acid_seq_clk_t *c, int bpm, int n, int sr)
+{
+    if (c->ext_left > 0) {
+        c->ext_left = c->ext_left > (uint32_t)n ? c->ext_left - (uint32_t)n : 0;
+        return 0;
+    }
+    uint32_t period = (uint32_t)sr * 60u;
+    c->acc += (uint32_t)n * (uint32_t)bpm * 24u;
+    int ticks = 0;
+    while (c->acc >= period) {
+        c->acc -= period;
+        ticks++;
+    }
+    return ticks;
+}

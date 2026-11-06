@@ -237,6 +237,80 @@ TEST(test_rewind_no_slide_artifact)
     CHECK(ev[1].on && ev[1].note == 36);
 }
 
+TEST(test_blob_roundtrip)
+{
+    setup();
+    acid_seq_set_step(&q, 1, 7, 15, 3 | ACID_SEQ_ACC);
+    acid_seq_set_oct(&q, 0, 2, -2);
+    row(1, 4, "HAB", 16);
+    acid_seq_set_edit(&q, 1, 5);
+    acid_seq_set_bpm(&q, 140);
+    run(1);
+    static uint8_t blob[ACID_SEQ_BLOB];
+    CHECK(acid_seq_export(&q, blob, sizeof blob) == ACID_SEQ_BLOB);
+    acid_seq_t q2;
+    acid_seq_init(&q2);
+    CHECK(acid_seq_import(&q2, blob, ACID_SEQ_BLOB) == 1);
+    CHECK(q2.bpm == 140);
+    for (int s = 0; s < ACID_SEQ_SYNTHS; s++) {
+        CHECK(memcmp(q2.t[s].pat, q.t[s].pat, sizeof q.t[s].pat) == 0);
+        CHECK(memcmp(q2.t[s].oct, q.t[s].oct, sizeof q.t[s].oct) == 0);
+        CHECK(memcmp(q2.t[s].cell, q.t[s].cell, sizeof q.t[s].cell) == 0);
+        CHECK(memcmp(q2.t[s].rep, q.t[s].rep, sizeof q.t[s].rep) == 0);
+        CHECK(q2.t[s].run == q.t[s].run && q2.t[s].edit == q.t[s].edit);
+    }
+    CHECK(q2.t[1].sounding == -1);
+}
+
+TEST(test_blob_rejects_foreign)
+{
+    setup();
+    static uint8_t blob[ACID_SEQ_BLOB];
+    acid_seq_export(&q, blob, sizeof blob);
+    blob[0] ^= 1;
+    acid_seq_t q2;
+    acid_seq_init(&q2);
+    q2.bpm = 77;
+    CHECK(acid_seq_import(&q2, blob, ACID_SEQ_BLOB) == 0);
+    CHECK(q2.bpm == 77);
+    blob[0] ^= 1;
+    CHECK(acid_seq_import(&q2, blob, ACID_SEQ_BLOB - 1) == 0);
+    CHECK(acid_seq_export(&q, blob, ACID_SEQ_BLOB - 1) == 0);
+}
+
+TEST(test_clk_rate)
+{
+    acid_seq_clk_t c;
+    acid_seq_clk_init(&c);
+    int n = 0;
+    for (int i = 0; i < 48000 / 32; i++) {
+        n += acid_seq_clk_run(&c, 120, 32, 48000);
+    }
+    CHECK(n == 48); // 120 BPM: 2 доли в секунду по 24 тика
+    acid_seq_clk_init(&c);
+    n = 0;
+    for (int i = 0; i < 48000 * 10 / 32; i++) {
+        n += acid_seq_clk_run(&c, 137, 32, 48000);
+    }
+    CHECK(n == 548); // остаток копится, без дрейфа
+}
+
+TEST(test_clk_ext_mutes)
+{
+    acid_seq_clk_t c;
+    acid_seq_clk_init(&c);
+    acid_seq_clk_ext(&c, 48000);
+    int n = 0;
+    for (int i = 0; i < 24000 / 32; i++) {
+        n += acid_seq_clk_run(&c, 120, 32, 48000);
+    }
+    CHECK(n == 0);
+    for (int i = 0; i < 24000 / 32; i++) {
+        n += acid_seq_clk_run(&c, 120, 32, 48000);
+    }
+    CHECK(n == 24); // 0.5 с при 120 BPM
+}
+
 int main(void)
 {
     RUN(test_song_walk);
@@ -252,5 +326,9 @@ int main(void)
     RUN(test_oct_and_synth2);
     RUN(test_tie_same_note);
     RUN(test_rewind_no_slide_artifact);
+    RUN(test_blob_roundtrip);
+    RUN(test_blob_rejects_foreign);
+    RUN(test_clk_rate);
+    RUN(test_clk_ext_mutes);
     TEST_MAIN_END();
 }
