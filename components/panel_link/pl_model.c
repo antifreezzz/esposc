@@ -199,6 +199,15 @@ int pl_model_seq_oct(pl_model_t *m, int synth, int pat, int oct)
     return 1;
 }
 
+int pl_model_seq_scale(pl_model_t *m, int synth, int pat, int scale)
+{
+    if (!seq_ok(m, synth) || pat < 0 || pat >= PL_SEQ_PATS || scale < 0 || scale >= PL_SEQ_SCALES) {
+        return 0;
+    }
+    m->seq[synth].scale[pat] = (uint8_t)scale;
+    return 1;
+}
+
 int pl_model_seq_row(pl_model_t *m, int synth, int row, const uint8_t cell[PL_SEQ_CELLS], int rep)
 {
     if (!seq_ok(m, synth) || row < 0 || row >= PL_SEQ_ROWS || rep < 1 || rep > 16) {

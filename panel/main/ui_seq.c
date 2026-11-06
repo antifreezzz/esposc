@@ -14,7 +14,7 @@
 #define CELL_CHOICES (PL_SEQ_PATS + 1) // A-H и «пусто»
 #define REP_CHOICES 16
 
-enum { PICK_NONE, PICK_CELL, PICK_REP };
+enum { PICK_NONE, PICK_CELL, PICK_REP, PICK_SCALE };
 
 static struct {
     lv_obj_t *box, *tool, *tier[2], *song, *mark, *cell_mark, *pick;
@@ -29,7 +29,10 @@ static struct {
     int drawn_tool, drawn_tier_ok, drawn_song_ok, drawn_mark, drawn_cell_mark, drawn_pick;
 } g;
 
-static const char *const BRUSH[PL_SEQ_BRUSHES] = {"NOTE", "ACC", "SLIDE"};
+static const char *const BRUSH[PL_SEQ_BRUSHES] = {"NOTE", "ACC", "SLIDE", "OCT"};
+// Лад такта: TONAL - со страницы 9, дальше лады её SCALE.
+static const char *const SCALE[PL_SEQ_SCALES] = {"TONAL", "CHROM", "MAJOR", "MINOR", "DORIAN",
+                                                 "PHRYG", "MIXO",  "HMIN",  "PENTA"};
 
 static const pl_seq_dump_t *seq(const pl_model_t *m)
 {
@@ -118,6 +121,8 @@ static void tool_draw(lv_event_t *e)
     button(layer, &a, "OCT-", oct < 0, sc);
     rect_area(PL_ST_OCT_UP, 0, 0, &a);
     button(layer, &a, "OCT+", oct > 0, sc);
+    rect_area(PL_ST_SCALE, 0, 0, &a);
+    button(layer, &a, d ? SCALE[d->scale[d->edit] % PL_SEQ_SCALES] : "-", d && d->scale[d->edit], sc);
     rect_area(PL_ST_BRUSH, 0, 0, &a);
     button(layer, &a, BRUSH[g.brush], g.brush != PL_SEQ_BRUSH_NOTE, C_ACCENT);
     for (int p = 0; p < PL_SEQ_PATS; p++) {
@@ -132,7 +137,7 @@ static int tool_key(const pl_model_t *m)
     const pl_seq_dump_t *d = seq(m);
     int k = g.synth | g.view << 1 | g.brush << 2 | g.bpm_drag << 4 | (d ? 1 : 0) << 5;
     if (d) {
-        k |= d->edit << 6 | d->oct[d->edit] << 9 | shown_bpm(m) << 12;
+        k |= d->edit << 6 | d->oct[d->edit] << 9 | shown_bpm(m) << 12 | d->scale[d->edit] << 20;
     }
     return k;
 }
@@ -194,6 +199,13 @@ static void tier_draw(lv_event_t *e)
             f.color = lv_color_hex(C_TEXT);
             lv_draw_fill(layer, &f, &br);
         }
+        if (pat[s] & PL_SEQ_UP) { // октава вверх: голубая черта у низа полосы
+            lv_area_t up;
+            area_of(lv_event_get_target_obj(e), x + 12, yb - 10, w - 24, 4, &up);
+            f.radius = 2;
+            f.color = lv_color_hex(C_BSP);
+            lv_draw_fill(layer, &f, &up);
+        }
     }
 }
 
@@ -221,7 +233,12 @@ static void song_draw(lv_event_t *e)
     }
 }
 
-// Сетка выбора: такт ячейки (A-H и «-») или повтор строки (x1..x16), как выбор из списка на страницах.
+static int pick_n(void)
+{
+    return g.picking == PICK_CELL ? CELL_CHOICES : g.picking == PICK_SCALE ? PL_SEQ_SCALES : REP_CHOICES;
+}
+
+// Сетка выбора: такт ячейки (A-H и «-»), повтор строки (x1..x16) или лад такта, как выбор из списка на страницах.
 static void pick_draw(lv_event_t *e)
 {
     const pl_seq_dump_t *d = g.m ? seq(g.m) : NULL;
@@ -229,17 +246,20 @@ static void pick_draw(lv_event_t *e)
         return;
     }
     lv_layer_t *layer = lv_event_get_layer(e);
-    int n = g.picking == PICK_CELL ? CELL_CHOICES : REP_CHOICES;
-    int cur = g.picking == PICK_CELL ? (d->cell[g.pick_row][g.pick_cell] < PL_SEQ_PATS ? d->cell[g.pick_row][g.pick_cell]
+    int n = pick_n();
+    int cur = g.picking == PICK_SCALE  ? d->scale[d->edit]
+              : g.picking == PICK_CELL ? (d->cell[g.pick_row][g.pick_cell] < PL_SEQ_PATS ? d->cell[g.pick_row][g.pick_cell]
                                                                                         : PL_SEQ_PATS)
                                      : d->rep[g.pick_row] - 1;
-    char buf[8];
+    char buf[12];
     for (int s = 0; s < n; s++) {
         int x, y, w, h;
         pl_pick_rect(n, s, &x, &y, &w, &h);
         lv_area_t a;
         area_of(g.pick, x, y - UI_TOP_H, w, h, &a);
-        if (g.picking == PICK_CELL) {
+        if (g.picking == PICK_SCALE) {
+            snprintf(buf, sizeof buf, "%s", SCALE[s]);
+        } else if (g.picking == PICK_CELL) {
             snprintf(buf, sizeof buf, "%c", s < PL_SEQ_PATS ? 'A' + s : '-');
         } else {
             snprintf(buf, sizeof buf, "x%d", s + 1);
@@ -347,7 +367,9 @@ void us_draw(const pl_model_t *m)
         }
     }
     int pick_key = g.picking ? (g.picking << 16 | g.pick_row << 8 | g.pick_cell) ^
-                                   (d ? (d->cell[g.pick_row][g.pick_cell] << 20 | d->rep[g.pick_row] << 28) : 0)
+                                   (d ? (d->cell[g.pick_row][g.pick_cell] << 20 | d->rep[g.pick_row] << 28 |
+                                         d->scale[d->edit] << 12)
+                                      : 0)
                              : 0;
     if (pick_key != g.drawn_pick) {
         g.drawn_pick = pick_key;
@@ -400,9 +422,12 @@ static void set_oct(pl_model_t *m, int dir)
 static void pick_input(pl_model_t *m, int x0, int y0)
 {
     const pl_seq_dump_t *d = seq(m);
-    int n = g.picking == PICK_CELL ? CELL_CHOICES : REP_CHOICES;
-    int s = pl_pick_at(n, x0, y0);
-    if (s >= 0) {
+    int s = pl_pick_at(pick_n(), x0, y0);
+    if (s >= 0 && g.picking == PICK_SCALE) {
+        if (pl_model_seq_scale(m, g.synth, d->edit, s)) {
+            link_seq_scale(g.synth, d->edit, s);
+        }
+    } else if (s >= 0) {
         uint8_t cells[PL_SEQ_CELLS];
         memcpy(cells, d->cell[g.pick_row], sizeof cells);
         int rep = d->rep[g.pick_row];
@@ -465,6 +490,8 @@ void us_input(pl_model_t *m, int down, int x, int y, int x0, int y0, uint32_t ms
             pl_seq_drag_begin(&g.drag, g.brush);
         } else if (g.id == PL_ST_BPM) {
             g.bpm0 = d->bpm;
+        } else if (g.id == PL_ST_SCALE) {
+            g.picking = PICK_SCALE;
         } else if (g.id == PL_ST_CELL || g.id == PL_ST_REP) {
             g.picking = g.id == PL_ST_CELL ? PICK_CELL : PICK_REP;
             g.pick_row = g.row;

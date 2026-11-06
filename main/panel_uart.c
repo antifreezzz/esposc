@@ -30,7 +30,8 @@ _Static_assert(ACID_PAGES == PL_PAGES && ACID_PAGE_GRIDS == PL_PAGE_GRIDS && ACI
 _Static_assert(ACID_SEQ_REST == PL_SEQ_REST && ACID_SEQ_DEG == PL_SEQ_DEG && ACID_SEQ_ACC == PL_SEQ_ACC &&
                    ACID_SEQ_SLIDE == PL_SEQ_SLIDE && ACID_SEQ_EMPTY == PL_SEQ_EMPTY && ACID_SEQ_SYNTHS == PL_SEQ_SYNTHS &&
                    ACID_SEQ_PATS == PL_SEQ_PATS && ACID_SEQ_STEPS == PL_SEQ_STEPS && ACID_SEQ_ROWS == PL_SEQ_ROWS &&
-                   ACID_SEQ_CELLS == PL_SEQ_CELLS && PANEL_SEQ_MAX == 3 + PL_SEQ_CELLS,
+                   ACID_SEQ_CELLS == PL_SEQ_CELLS && PANEL_SEQ_MAX == 3 + PL_SEQ_CELLS && ACID_SEQ_UP == PL_SEQ_UP &&
+                   ACID_SEQ_SCALES == PL_SEQ_SCALES,
                "step sequencer byte format shared by synth and panel");
 
 typedef struct {
@@ -211,6 +212,7 @@ static void send_seq_dump(int k)
     for (int i = 0; i < PL_SEQ_PATS; i++) {
         d.oct[i] = (uint8_t)(t->oct[i] + 2);
     }
+    memcpy(d.scale, t->scale, sizeof d.scale);
     memcpy(d.cell, t->cell, sizeof d.cell);
     memcpy(d.rep, t->rep, sizeof d.rep);
     d.run = t->run;
@@ -261,7 +263,7 @@ static void link_task(void *arg)
                         xQueueOverwrite(s_petri_q, &pf); // синту нужна только последняя
                         s_petri_count++;
                     }
-                } else if (type >= PL_SEQ_STEP && type <= PL_SEQ_BPM && len <= PANEL_SEQ_MAX) {
+                } else if (((type >= PL_SEQ_STEP && type <= PL_SEQ_BPM) || type == PL_SEQ_SCALE) && len <= PANEL_SEQ_MAX) {
                     seq_frame_t f = {.type = type};
                     memcpy(f.p, p, len);
                     xQueueSend(s_seq_q, &f, 0);

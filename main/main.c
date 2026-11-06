@@ -159,6 +159,7 @@ static void seq_frames(void)
         switch (type) {
         case PL_SEQ_STEP: acid_seq_set_step(&s_seq, p[0], p[1], p[2], p[3]); break;
         case PL_SEQ_OCT: acid_seq_set_oct(&s_seq, p[0], p[1], p[2] - 2); break;
+        case PL_SEQ_SCALE: acid_seq_set_scale(&s_seq, p[0], p[1], p[2]); break;
         case PL_SEQ_ROW: acid_seq_set_row(&s_seq, p[0], p[1], p + 2, p[2 + ACID_SEQ_CELLS]); break;
         case PL_SEQ_CTRL:
             acid_seq_set_edit(&s_seq, p[0], p[2]);
@@ -318,7 +319,8 @@ static void load_user_data(void)
         ESP_LOGI(TAG, "scenes restored (%02x)", s_scene.used);
     }
     acid_seq_init(&s_seq);
-    if (store_load(STORE_SEQ, s_qblob, sizeof s_qblob) == ACID_SEQ_BLOB && acid_seq_import(&s_seq, s_qblob, sizeof s_qblob)) {
+    size_t qn = store_load(STORE_SEQ, s_qblob, sizeof s_qblob); // версия 1 короче: длину проверяет import
+    if (qn > 0 && acid_seq_import(&s_seq, s_qblob, qn)) {
         ESP_LOGI(TAG, "sequencer restored");
     }
 }

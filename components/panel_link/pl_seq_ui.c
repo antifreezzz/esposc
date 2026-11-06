@@ -24,8 +24,8 @@ typedef struct {
 } tool_t;
 
 static const tool_t TOOLS[] = {
-    {PL_ST_SYNTH, 4, 84, 0},    {PL_ST_VIEW, 88, 188, 0},     {PL_ST_BPM, 192, 280, 0},
-    {PL_ST_OCT_DN, 284, 334, 1}, {PL_ST_OCT_UP, 338, 388, 1}, {PL_ST_BRUSH, 392, 476, 1},
+    {PL_ST_SYNTH, 4, 70, 0},     {PL_ST_VIEW, 74, 154, 0},     {PL_ST_BPM, 158, 240, 0},  {PL_ST_OCT_DN, 244, 290, 1},
+    {PL_ST_OCT_UP, 294, 340, 1}, {PL_ST_SCALE, 344, 408, 1}, {PL_ST_BRUSH, 412, 476, 1},
 };
 #define NTOOLS (int)(sizeof TOOLS / sizeof TOOLS[0])
 
@@ -143,7 +143,8 @@ int pl_seq_drag(pl_seq_drag_t *d, uint8_t pat[16], int x, int y)
         v = (uint8_t)((old & ~PL_SEQ_DEG) | (lvl == 0 ? PL_SEQ_REST : lvl - 1));
     } else if (!(d->done >> step & 1)) {
         d->done |= (uint16_t)(1u << step);
-        v = old ^ (d->brush == PL_SEQ_BRUSH_ACC ? PL_SEQ_ACC : PL_SEQ_SLIDE);
+        static const uint8_t FLAG[PL_SEQ_BRUSHES] = {0, PL_SEQ_ACC, PL_SEQ_SLIDE, PL_SEQ_UP};
+        v = old ^ FLAG[d->brush];
     }
     if (v == old) {
         return -1;

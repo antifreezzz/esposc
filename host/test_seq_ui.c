@@ -106,6 +106,9 @@ TEST(test_brush_toggles_once)
     pl_seq_drag_begin(&d, PL_SEQ_BRUSH_ACC); // новый проход снимает
     pl_seq_drag(&d, pat, x + 10, y + 50);
     CHECK(pat[2] == (3 | PL_SEQ_SLIDE));
+    pl_seq_drag_begin(&d, PL_SEQ_BRUSH_OCT); // октава вверх
+    CHECK(pl_seq_drag(&d, pat, x + 10, y + 50) == 2);
+    CHECK(pat[2] == (3 | PL_SEQ_SLIDE | PL_SEQ_UP));
 }
 
 TEST(test_drag_crosses_tiers)
@@ -138,7 +141,7 @@ TEST(test_song_cells)
 
 TEST(test_toolbar)
 {
-    static const int IDS[] = {PL_ST_SYNTH, PL_ST_VIEW, PL_ST_BPM, PL_ST_OCT_DN, PL_ST_OCT_UP, PL_ST_BRUSH};
+    static const int IDS[] = {PL_ST_SYNTH, PL_ST_VIEW, PL_ST_BPM, PL_ST_OCT_DN, PL_ST_OCT_UP, PL_ST_SCALE, PL_ST_BRUSH};
     for (int view = 0; view < 2; view++) {
         for (size_t i = 0; i < sizeof IDS / sizeof IDS[0]; i++) {
             int x, y, w, h, arg, row;

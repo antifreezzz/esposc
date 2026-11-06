@@ -314,6 +314,8 @@ TEST(test_seq_dump_pos_and_local_edits)
     CHECK(m.seq[1].pat[2][3] == (5 | PL_SEQ_ACC));
     CHECK(pl_model_seq_step(&m, 0, 2, 3, 5) == 0); // синт 0 без дампа
     CHECK(pl_model_seq_oct(&m, 1, 2, -1) == 1 && m.seq[1].oct[2] == 1); // как в кадре: oct + 2
+    CHECK(pl_model_seq_scale(&m, 1, 2, 8) == 1 && m.seq[1].scale[2] == 8);
+    CHECK(pl_model_seq_scale(&m, 1, 2, PL_SEQ_SCALES) == 0 && m.seq[1].scale[2] == 8);
     uint8_t cells[8] = {0, 0, 0, 1, PL_SEQ_EMPTY, PL_SEQ_EMPTY, PL_SEQ_EMPTY, PL_SEQ_EMPTY};
     CHECK(pl_model_seq_row(&m, 1, 0, cells, 3) == 1 && m.seq[1].cell[0][3] == 1 && m.seq[1].rep[0] == 3);
     CHECK(pl_model_seq_ctrl(&m, 1, 1, 4) == 1 && m.seq[1].run == 1 && m.seq[1].edit == 4);

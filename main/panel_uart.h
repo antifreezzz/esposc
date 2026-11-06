@@ -15,7 +15,7 @@
 esp_err_t panel_uart_start(const acid_synth_t *s, const acid_link_t *l, const acid_custom_t *c, const acid_scene_t *sc,
                            const acid_seq_t *q, const volatile int *demo_on, const volatile int *live,
                            const volatile int *demo_song);
-// Кадр секвенсера с панели (PL_SEQ_STEP..PL_SEQ_BPM): 1 если есть (без ожидания), нагрузка в p.
+// Кадр секвенсера с панели (PL_SEQ_STEP..PL_SEQ_BPM, PL_SEQ_SCALE): 1 если есть (без ожидания), нагрузка в p.
 #define PANEL_SEQ_MAX 11
 int panel_uart_receive_seq(uint8_t *type, uint8_t p[PANEL_SEQ_MAX]);
 // Темп клока BSP для панели (0 - клока BSP нет, панель показывает свой темп).

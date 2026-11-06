@@ -47,6 +47,7 @@ enum {
     PL_SEQ_BPM = 22,  // панель -> синт: темп внутреннего клока {bpm}
     PL_SEQ_DUMP = 23, // синт -> панель: всё одного синта (pl_seq_dump_t), после PL_HELLO
     PL_SEQ_POS = 24,  // синт -> панель: позиция игры и темп (pl_seq_pos_t), при изменении
+    PL_SEQ_SCALE = 25, // панель -> синт: лад такта {synth, pat, scale} (0 - со страницы 9, 1 + k - лад k)
 };
 
 // Секвенсер: байт шага - ступень 0..14 (PL_SEQ_REST - пауза) и флаги; совпадает с ACID_SEQ_* синта.
@@ -59,12 +60,15 @@ enum {
 #define PL_SEQ_DEG 0x0F
 #define PL_SEQ_ACC 0x10
 #define PL_SEQ_SLIDE 0x20
+#define PL_SEQ_UP 0x40 // нота на октаву выше
+#define PL_SEQ_SCALES 9
 #define PL_SEQ_EMPTY 0xFF
 #define PL_SEQ_KEEP 0xFF // run в PL_SEQ_CTRL: только такт экрана, ▶/■ как есть
 typedef struct {
     uint8_t synth;
     uint8_t pat[PL_SEQ_PATS][PL_SEQ_STEPS];
     uint8_t oct[PL_SEQ_PATS]; // окно + 2 (0..4)
+    uint8_t scale[PL_SEQ_PATS];
     uint8_t cell[PL_SEQ_ROWS][PL_SEQ_CELLS], rep[PL_SEQ_ROWS];
     uint8_t run, edit, bpm;
 } pl_seq_dump_t;

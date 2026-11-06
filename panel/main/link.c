@@ -108,6 +108,12 @@ void link_seq_oct(int synth, int pat, int oct)
     send(PL_SEQ_OCT, p, sizeof p);
 }
 
+void link_seq_scale(int synth, int pat, int scale)
+{
+    uint8_t p[3] = {(uint8_t)synth, (uint8_t)pat, (uint8_t)scale};
+    send(PL_SEQ_SCALE, p, sizeof p);
+}
+
 void link_seq_row(int synth, int row, const uint8_t cells[PL_SEQ_CELLS], int rep)
 {
     uint8_t p[3 + PL_SEQ_CELLS];

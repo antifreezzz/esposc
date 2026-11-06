@@ -7,7 +7,7 @@
 
 #define PL_SEQ_LEVELS 16 // 0 - пауза, 1..15 - ступень 0..14
 enum { PL_SEQ_PATTERN, PL_SEQ_SONG }; // вид экрана
-enum { PL_SEQ_BRUSH_NOTE, PL_SEQ_BRUSH_ACC, PL_SEQ_BRUSH_SLIDE, PL_SEQ_BRUSHES };
+enum { PL_SEQ_BRUSH_NOTE, PL_SEQ_BRUSH_ACC, PL_SEQ_BRUSH_SLIDE, PL_SEQ_BRUSH_OCT, PL_SEQ_BRUSHES };
 enum {
     PL_ST_NONE,
     PL_ST_SYNTH,  // S1/S2, тап
@@ -20,6 +20,7 @@ enum {
     PL_ST_BAR,    // полоса, arg - шаг 0..15
     PL_ST_CELL,   // ячейка песни: row, arg - ячейка 0..7
     PL_ST_REP,    // повтор строки: row
+    PL_ST_SCALE,  // лад такта, тап - сетка выбора; только ТАКТ
     PL_ST_IDS
 };
 // Что под точкой: arg - такт, шаг или ячейка; row - строка песни.
@@ -35,7 +36,7 @@ typedef struct {
 } pl_seq_drag_t;
 void pl_seq_drag_begin(pl_seq_drag_t *d, int brush);
 // Палец в (x, y): шаг под пальцем меняется в pat. Возвращает шаг 0..15 или -1 (ничего не поменялось).
-// NOTE - ступень по высоте (уровень 0 = пауза), флаги остаются; ACC/SLIDE - флаг переключается один раз за проход.
+// NOTE - ступень по высоте (уровень 0 = пауза), флаги остаются; ACC/SLIDE/OCT - флаг переключается один раз за проход.
 // Ярус выбирается по y: палец, ушедший в соседний ярус, рисует в нём.
 int pl_seq_drag(pl_seq_drag_t *d, uint8_t pat[16], int x, int y);
 // Темп по ходу пальца вдоль кнопки BPM: вправо быстрее, 3 px на 1 BPM, 60..200.

@@ -29,7 +29,7 @@ static int in(int v, int lo, int hi)
 void acid_seq_set_step(acid_seq_t *q, int synth, int pat, int step, uint8_t v)
 {
     if (in(synth, 0, ACID_SEQ_SYNTHS - 1) && in(pat, 0, ACID_SEQ_PATS - 1) && in(step, 0, ACID_SEQ_STEPS - 1)) {
-        q->t[synth].pat[pat][step] = v & (ACID_SEQ_DEG | ACID_SEQ_ACC | ACID_SEQ_SLIDE);
+        q->t[synth].pat[pat][step] = v & (ACID_SEQ_DEG | ACID_SEQ_ACC | ACID_SEQ_SLIDE | ACID_SEQ_UP);
     }
 }
 
@@ -38,6 +38,13 @@ void acid_seq_set_oct(acid_seq_t *q, int synth, int pat, int oct)
     if (in(synth, 0, ACID_SEQ_SYNTHS - 1) && in(pat, 0, ACID_SEQ_PATS - 1) &&
         in(oct, -ACID_SEQ_OCT_MAX, ACID_SEQ_OCT_MAX)) {
         q->t[synth].oct[pat] = (int8_t)oct;
+    }
+}
+
+void acid_seq_set_scale(acid_seq_t *q, int synth, int pat, int scale)
+{
+    if (in(synth, 0, ACID_SEQ_SYNTHS - 1) && in(pat, 0, ACID_SEQ_PATS - 1) && in(scale, 0, ACID_SEQ_SCALES - 1)) {
+        q->t[synth].scale[pat] = (uint8_t)scale;
     }
 }
 
@@ -199,8 +206,9 @@ static int track_clock(acid_seq_track_t *t, int synth, int beat_step, const acid
                 t->sounding = -1;
             }
         } else {
-            int base = (synth == 0 ? 36 : 48) + tonal->tonic + 12 * t->oct[t->cur_pat];
-            int note = acid_tonal_degree_note(tonal, base, deg);
+            int base = (synth == 0 ? 36 : 48) + tonal->tonic + 12 * t->oct[t->cur_pat] + (v & ACID_SEQ_UP ? 12 : 0);
+            int sc = t->scale[t->cur_pat];
+            int note = sc ? acid_tonal_scale_note(sc - 1, base, deg) : acid_tonal_degree_note(tonal, base, deg);
             note = note < 0 ? 0 : (note > 127 ? 127 : note);
             if (note != old) {
                 k = emit(out, k, synth, 1, note, (v & ACID_SEQ_ACC) ? VEL_ACC : VEL); // новая раньше старой: глайд
@@ -234,7 +242,8 @@ int acid_seq_clock(acid_seq_t *q, int beat_step, const acid_tonal_t *tonal, acid
     return k;
 }
 
-static const uint8_t SEQ_MAGIC[4] = {'S', 'Q', '1', 1};
+static const uint8_t SEQ_MAGIC[4] = {'S', 'Q', '1', 2};
+#define BLOB_V1 (ACID_SEQ_BLOB - ACID_SEQ_SYNTHS * ACID_SEQ_PATS) // без ладов
 
 size_t acid_seq_export(const acid_seq_t *q, void *buf, size_t cap)
 {
@@ -248,6 +257,7 @@ size_t acid_seq_export(const acid_seq_t *q, void *buf, size_t cap)
         const acid_seq_track_t *t = &q->t[s];
         memcpy(p, t->pat, sizeof t->pat), p += sizeof t->pat;
         memcpy(p, t->oct, sizeof t->oct), p += sizeof t->oct;
+        memcpy(p, t->scale, sizeof t->scale), p += sizeof t->scale;
         memcpy(p, t->cell, sizeof t->cell), p += sizeof t->cell;
         memcpy(p, t->rep, sizeof t->rep), p += sizeof t->rep;
         *p++ = t->run;
@@ -260,7 +270,8 @@ size_t acid_seq_export(const acid_seq_t *q, void *buf, size_t cap)
 int acid_seq_import(acid_seq_t *q, const void *buf, size_t len)
 {
     const uint8_t *p = buf;
-    if (len != ACID_SEQ_BLOB || memcmp(p, SEQ_MAGIC, 4) != 0) {
+    int v1 = len == BLOB_V1 && memcmp(p, SEQ_MAGIC, 3) == 0 && p[3] == 1;
+    if (!v1 && (len != ACID_SEQ_BLOB || memcmp(p, SEQ_MAGIC, 4) != 0)) {
         return 0;
     }
     p += 4;
@@ -274,6 +285,9 @@ int acid_seq_import(acid_seq_t *q, const void *buf, size_t len)
         }
         for (int pat = 0; pat < ACID_SEQ_PATS; pat++) {
             acid_seq_set_oct(q, s, pat, (int8_t)*p++);
+        }
+        for (int pat = 0; !v1 && pat < ACID_SEQ_PATS; pat++) {
+            acid_seq_set_scale(q, s, pat, *p++);
         }
         for (int r = 0; r < ACID_SEQ_ROWS; r++) {
             acid_seq_set_row(q, s, r, p + r * ACID_SEQ_CELLS, p[ACID_SEQ_ROWS * ACID_SEQ_CELLS + r]);

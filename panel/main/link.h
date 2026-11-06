@@ -22,6 +22,7 @@ void link_petri(const uint8_t out[4][PL_PETRI_PART_MAX], const size_t len[4]);
 // Секвенсер: шаг такта, окно, строка песни, ▶/■ и такт экрана, темп (pl_proto.h, PL_SEQ_*).
 void link_seq_step(int synth, int pat, int step, int v);
 void link_seq_oct(int synth, int pat, int oct);
+void link_seq_scale(int synth, int pat, int scale); // 0 - лад страницы 9, 1 + k - лад k
 void link_seq_row(int synth, int row, const uint8_t cells[PL_SEQ_CELLS], int rep);
 void link_seq_ctrl(int synth, int run, int edit);
 void link_seq_bpm(int bpm);

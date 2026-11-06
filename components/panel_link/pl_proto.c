@@ -59,6 +59,7 @@ static int payload_len(uint8_t type)
     case PL_SEQ_BPM: return 1;
     case PL_SEQ_DUMP: return (int)sizeof(pl_seq_dump_t);
     case PL_SEQ_POS: return (int)sizeof(pl_seq_pos_t);
+    case PL_SEQ_SCALE: return 3;
     default: return -1;
     }
 }

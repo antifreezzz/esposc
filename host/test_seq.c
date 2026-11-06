@@ -244,6 +244,7 @@ TEST(test_blob_roundtrip)
     setup();
     acid_seq_set_step(&q, 1, 7, 15, 3 | ACID_SEQ_ACC);
     acid_seq_set_oct(&q, 0, 2, -2);
+    acid_seq_set_scale(&q, 1, 6, 8);
     row(1, 4, "HAB", 16);
     acid_seq_set_edit(&q, 1, 5);
     acid_seq_set_bpm(&q, 140);
@@ -257,11 +258,61 @@ TEST(test_blob_roundtrip)
     for (int s = 0; s < ACID_SEQ_SYNTHS; s++) {
         CHECK(memcmp(q2.t[s].pat, q.t[s].pat, sizeof q.t[s].pat) == 0);
         CHECK(memcmp(q2.t[s].oct, q.t[s].oct, sizeof q.t[s].oct) == 0);
+        CHECK(memcmp(q2.t[s].scale, q.t[s].scale, sizeof q.t[s].scale) == 0);
         CHECK(memcmp(q2.t[s].cell, q.t[s].cell, sizeof q.t[s].cell) == 0);
         CHECK(memcmp(q2.t[s].rep, q.t[s].rep, sizeof q.t[s].rep) == 0);
         CHECK(q2.t[s].run == q.t[s].run && q2.t[s].edit == q.t[s].edit);
     }
     CHECK(q2.t[1].sounding == -1);
+}
+
+TEST(test_step_octave_up)
+{
+    setup();
+    acid_seq_set_step(&q, 0, 0, 0, 2 | ACID_SEQ_UP);
+    CHECK(q.t[0].pat[0][0] == (2 | ACID_SEQ_UP));
+    run(0);
+    CHECK(tick(-1) == 1 && ev[0].note == 38 + 12);
+}
+
+TEST(test_pattern_scale)
+{
+    setup();
+    acid_seq_set_step(&q, 0, 0, 0, 2);
+    acid_seq_set_step(&q, 0, 1, 0, 2);
+    acid_seq_set_scale(&q, 0, 0, 1 + 2); // такт A - минор
+    CHECK(q.t[0].scale[0] == 3);
+    acid_seq_set_scale(&q, 0, 0, ACID_SEQ_SCALES); // вне - игнор
+    CHECK(q.t[0].scale[0] == 3);
+    acid_tonal_set(&tonal, 6, 1); // страница 9: мажор
+    row(0, 0, "AB", 1);
+    run(0);
+    int got[2];
+    bars_played(2, got);
+    CHECK(got[0] == 3); // A: свой минор
+    CHECK(got[1] == 4); // B: лад страницы 9 (TONAL - умолчание)
+}
+
+TEST(test_blob_v1_imports)
+{
+    // Blob первой версии (без ладов): такты на месте, лад - TONAL.
+    static uint8_t v1[4 + 2 * (128 + 8 + 64 + 8 + 2) + 1];
+    memset(v1, 0, sizeof v1);
+    memcpy(v1, (const uint8_t[]){'S', 'Q', '1', 1}, 4);
+    for (int s = 0; s < 2; s++) {
+        uint8_t *t = v1 + 4 + s * (128 + 8 + 64 + 8 + 2);
+        memset(t, ACID_SEQ_REST, 128);
+        memset(t + 136, ACID_SEQ_EMPTY, 64);
+        memset(t + 200, 1, 8);
+    }
+    v1[4 + 5] = 7; // синт 1, такт A, шаг 5
+    v1[sizeof v1 - 1] = 133;
+    acid_seq_t q2;
+    acid_seq_init(&q2);
+    q2.t[0].scale[0] = 4;
+    CHECK(acid_seq_import(&q2, v1, sizeof v1) == 1);
+    CHECK(q2.t[0].pat[0][5] == 7 && q2.bpm == 133);
+    CHECK(q2.t[0].scale[0] == 0);
 }
 
 TEST(test_blob_rejects_foreign)
@@ -329,6 +380,9 @@ int main(void)
     RUN(test_tie_same_note);
     RUN(test_rewind_no_slide_artifact);
     RUN(test_blob_roundtrip);
+    RUN(test_step_octave_up);
+    RUN(test_pattern_scale);
+    RUN(test_blob_v1_imports);
     RUN(test_blob_rejects_foreign);
     RUN(test_clk_rate);
     RUN(test_clk_ext_mutes);
