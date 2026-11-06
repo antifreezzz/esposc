@@ -3,7 +3,7 @@
 #include <string.h>
 
 #define TICKS 6     // тиков на шаг (шестнадцатая при 24 PPQN)
-#define GATE_TICK 3 // без слайда нота гаснет на середине шага
+#define GATE_TICK 5 // без слайда нота гаснет за тик до следующего шага: короткая не даёт услышать decay
 #define VEL 90
 #define VEL_ACC 110 // выше ACCENT_VEL синта
 #define BPM_DEFAULT 120

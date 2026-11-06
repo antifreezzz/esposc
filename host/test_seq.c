@@ -108,11 +108,12 @@ TEST(test_gate_and_rest)
     run(0);
     CHECK(tick(-1) == 1);
     CHECK(ev[0].on && ev[0].note == 36 && ev[0].vel == 90 && ev[0].synth == 0);
-    CHECK(tick(-1) == 0);
-    CHECK(tick(-1) == 0);
-    CHECK(tick(-1) == 1); // тик 3: гейт
+    for (int t = 1; t < 5; t++) {
+        CHECK(tick(-1) == 0);
+    }
+    CHECK(tick(-1) == 1); // тик 5: гейт, нота звучит почти весь шаг
     CHECK(!ev[0].on && ev[0].note == 36);
-    for (int t = 4; t < 12; t++) {
+    for (int t = 6; t < 12; t++) {
         CHECK(tick(-1) == 0); // шаг 1 - пауза
     }
 }
@@ -148,9 +149,9 @@ TEST(test_off_matches_on_after_tonal_change)
     run(0);
     tick(-1);
     acid_tonal_set(&tonal, 7, 5); // тоника F
-    tick(-1);
-    tick(-1);
-    tick(-1);
+    for (int t = 1; t <= 5; t++) {
+        tick(-1);
+    }
     CHECK(nev == 1 && !ev[0].on && ev[0].note == 36);
 }
 
@@ -219,8 +220,9 @@ TEST(test_tie_same_note)
         tick(-1);
     }
     CHECK(tick(-1) == 0); // та же нота со слайдом - тянется
-    tick(-1);
-    tick(-1);
+    for (int t = 1; t < 5; t++) {
+        tick(-1);
+    }
     CHECK(tick(-1) == 1 && !ev[0].on);
 }
 

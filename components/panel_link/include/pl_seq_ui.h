@@ -38,3 +38,7 @@ void pl_seq_drag_begin(pl_seq_drag_t *d, int brush);
 // NOTE - ступень по высоте (уровень 0 = пауза), флаги остаются; ACC/SLIDE - флаг переключается один раз за проход.
 // Ярус выбирается по y: палец, ушедший в соседний ярус, рисует в нём.
 int pl_seq_drag(pl_seq_drag_t *d, uint8_t pat[16], int x, int y);
+// Темп по ходу пальца вдоль кнопки BPM: вправо быстрее, 3 px на 1 BPM, 60..200.
+int pl_seq_bpm_drag(int bpm0, int x0, int x);
+// Цвет шапки полосы: у акцента - кремовый, иначе цвет синта (у синта 1 он совпадает с оранжевым акцентом).
+uint32_t pl_seq_cap_color(uint8_t step, uint32_t synth_color);

@@ -11,7 +11,6 @@
 
 #define C_CELL 0x26221c
 #define C_REST 0x5f574a
-#define BPM_PX 3 // пикселей хода пальца на 1 BPM
 #define CELL_CHOICES (PL_SEQ_PATS + 1) // A-H и «пусто»
 #define REP_CHOICES 16
 
@@ -181,11 +180,12 @@ static void tier_draw(lv_event_t *e)
         lv_area_t bar;
         area_of(lv_event_get_target_obj(e), x + 8, yt, w - 16, yb - yt, &bar);
         f.radius = 4;
-        f.color = lv_color_hex(ui_mix(C_BG, sc, 150));
+        int acc = (pat[s] & PL_SEQ_ACC) != 0;
+        f.color = lv_color_hex(ui_mix(C_BG, sc, acc ? 220 : 150)); // акцент - полоса ярче и шапка выше
         lv_draw_fill(layer, &f, &bar);
         lv_area_t cap;
-        area_of(lv_event_get_target_obj(e), x + 8, yt, w - 16, 8, &cap);
-        f.color = lv_color_hex(pat[s] & PL_SEQ_ACC ? C_ACCENT : sc);
+        area_of(lv_event_get_target_obj(e), x + 8, yt, w - 16, acc ? 12 : 8, &cap);
+        f.color = lv_color_hex(pl_seq_cap_color(pat[s], sc));
         lv_draw_fill(layer, &f, &cap);
         if ((pat[s] & PL_SEQ_SLIDE) && i < 7) {
             lv_area_t br;
@@ -480,8 +480,7 @@ void us_input(pl_model_t *m, int down, int x, int y, int x0, int y0, uint32_t ms
             send_step(m, s);
         }
     } else if (g.id == PL_ST_BPM) {
-        int bpm = g.bpm0 + (y0 - y) / BPM_PX; // вверх - быстрее
-        bpm = bpm < 60 ? 60 : bpm > 200 ? 200 : bpm;
+        int bpm = pl_seq_bpm_drag(g.bpm0, x0, x); // вдоль кнопки: вверх пальцу некуда
         g.bpm_drag = 1;
         if (bpm != d->bpm && pl_model_seq_bpm(m, bpm)) {
             link_seq_bpm(bpm); // слышно сразу; во flash синт пишет в тишине

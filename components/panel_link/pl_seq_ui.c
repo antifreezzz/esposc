@@ -151,3 +151,17 @@ int pl_seq_drag(pl_seq_drag_t *d, uint8_t pat[16], int x, int y)
     pat[step] = v;
     return step;
 }
+
+#define BPM_PX 3
+#define CAP_ACC 0xf1e7d0 // C_TEXT панели
+
+int pl_seq_bpm_drag(int bpm0, int x0, int x)
+{
+    int bpm = bpm0 + (x - x0) / BPM_PX;
+    return bpm < 60 ? 60 : bpm > 200 ? 200 : bpm;
+}
+
+uint32_t pl_seq_cap_color(uint8_t step, uint32_t synth_color)
+{
+    return step & PL_SEQ_ACC ? CAP_ACC : synth_color;
+}

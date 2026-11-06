@@ -50,6 +50,8 @@ TEST(test_seq_plays_note)
     CHECK(s.slot[0].nheld == 1 && s.slot[0].held[0] == 36);
     CHECK(s.layer[0].nheld == 1);
     ticks(3);
+    CHECK(s.slot[0].nheld == 1); // гейт - тик 5 из 6
+    ticks(2);
     CHECK(s.slot[0].nheld == 0);
 }
 

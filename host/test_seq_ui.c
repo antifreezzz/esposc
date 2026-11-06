@@ -1,6 +1,7 @@
 // Экран секвенсера панели: раскладка, уровни полос, жест рисования, ячейки песни.
 #include <string.h>
 
+#include "pl_labels.h"
 #include "pl_proto.h"
 #include "pl_seq_ui.h"
 #include "test.h"
@@ -160,6 +161,25 @@ TEST(test_toolbar)
     CHECK(pl_seq_at(PL_SEQ_PATTERN, 240, 20, &arg, &row) == PL_ST_NONE); // шапка не наша
 }
 
+TEST(test_bpm_drag_horizontal)
+{
+    CHECK(pl_seq_bpm_drag(120, 200, 200) == 120);
+    CHECK(pl_seq_bpm_drag(120, 200, 230) > 120);  // вправо - быстрее
+    CHECK(pl_seq_bpm_drag(120, 200, 170) < 120);
+    CHECK(pl_seq_bpm_drag(120, 200, 479) == 200); // до правого края - потолок
+    CHECK(pl_seq_bpm_drag(120, 200, 0) == 60);
+}
+
+TEST(test_accent_cap_visible)
+{
+    for (int syn = 0; syn < 2; syn++) {
+        uint32_t sc = pl_page_color(PL_PAGE_SYNTH1 + syn);
+        uint32_t acc = pl_seq_cap_color(3 | PL_SEQ_ACC, sc), plain = pl_seq_cap_color(3, sc);
+        CHECK(plain == sc);
+        CHECK(acc != sc); // у синта 1 цвет синта совпадал с цветом акцента
+    }
+}
+
 int main(void)
 {
     RUN(test_bars_tile);
@@ -170,5 +190,7 @@ int main(void)
     RUN(test_drag_crosses_tiers);
     RUN(test_song_cells);
     RUN(test_toolbar);
+    RUN(test_bpm_drag_horizontal);
+    RUN(test_accent_cap_visible);
     TEST_MAIN_END();
 }
