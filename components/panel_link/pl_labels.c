@@ -195,6 +195,13 @@ void pl_knob_range(int page, int enc, const uint8_t page_raw[16], int *lo, int *
     }
 }
 
+int pl_knob_list(int page, int enc, const uint8_t page_raw[16])
+{
+    const char *const *w;
+    int lo, hi;
+    return list_of(page, enc, page_raw, &w, &lo, &hi);
+}
+
 int pl_knob_skip(int page, int enc, const uint8_t page_raw[16])
 {
     (void)page_raw;
