@@ -38,6 +38,10 @@ static volatile int s_demo_song; // номер песни в DEMO_SONGS или P
 static int s_live;               // подключён MIDI-контроллер (BSP)
 static int s_drone;              // режим дрона: тянутся оба синта, их ведёт страница 9 TONAL
 static int s_drone_clk;          // кусков до следующего тика автономного клока дрона
+static int s_seq_mode;           // режим СЕКВ без BSP: ручки пользователя, внутренний клок, секвенсер
+static acid_seq_t s_seq;         // секвенсер: переживает смену режима, во flash (STORE_SEQ)
+static acid_seq_clk_t s_seq_clk; // внутренний клок секвенсера, когда клока BSP нет
+static int s_seq_save;           // правили секвенсер: записать в тишине
 static acid_link_t s_link;       // панель: подхват BSP, глушение ручек демо
 static acid_custom_t s_custom;   // свои страницы: переживают смену демо <-> live
 static acid_scene_t s_scene;     // сцены: так же
@@ -77,6 +81,7 @@ static pl_load_acc_t s_load; // период индикатора загрузк
 #endif
 static const acid_demo_song_t *const s_songs[] = DEMO_SONGS;
 #define NSONGS (int)(sizeof s_songs / sizeof s_songs[0])
+#define MODE_SEQ (NSONGS + 1) // круг режимов без BSP: песни, дрон (NSONGS), секвенсер
 
 static void slot1_task(void *arg)
 {
@@ -144,6 +149,29 @@ static void custom_and_scenes(void)
     }
 }
 
+// Правки секвенсера с панели: в фазе событий, как ручки. Такты и песня пишутся во всех режимах (и в демо),
+// ▶/■ - только где секвенсер играет (СЕКВ и live).
+static void seq_frames(void)
+{
+    uint8_t type, p[PANEL_SEQ_MAX];
+    while (panel_uart_receive_seq(&type, p)) {
+        switch (type) {
+        case PL_SEQ_STEP: acid_seq_set_step(&s_seq, p[0], p[1], p[2], p[3]); break;
+        case PL_SEQ_OCT: acid_seq_set_oct(&s_seq, p[0], p[1], p[2] - 2); break;
+        case PL_SEQ_ROW: acid_seq_set_row(&s_seq, p[0], p[1], p + 2, p[2 + ACID_SEQ_CELLS]); break;
+        case PL_SEQ_CTRL:
+            acid_seq_set_edit(&s_seq, p[0], p[2]);
+            if (p[0] < ACID_SEQ_SYNTHS && (p[1] ? 1 : 0) != s_seq.t[p[0]].run) {
+                acid_synth_seq_run(&s_synth, p[0], p[1]); // без секвенсера в синте (демо, дрон) - ничего
+            }
+            break;
+        case PL_SEQ_BPM: acid_seq_set_bpm(&s_seq, p[0]); break;
+        default: break;
+        }
+        s_seq_save = 1;
+    }
+}
+
 static void render_block(float *l, float *r)
 {
     static acid_midi_event_t demo_ev[DEMO_EVENTS];
@@ -153,6 +181,9 @@ static void render_block(float *l, float *r)
         acid_link_ev_t lev;
         while (midi_in_receive(&ev)) {
             if (!s_demo_on) {
+                if (ev.type == ACID_MIDI_CLOCK) {
+                    acid_seq_clk_ext(&s_seq_clk, SR); // клок BSP жив: внутренний молчит
+                }
                 to_panel(acid_link_midi(&s_link, &s_synth, &ev, ACID_SRC_BSP, &lev), &lev);
             }
         }
@@ -165,6 +196,12 @@ static void render_block(float *l, float *r)
             s_drone_clk = 0;
             acid_midi_event_t clk = {.type = ACID_MIDI_CLOCK};
             acid_synth_midi(&s_synth, &clk);
+        } else if (s_seq_mode || (s_live && (s_seq.t[0].run || s_seq.t[1].run))) {
+            // Свой клок секвенсера: в режиме СЕКВ всегда, с BSP - пока его клок молчит.
+            for (int n = acid_seq_clk_run(&s_seq_clk, s_seq.bpm, CHUNK, SR); n > 0; n--) {
+                acid_midi_event_t clk = {.type = ACID_MIDI_CLOCK};
+                acid_synth_midi(&s_synth, &clk);
+            }
         }
         pl_set_t set;
         while (panel_uart_receive(&set)) {
@@ -178,6 +215,7 @@ static void render_block(float *l, float *r)
             }
         }
         custom_and_scenes();
+        seq_frames();
         acid_petri_frame_t pf;
         if (panel_uart_receive_petri(&pf)) {
             acid_synth_petri(&s_synth, &pf); // оба ядра свободны: ящики голосов чашки
@@ -224,9 +262,10 @@ static void enter_mode(int live, const uint8_t *blob, int blob_ok)
     if (!live) {
         s_drone = s_demo_song == NSONGS;
     }
+    s_seq_mode = !live && s_demo_song == MODE_SEQ;
     acid_synth_init(&s_synth, (float)SR);
     acid_synth_set_bank(&s_synth, s_bank);
-    if (live || s_drone) {
+    if (live || s_drone || s_seq_mode) {
         if (blob_ok) {
             acid_synth_import(&s_synth, blob, ACID_SYNTH_BLOB);
         }
@@ -234,6 +273,12 @@ static void enter_mode(int live, const uint8_t *blob, int blob_ok)
     } else {
         acid_demo_init(&s_demo, s_songs[s_demo_song]);
         s_demo_on = 1;
+    }
+    acid_synth_use_seq(&s_synth, live || s_seq_mode ? &s_seq : NULL); // позиция с начала песни
+    acid_seq_clk_init(&s_seq_clk);
+    if (s_seq_mode) {
+        acid_midi_event_t st = {.type = ACID_MIDI_START}; // свой клок: общий такт и Grids с начала
+        acid_synth_midi(&s_synth, &st);
     }
     acid_link_init(&s_link);
     acid_link_use_custom(&s_link, &s_custom);
@@ -251,6 +296,7 @@ static void enter_mode(int live, const uint8_t *blob, int blob_ok)
 
 static uint8_t s_cblob[ACID_CUSTOM_BLOB];
 static uint8_t s_sblob[ACID_SCENE_BLOB];
+static uint8_t s_qblob[ACID_SEQ_BLOB];
 
 // До старта связи с панелью: она шлёт кадры своих страниц из s_custom.
 static void load_user_data(void)
@@ -264,6 +310,10 @@ static void load_user_data(void)
     size_t sn = store_load(STORE_SCENES, s_sblob, sizeof s_sblob); // старый blob короче: import его переносит
     if (sn > 0 && acid_scene_import(&s_scene, s_sblob, sn)) {
         ESP_LOGI(TAG, "scenes restored (%02x)", s_scene.used);
+    }
+    acid_seq_init(&s_seq);
+    if (store_load(STORE_SEQ, s_qblob, sizeof s_qblob) == ACID_SEQ_BLOB && acid_seq_import(&s_seq, s_qblob, sizeof s_qblob)) {
+        ESP_LOGI(TAG, "sequencer restored");
     }
 }
 
@@ -295,6 +345,11 @@ static void synth_task(void *arg)
         ESP_LOGI(TAG, "knobs restored");
     }
     int custom_pending = 0, scene_pending = 0;
+    int seq_pending = 0, last_seq_run = s_seq.t[0].run | s_seq.t[1].run << 1;
+    uint8_t mode;
+    if (!BENCH && store_load(STORE_MODE, &mode, 1) == 1 && mode <= MODE_SEQ) {
+        s_demo_song = mode; // режим без BSP, выбранный тапом по статусу
+    }
     enter_mode(0, blob, blob_ok);
     if (BENCH) {
         ESP_LOGW(TAG, "STRESS BENCH build: stress song, BSP ignored, overload guard %s", GUARD ? "on" : "off");
@@ -335,7 +390,9 @@ static void synth_task(void *arg)
         if (fade > 0) {
             block_fade(out_l, out_r, (float)fade / FADE_BLOCKS, (float)(fade - 1) / FADE_BLOCKS);
             if (--fade == 0 && next_song) {
-                s_demo_song = (s_demo_song + 1) % (NSONGS + 1);
+                s_demo_song = (s_demo_song + 1) % (MODE_SEQ + 1);
+                uint8_t mode = (uint8_t)s_demo_song;
+                store_save(STORE_MODE, &mode, 1); // звук ушёл: можно писать
                 enter_mode(0, blob, blob_ok);
                 ESP_LOGI(TAG, "demo mode %d", s_demo_song);
             } else if (fade == 0) {
@@ -365,6 +422,11 @@ static void synth_task(void *arg)
         save_pending |= acid_synth_take_save(&s_synth) && !s_demo_on;
         // Свои страницы и сцены - действия пользователя, пишутся и в демо.
         custom_pending |= s_custom.save;
+        // Секвенсер: правки с панели и смена ▶ (Stop BSP тоже) - во flash, run переживает выключение.
+        int seq_run = s_seq.t[0].run | s_seq.t[1].run << 1;
+        seq_pending |= s_seq_save || seq_run != last_seq_run;
+        s_seq_save = 0;
+        last_seq_run = seq_run;
         scene_pending |= s_scene.save;
         s_custom.save = s_scene.save = 0;
         quiet = block_peak(out_l, out_r) < QUIET_PEAK ? quiet + 1 : 0;
@@ -377,6 +439,10 @@ static void synth_task(void *arg)
             if (custom_pending) {
                 store_save(STORE_CUSTOM, s_cblob, acid_custom_export(&s_custom, s_cblob, sizeof s_cblob));
                 custom_pending = 0;
+            }
+            if (seq_pending) {
+                store_save(STORE_SEQ, s_qblob, acid_seq_export(&s_seq, s_qblob, sizeof s_qblob));
+                seq_pending = 0;
             }
             if (scene_pending) {
                 store_save(STORE_SCENES, s_sblob, acid_scene_export(&s_scene, s_sblob, sizeof s_sblob));
@@ -397,6 +463,8 @@ static void synth_task(void *arg)
             pl_load_t l;
             pl_load_pack(&l, &s_load, s_synth.tight);
             panel_uart_send_load(&l);
+            float spb = acid_clock_spb(&s_synth.clock);
+            panel_uart_set_bsp_bpm(s_seq_clk.ext_left > 0 && spb > 0.0f ? (int)(SR * 60.0f / spb + 0.5f) : 0);
             memset(&s_load, 0, sizeof s_load);
             next_load = t0 + PL_LOAD_MS * 1000;
         }
@@ -443,6 +511,6 @@ void app_main(void)
     usb_host_start();
     ESP_ERROR_CHECK(midi_in_start());
     ESP_ERROR_CHECK(audio_out_start());
-    ESP_ERROR_CHECK(panel_uart_start(&s_synth, &s_link, &s_custom, &s_scene, &s_demo_on, &s_demo_song));
+    ESP_ERROR_CHECK(panel_uart_start(&s_synth, &s_link, &s_custom, &s_scene, &s_seq, &s_demo_on, &s_demo_song));
     xTaskCreatePinnedToCore(synth_task, "synth", 4096, NULL, 6, &s_synth_task, 1);
 }
