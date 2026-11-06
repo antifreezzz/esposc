@@ -317,6 +317,9 @@ TEST(test_seq_dump_pos_and_local_edits)
     uint8_t cells[8] = {0, 0, 0, 1, PL_SEQ_EMPTY, PL_SEQ_EMPTY, PL_SEQ_EMPTY, PL_SEQ_EMPTY};
     CHECK(pl_model_seq_row(&m, 1, 0, cells, 3) == 1 && m.seq[1].cell[0][3] == 1 && m.seq[1].rep[0] == 3);
     CHECK(pl_model_seq_ctrl(&m, 1, 1, 4) == 1 && m.seq[1].run == 1 && m.seq[1].edit == 4);
+    CHECK(pl_model_seq_ctrl(&m, 1, 0, 4) == 1 && m.seq[1].run == 0);
+    CHECK(pl_model_seq_ctrl(&m, 1, PL_SEQ_KEEP, 6) == 1 && m.seq[1].run == 0 && m.seq[1].edit == 6); // такт без ▶/■
+    CHECK(pl_model_seq_ctrl(&m, 1, 1, 4) == 1);
     CHECK(pl_model_seq_bpm(&m, 150) == 1 && m.seq[0].bpm == 150 && m.seq[1].bpm == 150);
     pl_seq_pos_t p = {1, 4, 7, 0, 3, 2, 0, 99};
     pl_model_apply(&m, PL_SEQ_POS, (const uint8_t *)&p, sizeof p, 20);

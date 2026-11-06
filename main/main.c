@@ -35,7 +35,7 @@ static acid_synth_t s_synth;
 static acid_demo_t s_demo;
 static volatile int s_demo_on;   // играет демо: события от него, MIDI от BSP не слушаем
 static volatile int s_demo_song; // номер песни в DEMO_SONGS или PL_DEMO_DRONE
-static int s_live;               // подключён MIDI-контроллер (BSP)
+static volatile int s_live;      // подключён MIDI-контроллер (BSP)
 static int s_drone;              // режим дрона: тянутся оба синта, их ведёт страница 9 TONAL
 static int s_drone_clk;          // кусков до следующего тика автономного клока дрона
 static int s_seq_mode;           // режим СЕКВ без BSP: ручки пользователя, внутренний клок, секвенсер
@@ -82,6 +82,7 @@ static pl_load_acc_t s_load; // период индикатора загрузк
 static const acid_demo_song_t *const s_songs[] = DEMO_SONGS;
 #define NSONGS (int)(sizeof s_songs / sizeof s_songs[0])
 #define MODE_SEQ (NSONGS + 1) // круг режимов без BSP: песни, дрон (NSONGS), секвенсер
+_Static_assert(BENCH || (NSONGS == PL_DEMO_DRONE && MODE_SEQ == PL_DEMO_SEQ), "mode numbers shared with the panel");
 
 static void slot1_task(void *arg)
 {
@@ -161,9 +162,10 @@ static void seq_frames(void)
         case PL_SEQ_ROW: acid_seq_set_row(&s_seq, p[0], p[1], p + 2, p[2 + ACID_SEQ_CELLS]); break;
         case PL_SEQ_CTRL:
             acid_seq_set_edit(&s_seq, p[0], p[2]);
-            if (p[0] < ACID_SEQ_SYNTHS && (p[1] ? 1 : 0) != s_seq.t[p[0]].run) {
+            if (p[0] < ACID_SEQ_SYNTHS && p[1] != PL_SEQ_KEEP && (p[1] ? 1 : 0) != s_seq.t[p[0]].run) {
                 acid_synth_seq_run(&s_synth, p[0], p[1]); // без секвенсера в синте (демо, дрон) - ничего
             }
+            panel_uart_seq_pos_due(); // ▶ в демо синт не взял: панель должна увидеть настоящий run
             break;
         case PL_SEQ_BPM: acid_seq_set_bpm(&s_seq, p[0]); break;
         default: break;
@@ -196,11 +198,15 @@ static void render_block(float *l, float *r)
             s_drone_clk = 0;
             acid_midi_event_t clk = {.type = ACID_MIDI_CLOCK};
             acid_synth_midi(&s_synth, &clk);
-        } else if (s_seq_mode || (s_live && (s_seq.t[0].run || s_seq.t[1].run))) {
-            // Свой клок секвенсера: в режиме СЕКВ всегда, с BSP - пока его клок молчит.
-            for (int n = acid_seq_clk_run(&s_seq_clk, s_seq.bpm, CHUNK, SR); n > 0; n--) {
-                acid_midi_event_t clk = {.type = ACID_MIDI_CLOCK};
-                acid_synth_midi(&s_synth, &clk);
+        } else {
+            // Свой клок секвенсера: в режиме СЕКВ всегда, с BSP - пока его клок молчит. Считает каждый кусок:
+            // молчание BSP отсчитывается и при стоящем секвенсере.
+            int n = acid_seq_clk_run(&s_seq_clk, s_seq.bpm, CHUNK, SR);
+            if (s_seq_mode || (s_live && (s_seq.t[0].run || s_seq.t[1].run))) {
+                for (; n > 0; n--) {
+                    acid_midi_event_t clk = {.type = ACID_MIDI_CLOCK};
+                    acid_synth_midi(&s_synth, &clk);
+                }
             }
         }
         pl_set_t set;
@@ -511,6 +517,6 @@ void app_main(void)
     usb_host_start();
     ESP_ERROR_CHECK(midi_in_start());
     ESP_ERROR_CHECK(audio_out_start());
-    ESP_ERROR_CHECK(panel_uart_start(&s_synth, &s_link, &s_custom, &s_scene, &s_seq, &s_demo_on, &s_demo_song));
+    ESP_ERROR_CHECK(panel_uart_start(&s_synth, &s_link, &s_custom, &s_scene, &s_seq, &s_demo_on, &s_live, &s_demo_song));
     xTaskCreatePinnedToCore(synth_task, "synth", 4096, NULL, 6, &s_synth_task, 1);
 }

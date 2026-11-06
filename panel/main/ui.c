@@ -822,7 +822,7 @@ static void draw_status(const pl_model_t *m, uint32_t ms)
 {
     int linked = pl_model_linked(m, ms);
     const char *s = pl_view_status(m, linked); // в демо - имя песни, тап по нему - следующая
-    uint32_t c = !linked ? C_BAD : m->mode ? C_OK : C_WARN;
+    uint32_t c = !linked ? C_BAD : m->mode || m->demo >= PL_DEMO_DRONE ? C_OK : C_WARN; // демо - жёлтый
     ui_text(u.bar_right, s);
     lv_obj_set_style_text_color(u.bar_right, lv_color_hex(c), 0);
 }

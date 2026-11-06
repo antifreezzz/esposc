@@ -135,6 +135,7 @@ void acid_synth_init(acid_synth_t *s, float sr)
 {
     s->sr = sr;
     s->seq = NULL;
+    memset(s->bsp_held, 0, sizeof s->bsp_held);
     s->drone = 0;
     for (int k = 0; k < ACID_SLOTS; k++) {
         slot_init(&s->slot[k], sr, k == 1 ? SEQ2_TYPE : 0);
@@ -337,6 +338,7 @@ static void voice_note(acid_synth_t *s, acid_slot_t *v, int note, int accent, in
 void acid_synth_notes_off(acid_synth_t *s)
 {
     // Звучащие ноты отпускаются, хвосты доигрывают без щелчка.
+    memset(s->bsp_held, 0, sizeof s->bsp_held);
     for (int k = 0; k < 2 * ACID_SLOTS; k++) {
         acid_slot_t *v = k < ACID_SLOTS ? &s->slot[k] : &s->layer[k - ACID_SLOTS];
         v->nheld = 0;
@@ -1072,7 +1074,11 @@ static void synth_note(acid_synth_t *s, int idx, int on, int note, int vel)
 static void seq_notes(acid_synth_t *s, const acid_seq_ev_t *ev, int n)
 {
     for (int i = 0; i < n; i++) {
-        synth_note(s, ev[i].synth, ev[i].on, ev[i].note, ev[i].vel);
+        int note = ev[i].note;
+        if (!ev[i].on && (s->bsp_held[ev[i].synth][note >> 5] >> (note & 31) & 1)) {
+            continue; // ту же ноту держит BSP: отпустит он
+        }
+        synth_note(s, ev[i].synth, ev[i].on, note, ev[i].vel);
     }
 }
 
@@ -1098,6 +1104,7 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
     switch (ev->type) {
     case ACID_MIDI_NOTE_ON:
         if (ev->ch == BASS_CH || ev->ch == SEQ2_CH) {
+            s->bsp_held[ev->ch == SEQ2_CH][(ev->d1 >> 5) & 3] |= 1u << (ev->d1 & 31);
             synth_note(s, ev->ch == SEQ2_CH, 1, ev->d1, ev->d2);
         } else if (ev->ch == DRUM_CH) {
             drum_on(s, ev->d1, ev->d2);
@@ -1105,7 +1112,11 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
         break;
     case ACID_MIDI_NOTE_OFF:
         if (ev->ch == BASS_CH || ev->ch == SEQ2_CH) {
-            synth_note(s, ev->ch == SEQ2_CH, 0, ev->d1, 0);
+            int idx = ev->ch == SEQ2_CH;
+            s->bsp_held[idx][(ev->d1 >> 5) & 3] &= ~(1u << (ev->d1 & 31));
+            if (!s->seq || s->seq->t[idx].sounding != ev->d1) { // ту же ноту держит секвенсер: отпустит он
+                synth_note(s, idx, 0, ev->d1, 0);
+            }
         }
         break;
     case ACID_MIDI_CC:

@@ -59,5 +59,5 @@ int pl_model_local_set(pl_model_t *m, int page, int enc, int v);
 int pl_model_seq_step(pl_model_t *m, int synth, int pat, int step, uint8_t v);
 int pl_model_seq_oct(pl_model_t *m, int synth, int pat, int oct); // -2..+2
 int pl_model_seq_row(pl_model_t *m, int synth, int row, const uint8_t cell[PL_SEQ_CELLS], int rep);
-int pl_model_seq_ctrl(pl_model_t *m, int synth, int run, int edit);
+int pl_model_seq_ctrl(pl_model_t *m, int synth, int run, int edit); // run PL_SEQ_KEEP - как есть
 int pl_model_seq_bpm(pl_model_t *m, int bpm); // общий у обоих синтов, 60..200

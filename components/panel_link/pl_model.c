@@ -214,7 +214,9 @@ int pl_model_seq_ctrl(pl_model_t *m, int synth, int run, int edit)
     if (!seq_ok(m, synth) || edit < 0 || edit >= PL_SEQ_PATS) {
         return 0;
     }
-    m->seq[synth].run = run ? 1 : 0;
+    if (run != PL_SEQ_KEEP) {
+        m->seq[synth].run = run ? 1 : 0;
+    }
     m->seq[synth].edit = (uint8_t)edit;
     return 1;
 }

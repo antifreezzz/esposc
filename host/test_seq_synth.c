@@ -116,6 +116,35 @@ TEST(test_start_rewinds)
     CHECK(q.t[0].step == 0 && q.t[0].tick == 0);
 }
 
+TEST(test_same_note_seq_gate_keeps_bsp)
+{
+    setup();
+    acid_synth_use_seq(&s, &q);
+    ev(ACID_MIDI_NOTE_ON, 4, 36, 100); // BSP держит C2
+    ev(ACID_MIDI_START, 0, 0, 0);
+    acid_synth_seq_run(&s, 0, 1);
+    ticks(6); // секвенсер сыграл C2 и отпустил на гейте
+    CHECK(s.slot[0].nheld == 1 && s.slot[0].held[0] == 36);
+    ev(ACID_MIDI_NOTE_OFF, 4, 36, 0);
+    render(TICK_SAMPLES * 4);
+    CHECK(s.slot[0].nheld == 0);
+}
+
+TEST(test_same_note_bsp_release_keeps_seq)
+{
+    setup();
+    acid_synth_use_seq(&s, &q);
+    acid_seq_set_step(&q, 0, 0, 0, 0 | ACID_SEQ_SLIDE);
+    ev(ACID_MIDI_START, 0, 0, 0);
+    acid_synth_seq_run(&s, 0, 1);
+    ticks(1);
+    ev(ACID_MIDI_NOTE_ON, 4, 36, 100);
+    render(TICK_SAMPLES * 2);
+    ev(ACID_MIDI_NOTE_OFF, 4, 36, 0);
+    render(TICK_SAMPLES * 4);
+    CHECK(s.slot[0].nheld == 1 && s.slot[0].held[0] == 36);
+}
+
 int main(void)
 {
     RUN(test_seq_plays_note);
@@ -124,5 +153,7 @@ int main(void)
     RUN(test_stop_then_panel_play);
     RUN(test_panel_stop_releases);
     RUN(test_start_rewinds);
+    RUN(test_same_note_seq_gate_keeps_bsp);
+    RUN(test_same_note_bsp_release_keeps_seq);
     TEST_MAIN_END();
 }

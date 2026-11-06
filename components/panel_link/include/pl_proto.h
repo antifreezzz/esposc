@@ -43,7 +43,7 @@ enum {
     PL_SEQ_STEP = 18, // панель -> синт: шаг такта {synth, pat, step, v}
     PL_SEQ_OCT = 19,  // панель -> синт: окно такта {synth, pat, oct + 2}
     PL_SEQ_ROW = 20,  // панель -> синт: строка песни {synth, row, cell[8], rep}
-    PL_SEQ_CTRL = 21, // панель -> синт: ▶/■ и такт экрана {synth, run, edit}
+    PL_SEQ_CTRL = 21, // панель -> синт: ▶/■ и такт экрана {synth, run, edit}; run PL_SEQ_KEEP - не трогать
     PL_SEQ_BPM = 22,  // панель -> синт: темп внутреннего клока {bpm}
     PL_SEQ_DUMP = 23, // синт -> панель: всё одного синта (pl_seq_dump_t), после PL_HELLO
     PL_SEQ_POS = 24,  // синт -> панель: позиция игры и темп (pl_seq_pos_t), при изменении
@@ -60,6 +60,7 @@ enum {
 #define PL_SEQ_ACC 0x10
 #define PL_SEQ_SLIDE 0x20
 #define PL_SEQ_EMPTY 0xFF
+#define PL_SEQ_KEEP 0xFF // run в PL_SEQ_CTRL: только такт экрана, ▶/■ как есть
 typedef struct {
     uint8_t synth;
     uint8_t pat[PL_SEQ_PATS][PL_SEQ_STEPS];

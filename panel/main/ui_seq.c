@@ -458,8 +458,8 @@ void us_input(pl_model_t *m, int down, int x, int y, int x0, int y0, uint32_t ms
         } else if (g.id == PL_ST_OCT_DN || g.id == PL_ST_OCT_UP) {
             set_oct(m, g.id == PL_ST_OCT_UP ? 1 : -1);
         } else if (g.id == PL_ST_PAT) {
-            if (pl_model_seq_ctrl(m, g.synth, d->run, g.arg)) {
-                link_seq_ctrl(g.synth, d->run, g.arg);
+            if (pl_model_seq_ctrl(m, g.synth, PL_SEQ_KEEP, g.arg)) {
+                link_seq_ctrl(g.synth, PL_SEQ_KEEP, g.arg); // ▶/■ не трогаем: только такт экрана
             }
         } else if (g.id == PL_ST_BAR) {
             pl_seq_drag_begin(&g.drag, g.brush);

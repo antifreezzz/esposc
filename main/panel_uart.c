@@ -40,6 +40,8 @@ typedef struct {
 static QueueHandle_t s_set_q, s_knob_q, s_page_q, s_edit_q, s_scene_q, s_petri_q, s_seq_q;
 static const acid_seq_t *s_seq;
 static volatile int s_bsp_bpm;
+static volatile int s_seq_pos_due;
+static const volatile int *s_live;
 static volatile uint32_t s_petri_count;
 static const acid_synth_t *s_synth;
 static const acid_link_t *s_link;
@@ -91,6 +93,11 @@ int panel_uart_receive_seq(uint8_t *type, uint8_t p[PANEL_SEQ_MAX])
     *type = f.type;
     memcpy(p, f.p, PANEL_SEQ_MAX);
     return 1;
+}
+
+void panel_uart_seq_pos_due(void)
+{
+    s_seq_pos_due = 1;
 }
 
 void panel_uart_set_bsp_bpm(int bpm)
@@ -156,7 +163,7 @@ static void send_snapshot(void)
     static pl_snapshot2_t snap2;
     memset(&snap, 0, sizeof snap);
     memset(&snap2, 0, sizeof snap2);
-    snap.mode = *s_demo_on ? 0 : 1;
+    snap.mode = *s_live ? 1 : 0; // демо, дрон и секвенсер без BSP - 0: статус панели по demo
     snap.demo = s_synth->drone ? PL_DEMO_DRONE : (uint8_t)*s_demo_song; // за дроном - режим секвенсера (PL_DEMO_SEQ)
     snap.bsp_page = (uint8_t)acid_link_page(s_link, s_synth);
     for (int p = 0; p < PL_PAGES; p++) {
@@ -300,6 +307,10 @@ static void link_task(void *arg)
         }
         // Позиция секвенсеров: шаг меняется раз в шестнадцатую, опрос раз в 10 мс успевает.
         static pl_seq_pos_t seq_sent[ACID_SEQ_SYNTHS];
+        if (s_seq_pos_due) {
+            s_seq_pos_due = 0;
+            memset(seq_sent, 0xFF, sizeof seq_sent); // такой позиции не бывает: уйдёт заново
+        }
         for (int k = 0; k < ACID_SEQ_SYNTHS; k++) {
             pl_seq_pos_t pos;
             seq_pos(k, &pos);
@@ -317,8 +328,10 @@ static void link_task(void *arg)
 }
 
 esp_err_t panel_uart_start(const acid_synth_t *s, const acid_link_t *l, const acid_custom_t *c, const acid_scene_t *sc,
-                           const acid_seq_t *q, const volatile int *demo_on, const volatile int *demo_song)
+                           const acid_seq_t *q, const volatile int *demo_on, const volatile int *live,
+                           const volatile int *demo_song)
 {
+    s_live = live;
     s_synth = s;
     s_seq = q;
     s_link = l;
