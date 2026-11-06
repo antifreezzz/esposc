@@ -15,6 +15,10 @@
   (массивы `PAGES`, `K303`, `KPETRI`, `MODELS` и тексты карточек), подписи панели `components/panel_link/pl_labels.c`
   и спеку этапа.
 - В рендере (всё, что зовётся из `acid_synth_render*`) никаких локов, аллокаций и логов.
+- Встроенный секвенсер (`acid_seq.c`, экран `ui_seq.c`) не входит в демо-песни и `test_demo_smoke`: демо шлёт MIDI
+  как BSP, секвенсер - фича панели. Живёт вне `acid_synth_t` (`acid_synth_use_seq`), играет в режиме `SEQ` и live,
+  кадры `PL_SEQ_*` 18-24, байт шага общий с панелью (`_Static_assert` в `main/panel_uart.c`), blob `"seq"` - своя
+  магия `SQ1`. Режим без BSP помнится в ключе `"mode"`.
 
 ## Как пользователь работает с BSP
 
