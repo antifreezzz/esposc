@@ -2,6 +2,7 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "esp_heap_caps.h"
@@ -9,13 +10,15 @@
 #include "link.h"
 #include "pl_gesture.h"
 #include "pl_labels.h"
-#include "pl_typepick.h"
+#include "pl_nav.h"
+#include "pl_pick.h"
 #include "pl_view.h"
 #include "ui_priv.h"
 
 // Вариант Б: модульная сетка 3x5 (все 15 карточек - ручки E2..E16) + круговой захват в центре.
 // Меню в два экрана: штатные страницы и свои (USER 1-6, сцены). На своей странице - редактор (EDIT).
-// TYPE синта и слоя - тап по карточке, выбор сеткой типов поверх страницы.
+// Списки (TYPE, лад, время дилэя, транспозиция) - тап по карточке, выбор сеткой значений поверх страницы;
+// переключатели и триггеры (WAVE, FREEZE, RESEED, FILL) - тапом, карточка-кнопка без дуги.
 
 #define W UI_W
 #define TOP_H UI_TOP_H
@@ -28,16 +31,14 @@
 #define MENU2_TILES 9 // USER 1-6, SCENES, GRIDS, PETRI
 #define TILE_GRIDS (PL_USER_PAGES + 1)
 #define TILE_PETRI (PL_USER_PAGES + 2)
-#define EDIT_X0 362 // кнопка EDIT в шапке своей страницы
-#define EDIT_X1 412
-#define XY_X0 88 // кнопка XY в шапке своей страницы: между «MENU» и стрелками
-#define XY_X1 140
+#define FLASH_MS 150 // подсветка триггера после тапа
 
 enum { MENU, MENU2, PAGE, SCENES, GRIDS, PETRIS };
 
 typedef struct {
     lv_obj_t *card, *num, *arc, *val, *name, *src, *pdot, *empty_dot;
-    int v, held, grabbed; // нарисовано
+    int v, held, grabbed, kind, lit; // нарисовано
+    char pill[12]; // подпись кнопки переключателя или триггера (рисует card_draw, без объектов LVGL)
     int lo, hi, bipolar;
     uint32_t color, src_color;
     char srcs[12]; // строка-источник своей страницы, "" - нет
@@ -50,9 +51,11 @@ static struct {
     pl_turn_t turn;
     pl_edit_t ed;
     int sent; // последнее отправленное значение захваченной ручки
-    lv_obj_t *bar_left, *bar_nav, *bar_right, *bar_edit, *bar_xy, *bar_load;
+    lv_obj_t *bar_left, *bar_nav, *bar_right, *bar_load;
     lv_obj_t *bar_line; // подчёркивание имени страницы цветом страницы
-    int line_w;
+    lv_obj_t *btn[PL_NAV_STATUS + 1], *btn_lbl[PL_NAV_STATUS + 1]; // кнопки шапки по коду PL_NAV_*
+    int btn_x[PL_NAV_STATUS + 1], btn_on[PL_NAV_STATUS + 1];       // нарисовано: левый край, подсветка
+    int line_w, title_cx;
     uint32_t load_color;
     uint8_t xy_view; // бит своей страницы: вместо сетки XY-пэд
     lv_obj_t *menu, *menu2, *grid;
@@ -67,9 +70,12 @@ static struct {
     uint32_t toast_color;
     int toast_tall;
     int drawn_grab;
-    lv_obj_t *pick; // сетка типов: один объект, клетки рисует сам
-    int pick_page;  // страница, чей TYPE выбираем, -1 - сетка закрыта
-    int drawn_pick; // страница * 32 + тип, что нарисованы
+    lv_obj_t *pick;          // сетка значений: один объект, клетки рисует сам
+    int pick_page, pick_enc; // чья ручка выбирается, -1 - сетка закрыта
+    int pick_tp, pick_te;    // откуда значения: у псевдонима своей страницы - его цель
+    int drawn_pick;          // ((страница * 16 + ручка) * 128 + значение), что нарисовано
+    int flash_cell;          // триггер, подсвеченный после тапа, -1 нет
+    uint32_t flash_until, now;
 } u;
 
 lv_obj_t *ui_label(lv_obj_t *parent, const lv_font_t *font, uint32_t color)
@@ -198,17 +204,21 @@ static lv_obj_t *menu_tile(lv_obj_t *parent, int x, int y, int h, uint32_t pc, c
     return t;
 }
 
-// Сетка типов: клетки с подписью, у текущего типа рамка и подпись цветом страницы.
+static const pl_model_t *pick_m; // модель для отрисовки сетки: задаётся в ui_step под локом
+
+// Сетка значений: клетки с подписью, у текущего значения рамка и подпись цветом страницы.
 static void pick_draw(lv_event_t *e)
 {
-    if (u.drawn_pick < 0) {
+    if (u.drawn_pick < 0 || !pick_m) {
         return;
     }
     lv_layer_t *layer = lv_event_get_layer(e);
     lv_area_t base;
     lv_obj_get_coords(u.pick, &base);
-    int page = u.drawn_pick / 32, cur = u.drawn_pick % 32;
-    uint32_t pc = pl_page_color(page);
+    int page = u.pick_tp, enc = u.pick_te;
+    const uint8_t *raw = pick_m->raw[page];
+    int cur = raw[enc], n = pl_pick_count(page, enc, raw);
+    uint32_t pc = pl_view_page_color(u.pick_page);
     lv_draw_fill_dsc_t f;
     lv_draw_fill_dsc_init(&f);
     f.radius = 10;
@@ -220,23 +230,58 @@ static void pick_draw(lv_event_t *e)
     lv_draw_label_dsc_init(&l);
     l.font = &bc_17;
     l.align = LV_TEXT_ALIGN_CENTER;
-    uint8_t raw[PL_KNOBS] = {0};
     char buf[12];
-    for (int s = 0; s < pl_tp_count(page); s++) {
-        int t = pl_tp_type(page, s), x, y, w, h;
-        pl_tp_rect(s, &x, &y, &w, &h);
+    for (int s = 0; s < n; s++) {
+        int t = pl_pick_value(page, enc, raw, s), x, y, w, h;
+        pl_pick_rect(n, s, &x, &y, &w, &h);
         y -= TOP_H;
         lv_area_t a = {base.x1 + x, base.y1 + y, base.x1 + x + w - 1, base.y1 + y + h - 1};
         lv_draw_fill(layer, &f, &a);
         b.width = t == cur ? 2 : 1;
         b.color = lv_color_hex(t == cur ? pc : C_TILE_BRD);
         lv_draw_border(layer, &b, &a);
-        l.text = pl_value_text(page, 1, t, raw, buf);
+        l.text = pl_value_text(page, enc, t, raw, buf);
         l.text_local = 1; // LVGL копирует текст: buf живёт только здесь
         l.color = lv_color_hex(t == cur ? pc : C_TEXT);
         lv_area_t ta = {a.x1 + 2, a.y1 + (h - 16) / 2, a.x2 - 2, a.y2};
         lv_draw_label(layer, &l, &ta);
     }
+}
+
+// Поверх карточки: у переключателя и триггера - плашка-кнопка на месте дуги, у списка - черта внизу справа
+// (тап откроет сетку значений). Рисуется сама: 15 карточек x 3 объекта LVGL съели бы кучу панели.
+static void card_draw(lv_event_t *e)
+{
+    const knob_t *k = lv_event_get_user_data(e);
+    if (!k->lab[0] || k->kind == PL_PICK_NONE) {
+        return;
+    }
+    lv_layer_t *layer = lv_event_get_layer(e);
+    lv_area_t c;
+    lv_obj_get_coords(k->card, &c);
+    lv_draw_fill_dsc_t f;
+    lv_draw_fill_dsc_init(&f);
+    if (k->kind == PL_PICK_GRID) {
+        f.radius = 2;
+        f.color = lv_color_hex(C_MUTED);
+        lv_area_t a = {c.x1 + 124, c.y1 + 68, c.x1 + 139, c.y1 + 70};
+        lv_draw_fill(layer, &f, &a);
+        return;
+    }
+    int lit = k->lit > 0;
+    f.radius = 16;
+    f.color = lv_color_hex(lit ? k->color : C_TRACK);
+    lv_area_t a = {c.x1 + 6, c.y1 + 24, c.x1 + 65, c.y1 + 55};
+    lv_draw_fill(layer, &f, &a);
+    lv_draw_label_dsc_t l;
+    lv_draw_label_dsc_init(&l);
+    l.font = &bc_17;
+    l.align = LV_TEXT_ALIGN_CENTER;
+    l.color = lv_color_hex(lit ? C_BG : C_TEXT);
+    l.text = k->pill;
+    l.text_local = 1;
+    lv_area_t ta = {a.x1, a.y1 + 7, a.x2, a.y2};
+    lv_draw_label(layer, &l, &ta);
 }
 
 static void build(void)
@@ -252,19 +297,26 @@ static void build(void)
     u.bar_line = ui_box(bar, W / 2, TOP_H - 4, 0, 3, C_ACCENT);
     lv_obj_set_style_radius(u.bar_line, 2, 0);
     u.line_w = 0;
-    u.bar_left = ui_label(bar, &bc_17, C_TEXT);
+    u.bar_left = ui_label(bar, &bc_17, C_DIM);
     lv_obj_align(u.bar_left, LV_ALIGN_LEFT_MID, 14, 0);
     u.bar_nav = ui_label(bar, &bc_22, C_ACCENT);
-    lv_obj_align(u.bar_nav, LV_ALIGN_CENTER, 0, 0);
-    u.bar_right = ui_label(bar, &bc_17, C_ACCENT);
-    lv_obj_align(u.bar_right, LV_ALIGN_RIGHT_MID, -14, -8);
-    // Под режимом - худшая загрузка ядер синта за полсекунды: ядро 1, ядро 0 (проценты бюджета).
+    lv_obj_set_y(u.bar_nav, 7);
+    u.title_cx = -1;
+    // Кнопки шапки - плашки; где какая, решает pl_nav по виду экрана.
+    for (int n = PL_NAV_MENU; n <= PL_NAV_STATUS; n++) {
+        u.btn[n] = ui_box(bar, 0, 5, 44, TOP_H - 10, C_TILE);
+        lv_obj_set_style_radius(u.btn[n], 8, 0);
+        lv_obj_set_style_border_width(u.btn[n], 1, 0);
+        lv_obj_set_style_border_color(u.btn[n], lv_color_hex(C_TILE_BRD), 0);
+        u.btn_lbl[n] = ui_label(u.btn[n], &bc_17, C_TEXT);
+        lv_obj_center(u.btn_lbl[n]);
+        ui_show(u.btn[n], 0);
+        u.btn_x[n] = u.btn_on[n] = -1;
+    }
+    u.bar_right = u.btn_lbl[PL_NAV_STATUS]; // режим или имя демо-песни: тап - следующая
+    // Слева от режима - худшая загрузка ядер синта за полсекунды: ядро 1, ядро 0 (проценты бюджета).
     u.bar_load = ui_label(bar, &bc_15, C_TEXT);
-    lv_obj_align(u.bar_load, LV_ALIGN_RIGHT_MID, -14, 10);
-    u.bar_edit = ui_label(bar, &bc_17, C_TEXT);
-    lv_obj_align(u.bar_edit, LV_ALIGN_LEFT_MID, EDIT_X0 + 4, 0);
-    u.bar_xy = ui_label(bar, &bc_17, C_TEXT);
-    lv_obj_align(u.bar_xy, LV_ALIGN_LEFT_MID, XY_X0 + 4, 0);
+    lv_obj_align(u.bar_load, LV_ALIGN_RIGHT_MID, -(W - 400), 0);
 
     // Меню: 2 столбца по 5 плиток с цветной полоской и сводкой состояния.
     u.menu = ui_box(scr, 0, TOP_H, W, W - TOP_H, C_BG);
@@ -330,7 +382,10 @@ static void build(void)
 
         k->empty_dot = ui_box(k->card, 72, 37, 6, 6, C_TRACK);
         lv_obj_set_style_radius(k->empty_dot, 3, 0);
-        k->v = k->held = k->grabbed = -1;
+
+        lv_obj_add_event_cb(k->card, card_draw, LV_EVENT_DRAW_POST, k);
+        k->pill[0] = 0;
+        k->v = k->held = k->grabbed = k->kind = k->lit = -1;
         k->color = 0;
         k->lo = k->hi = -1;
         strcpy(k->lab, "?"); // первая отрисовка настроит карточку
@@ -362,7 +417,7 @@ static void build(void)
     u.pick = ui_box(scr, 0, TOP_H, W, W - TOP_H, C_BG);
     lv_obj_add_event_cb(u.pick, pick_draw, LV_EVENT_DRAW_MAIN, NULL);
     ui_show(u.pick, 0);
-    u.pick_page = u.drawn_pick = -1;
+    u.pick_page = u.drawn_pick = u.flash_cell = -1;
 
     uc_build(scr);
     ug_build(scr);
@@ -409,12 +464,15 @@ static void style_knob_grab(knob_t *k, int grabbed)
 }
 
 // Карточка под новую подпись, ход или цвет (сменили тип синта, модель перкуссии, цели своей страницы).
-static void card_setup(knob_t *k, const pl_cell_t *c)
+static void card_setup(knob_t *k, const pl_cell_t *c, int kind)
 {
-    int on = c->label != NULL;
+    int on = c->label != NULL, button = kind == PL_PICK_TOGGLE || kind == PL_PICK_TRIGGER;
     snprintf(k->lab, sizeof k->lab, "%s", on ? c->label : "");
     lv_obj_set_style_bg_color(k->card, lv_color_hex(on ? C_TILE : C_TILE_EMPTY), 0);
-    ui_show(k->arc, on);
+    ui_show(k->arc, on && !button);
+    k->kind = on ? kind : PL_PICK_NONE;
+    k->lit = -1;
+    lv_obj_invalidate(k->card);
     ui_show(k->name, on);
     ui_show(k->num, on);
     ui_show(k->pdot, on);
@@ -465,6 +523,7 @@ static void open_page(int page)
     u.page = page;
     u.grab = -1;
     u.pick_page = -1;
+    u.flash_cell = -1;
 }
 
 // Экран чашки: энкодеры BSP крутят её ручки, пока не тронут энкодер 1.
@@ -497,15 +556,52 @@ static void place_mark(int pos, int lo, int hi)
                    c + (int)lroundf(r * sinf(a)) - 8);
 }
 
+// Вид шапки: какие кнопки и где (pl_nav).
+static int bar_kind(void)
+{
+    if (editing() || (u.screen == PAGE && u.pick_page >= 0)) {
+        return PL_BAR_SCREEN;
+    }
+    if (u.screen == MENU || u.screen == MENU2) {
+        return PL_BAR_MENU;
+    }
+    if (u.screen == PAGE) {
+        return u.page >= PL_USER_FIRST ? PL_BAR_USER : PL_BAR_PAGE;
+    }
+    return PL_BAR_SCREEN;
+}
+
+// Кнопка шапки: на месте из таблицы вида, "" или нет места - спрятана; on - подсвечена цветом c.
+static void bar_btn(int bar, int nav, const char *text, int on, uint32_t c)
+{
+    int x0, x1;
+    pl_nav_rect(bar, nav, &x0, &x1);
+    int show = x1 > x0 && text[0];
+    ui_show(u.btn[nav], show);
+    if (!show) {
+        return;
+    }
+    if (u.btn_x[nav] != x0 * 1000 + x1) {
+        lv_obj_set_x(u.btn[nav], x0);
+        lv_obj_set_width(u.btn[nav], x1 - x0);
+        u.btn_x[nav] = x0 * 1000 + x1;
+    }
+    ui_text(u.btn_lbl[nav], text);
+    int key = on ? (int)(c & 0xffffff) : -2;
+    if (u.btn_on[nav] != key) {
+        lv_obj_set_style_border_color(u.btn[nav], lv_color_hex(on ? c : C_TILE_BRD), 0);
+        lv_obj_set_style_text_color(u.btn_lbl[nav], lv_color_hex(on ? c : C_TEXT), 0);
+        u.btn_on[nav] = key;
+    }
+}
+
 static void draw_bar(const pl_model_t *m)
 {
     static const char *const STEP[] = {"", "EDIT: TAP A KNOB", "TARGETS", "PICK PAGE", "PICK KNOB", "RANGE"};
     char nav[40];
     uint32_t nc = C_ACCENT;
-    int user = u.page >= PL_USER_FIRST;
-    if (editing() || u.screen != PAGE) {
-        ui_text(u.bar_xy, "");
-    }
+    int user = u.page >= PL_USER_FIRST, bar = bar_kind();
+    const char *left = UI_SYM_LEFT " MENU", *act = "", *xy = "";
     if (editing()) {
         snprintf(nav, sizeof nav, "%s", STEP[u.ed.state]);
         if (u.ed.state == PL_EDIT_TARGETS) {
@@ -513,49 +609,54 @@ static void draw_bar(const pl_model_t *m)
         } else if (u.ed.state == PL_EDIT_PICK_KNOB) {
             snprintf(nav, sizeof nav, "PICK: %s", pl_page_name(u.ed.page));
         }
-        ui_text(u.bar_left, UI_SYM_LEFT " MENU");
-        ui_text(u.bar_edit, u.ed.state == PL_EDIT_SLOTS ? "DONE" : "BACK");
+        act = u.ed.state == PL_EDIT_SLOTS ? "DONE" : "BACK";
     } else if (u.screen == PAGE && u.pick_page >= 0) {
-        snprintf(nav, sizeof nav, "%s TYPE", pl_view_page_name(u.page));
+        pl_cell_t c;
+        pl_view_cell(m, u.page, u.pick_enc, &c);
+        snprintf(nav, sizeof nav, "%s / %s", pl_view_page_name(u.page), c.label ? c.label : "?");
         nc = pl_view_page_color(u.page);
-        ui_text(u.bar_left, UI_SYM_CLOSE " CLOSE");
-        ui_text(u.bar_edit, "");
+        left = UI_SYM_CLOSE " CLOSE";
     } else if (u.screen == PAGE) {
-        snprintf(nav, sizeof nav, UI_SYM_LEFT "  %d %s  " UI_SYM_RIGHT, pl_page_bsp(u.page), pl_view_page_name(u.page));
+        snprintf(nav, sizeof nav, "%d %s", pl_page_bsp(u.page), pl_view_page_name(u.page));
         nc = pl_view_page_color(u.page);
-        ui_text(u.bar_left, UI_SYM_LEFT " MENU");
-        ui_text(u.bar_edit, user ? ((m->user_have >> (u.page - PL_USER_FIRST) & 1) ? "EDIT" : "")
-                                 : pl_view_dish(m, u.page) ? "DISH" : "");
-        ui_text(u.bar_xy, !user ? "" : xy_on() ? "GRID" : "XY");
+        act = user ? ((m->user_have >> (u.page - PL_USER_FIRST) & 1) ? "EDIT" : "") : pl_view_dish(m, u.page) ? "DISH" : "";
+        xy = xy_on() ? "GRID" : "XY";
     } else if (u.screen == GRIDS) {
         snprintf(nav, sizeof nav, "GRIDS");
         nc = pl_page_color(PL_PAGE_GRIDS);
-        ui_text(u.bar_left, UI_SYM_LEFT " MENU");
-        ui_text(u.bar_edit, "");
     } else if (u.screen == PETRIS) {
         snprintf(nav, sizeof nav, "PETRI");
         nc = pl_page_color(PL_PAGE_PETRI);
-        ui_text(u.bar_left, UI_SYM_LEFT " MENU");
-        ui_text(u.bar_edit, "KNOBS");
+        act = "KNOBS";
     } else if (u.screen == SCENES) {
         snprintf(nav, sizeof nav, "SCENES");
-        ui_text(u.bar_left, UI_SYM_LEFT " MENU");
-        ui_text(u.bar_edit, "");
     } else {
-        snprintf(nav, sizeof nav, u.screen == MENU ? "USER  " UI_SYM_RIGHT : UI_SYM_LEFT "  PAGES");
-        ui_text(u.bar_left, "ESPOSC");
-        ui_text(u.bar_edit, "");
+        nav[0] = 0; // в меню вместо заголовка - вкладки
+        left = "";
     }
-    if (strcmp(lv_label_get_text(u.bar_nav), nav) != 0) {
+    ui_text(u.bar_left, bar == PL_BAR_MENU ? "ESPOSC" : "");
+    bar_btn(bar, PL_NAV_MENU, left, 0, 0);
+    bar_btn(bar, PL_NAV_PREV, UI_SYM_LEFT, 0, 0);
+    bar_btn(bar, PL_NAV_NEXT, UI_SYM_RIGHT, 0, 0);
+    bar_btn(bar, PL_NAV_XY, xy, xy_on(), C_ACCENT);
+    bar_btn(bar, PL_NAV_ACTION, act, 0, 0);
+    bar_btn(bar, PL_NAV_TAB_PAGES, "PAGES", u.screen == MENU, C_ACCENT);
+    bar_btn(bar, PL_NAV_TAB_USER, "USER", u.screen == MENU2, C_ACCENT);
+    bar_btn(bar, PL_NAV_STATUS, lv_label_get_text(u.bar_right)[0] ? lv_label_get_text(u.bar_right) : "-", 0, 0);
+    ui_show(u.bar_load, bar == PL_BAR_MENU);
+    int t0, t1;
+    pl_nav_title(bar, &t0, &t1);
+    int cx = (t0 + t1) / 2;
+    if (strcmp(lv_label_get_text(u.bar_nav), nav) != 0 || cx != u.title_cx) {
         lv_label_set_text(u.bar_nav, nav);
         lv_point_t sz;
         lv_text_get_size(&sz, nav, &bc_22, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
         int w = nav[0] ? (int)sz.x : 0;
-        if (w != u.line_w) {
-            lv_obj_set_width(u.bar_line, w);
-            lv_obj_set_x(u.bar_line, (W - w) / 2);
-            u.line_w = w;
-        }
+        lv_obj_set_x(u.bar_nav, cx - w / 2);
+        lv_obj_set_width(u.bar_line, w);
+        lv_obj_set_x(u.bar_line, cx - w / 2);
+        u.line_w = w;
+        u.title_cx = cx;
     }
     if (u.nav_color != nc) {
         lv_obj_set_style_text_color(u.bar_nav, lv_color_hex(nc), 0);
@@ -613,10 +714,11 @@ static void draw_page(const pl_model_t *m)
         knob_t *k = &u.knob[i];
         int enc = i + 1;
         pl_view_cell(m, page, enc, &cell);
-        if (strcmp(k->lab, cell.label ? cell.label : "") != 0 || k->color != cell.color || k->lo != cell.lo ||
+        int tp, te, kind = pl_pick_view(m, page, enc, &tp, &te);
+        if (k->kind != kind || strcmp(k->lab, cell.label ? cell.label : "") != 0 || k->color != cell.color || k->lo != cell.lo ||
             k->hi != cell.hi || k->bipolar != cell.bipolar || strcmp(k->srcs, cell.src ? cell.src : "") != 0 ||
             k->src_color != cell.src_color) {
-            card_setup(k, &cell);
+            card_setup(k, &cell, kind);
         }
         if (!k->lab[0]) {
             continue;
@@ -624,7 +726,19 @@ static void draw_page(const pl_model_t *m)
         if (cell.v != k->v) {
             lv_arc_set_value(k->arc, cell.v);
             ui_text(k->val, cell.text);
+            if (kind == PL_PICK_TOGGLE || kind == PL_PICK_TRIGGER) {
+                snprintf(k->pill, sizeof k->pill, "%s", kind == PL_PICK_TRIGGER ? "GO" : cell.text);
+                lv_obj_invalidate(k->card);
+            }
             k->v = cell.v;
+        }
+        // Переключатель горит цветом ручки, когда не в нижнем положении; триггер - коротко после тапа.
+        int lit = kind == PL_PICK_TRIGGER ? (u.flash_cell == i && (int32_t)(u.flash_until - u.now) > 0)
+                  : kind == PL_PICK_TOGGLE ? pl_pick_next(tp, te, m->raw[tp], cell.v) < cell.v
+                                           : 0;
+        if (lit != k->lit) {
+            k->lit = lit;
+            lv_obj_invalidate(k->card);
         }
         int held = cell.held && m->bsp_pos[enc] != 0xFF;
         if (held != k->held) {
@@ -800,14 +914,15 @@ static void draw_toast(const pl_model_t *m, uint32_t ms)
 static void knob_input(pl_model_t *m, int ev, int down, int x, int y, int x0, int y0);
 
 // Шаги редактора на сетке и в меню; списки целей и ход - в ui_custom.c.
-static void edit_input(pl_model_t *m, int ev, int down, int x, int y, int x0, int y0, int x1, int y1, int tap)
+static void edit_input(pl_model_t *m, int ev, int down, int x, int y, int x0, int y0, int x1, int y1, int tap,
+                       int nav)
 {
     pl_custom_edit_t out;
-    if (tap && y0 < TOP_H && y1 < TOP_H + 16) {
-        if (x0 < 140) {
+    if (y0 < TOP_H) {
+        if (nav == PL_NAV_MENU) {
             u.ed.state = PL_EDIT_OFF; // в меню, правки уже у синта
             u.screen = MENU2;
-        } else if (x0 >= EDIT_X0 && x0 < EDIT_X1 + 20) {
+        } else if (nav == PL_NAV_ACTION) {
             pl_edit_back(&u.ed);
         }
         return;
@@ -843,11 +958,45 @@ static void pick_input(pl_model_t *m, int tap, int x0, int y0, int x1, int y1)
     if (!tap) {
         return;
     }
-    int s = pl_tp_at(x0, y0), t = s == pl_tp_at(x1, y1) ? pl_tp_type(u.pick_page, s) : -1;
-    if (t >= 0 && pl_model_local_set(m, u.pick_page, 1, t)) {
-        link_set(u.pick_page, 1, t);
+    const uint8_t *raw = m->raw[u.pick_tp];
+    int n = pl_pick_count(u.pick_tp, u.pick_te, raw);
+    int s = pl_pick_at(n, x0, y0), t = s == pl_pick_at(n, x1, y1) ? pl_pick_value(u.pick_tp, u.pick_te, raw, s) : -1;
+    if (t >= 0 && pl_model_local_set(m, u.pick_page, u.pick_enc, t)) {
+        link_set(u.pick_page, u.pick_enc, t);
     }
     u.pick_page = -1;
+}
+
+static void set_knob(pl_model_t *m, int page, int enc, int v)
+{
+    if (pl_model_local_set(m, page, enc, v)) {
+        link_set(page, enc, v);
+    }
+}
+
+// Тап по карточке: список - сетка значений, переключатель - следующее положение, триггер - фронт 0 -> 1 и назад.
+static void card_tap(pl_model_t *m, int cell, uint32_t ms)
+{
+    int enc = cell + 1, tp, te;
+    switch (pl_pick_view(m, u.page, enc, &tp, &te)) {
+    case PL_PICK_GRID:
+        u.pick_page = u.page, u.pick_enc = enc, u.pick_tp = tp, u.pick_te = te;
+        break;
+    case PL_PICK_TOGGLE:
+        set_knob(m, u.page, enc, pl_pick_next(tp, te, m->raw[tp], m->raw[tp][te]));
+        break;
+    case PL_PICK_TRIGGER: {
+        int lo, hi;
+        pl_knob_range(tp, te, m->raw[tp], &lo, &hi);
+        set_knob(m, u.page, enc, hi); // синт ловит фронт: порядок кадров UART сохраняется
+        set_knob(m, u.page, enc, lo);
+        u.flash_cell = cell;
+        u.flash_until = ms + FLASH_MS;
+        break;
+    }
+    default:
+        break;
+    }
 }
 
 static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
@@ -856,20 +1005,23 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
     int x0, y0, x1, y1;
     pl_press_where(&u.press, &x0, &y0);
     pl_press_last(&u.press, &x1, &y1);
-    int tap = pl_press_tap(ev) && (ev != PL_PRESS_RELEASE || u.grab < 0); // отпустили крутилку - не тап
-    int head = tap && y0 < TOP_H && y1 < TOP_H + 16;
-    if (tap && pl_view_demo_tap(m, pl_model_linked(m, ms), x0, y0, x1, y1)) {
-        link_demo(); // снимок с новой песней придёт от синта
+    int tap = pl_press_tap(ev) && u.grab < 0; // отпустили крутилку - не тап
+    int head = y0 < TOP_H;                   // касание в шапке: только кнопки, мимо - ничего
+    int nav = tap ? pl_nav_tap(bar_kind(), x0, y0, x1, y1) : PL_NAV_NONE;
+    if (nav == PL_NAV_STATUS) {
+        if (pl_model_linked(m, ms)) {
+            link_demo(); // снимок с новой песней придёт от синта
+        }
     } else if (editing()) {
-        edit_input(m, ev, down, x, y, x0, y0, x1, y1, tap);
+        edit_input(m, ev, down, x, y, x0, y0, x1, y1, tap, nav);
         if (editing()) {
             u.screen = u.ed.state == PL_EDIT_PICK_PAGE ? MENU : PAGE; // выбор страницы цели - на меню
         }
     } else if (u.screen == MENU || u.screen == MENU2) {
         int (*at)(int, int) = u.screen == MENU ? menu_page_at : ui_tile_at;
         int t = at(x0, y0);
-        if (head && x0 >= 140 && x0 < 360) {
-            u.screen = u.screen == MENU ? MENU2 : MENU;
+        if (head) {
+            u.screen = nav == PL_NAV_TAB_PAGES ? MENU : nav == PL_NAV_TAB_USER ? MENU2 : u.screen;
         } else if (tap && t >= 0 && t == at(x1, y1)) {
             if (u.screen == MENU) {
                 send_page(m, t, ms);
@@ -887,56 +1039,54 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
             }
         }
     } else if (u.screen == GRIDS) {
-        if (head) {
+        if (nav == PL_NAV_MENU) {
             ug_release(m);
             u.screen = MENU2;
             m->goto_page = -1;
-        } else {
+        } else if (!head) {
             ug_input(m, down, x, y, x0, y0, ms);
         }
     } else if (u.screen == PETRIS) {
-        if (head && x0 >= EDIT_X0 && x0 < EDIT_X1 + 20) {
+        if (nav == PL_NAV_ACTION) {
             send_page(m, PL_PAGE_PETRI, ms); // ручки чашки сеткой
-        } else if (head) {
+        } else if (nav == PL_NAV_MENU) {
             u.screen = MENU2;
             m->goto_page = -1;
-        } else {
+        } else if (!head) {
             up_input(down, x, y, x0, y0);
         }
     } else if (u.screen == SCENES) {
-        if (head) {
+        if (nav == PL_NAV_MENU) {
             u.screen = MENU2;
-        } else {
+        } else if (!head) {
             uc_scenes_input(m, ev, x0, y0, x1, y1, ms - u.press.t0);
         }
     } else if (u.pick_page >= 0) {
         pick_input(m, tap, x0, y0, x1, y1);
     } else if (head) {
         int user = u.page >= PL_USER_FIRST;
-        uc_xy_release(m);
-        if (user && x0 >= XY_X0 && x0 < XY_X1) {
+        if (nav != PL_NAV_NONE) {
+            uc_xy_release(m);
+            u.grab = -1;
+        }
+        if (nav == PL_NAV_XY) {
             u.xy_view ^= (uint8_t)(1 << (u.page - PL_USER_FIRST));
-            u.grab = -1;
-        } else if (x0 >= 140 && x0 < 215) {
-            send_page(m, pl_view_page_step(u.page, -1), ms);
-        } else if (x0 >= 265 && x0 < 360) {
-            send_page(m, pl_view_page_step(u.page, 1), ms);
-        } else if (user && x0 >= EDIT_X0 && x0 < EDIT_X1 && (m->user_have >> (u.page - PL_USER_FIRST) & 1)) {
+        } else if (nav == PL_NAV_PREV || nav == PL_NAV_NEXT) {
+            send_page(m, pl_view_page_step(u.page, nav == PL_NAV_PREV ? -1 : 1), ms);
+        } else if (nav == PL_NAV_ACTION && user && (m->user_have >> (u.page - PL_USER_FIRST) & 1)) {
             pl_edit_start(&u.ed, u.page - PL_USER_FIRST);
-            u.grab = -1;
-        } else if (!user && x0 >= EDIT_X0 && x0 < EDIT_X1 + 20 && pl_view_dish(m, u.page)) {
+        } else if (nav == PL_NAV_ACTION && !user && pl_view_dish(m, u.page)) {
             open_dish(m, ms);
-        } else {
+        } else if (nav == PL_NAV_MENU) {
             u.screen = user ? MENU2 : MENU;
-            u.grab = -1;
             m->goto_page = -1; // тап «в меню» новее листания на BSP
         }
     } else if (xy_on()) {
         uc_xy_input(m, u.page, ev, down, x, y, x0, y0, ms);
     } else {
         int cell = pl_grid_cell(x0, y0);
-        if (tap && m->have && cell >= 0 && cell == pl_grid_cell(x1, y1) && pl_tp_on(u.page, cell + 1)) {
-            u.pick_page = u.page;
+        if (tap && m->have && cell >= 0 && cell == pl_grid_cell(x1, y1)) {
+            card_tap(m, cell, ms);
         }
         knob_input(m, ev, down, x, y, x0, y0);
     }
@@ -950,11 +1100,17 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
 static void knob_input(pl_model_t *m, int ev, int down, int x, int y, int x0, int y0)
 {
     // Захват по удержанию 50 мс или сразу при начале сдвига пальца внутри рабочей области страницы.
-    if (down && u.grab < 0 && y0 >= TOP_H && (ev == PL_PRESS_HOLD || u.press.state == 2)) {
-        int i = pl_grid_cell(x0, y0);
+    // У списков удержание - это тап (сетка значений): крутилка только когда палец поехал, в том числе после удержания.
+    int moved = abs(x - x0) > PL_SLOP_PX || abs(y - y0) > PL_SLOP_PX;
+    int drag = u.press.state == 2 || (u.press.state == 3 && moved);
+    if (down && u.grab < 0 && y0 >= TOP_H && (ev == PL_PRESS_HOLD || drag)) {
+        int i = pl_grid_cell(x0, y0), tp, te;
         pl_cell_t cell;
         pl_view_cell(m, u.page, i + 1, &cell);
-        if (i >= 0 && i < KNOBS && cell.label && m->have && !pl_tp_on(u.page, i + 1)) { // TYPE - сеткой // без снимка значения нули: ручка прыгнула бы в 0
+        int kind = pl_pick_view(m, u.page, i + 1, &tp, &te);
+        int can = kind == PL_PICK_NONE || pl_pick_grab(tp, te, m->raw[tp], !drag);
+        // без снимка значения нули: ручка прыгнула бы в 0
+        if (i >= 0 && i < KNOBS && cell.label && m->have && can) {
             pl_turn_begin(&u.turn, x, y - RING_DY, cell.v, cell.lo, cell.hi);
             pl_turn_skip(&u.turn, cell.skip);
             u.grab = i;
@@ -1000,6 +1156,8 @@ void ui_step(pl_model_t *m, int down, int x, int y, uint32_t ms)
     }
     ui_show(u.menu, u.screen == MENU);
     ui_show(u.menu2, u.screen == MENU2);
+    u.now = ms;
+    pick_m = m;
     int picking = u.screen == PAGE && u.pick_page == u.page;
     ui_show(u.grid, u.screen == PAGE && !xy_on() && !picking);
     ui_show(u.pick, picking);
@@ -1011,7 +1169,7 @@ void ui_step(pl_model_t *m, int down, int x, int y, uint32_t ms)
     if (xy_on()) {
         uc_xy_draw(m, u.page);
     } else if (picking) {
-        int d = u.page * 32 + m->raw[u.page][1];
+        int d = (u.pick_tp * 16 + u.pick_te) * 128 + m->raw[u.pick_tp][u.pick_te];
         if (d != u.drawn_pick) {
             u.drawn_pick = d;
             lv_obj_invalidate(u.pick);
