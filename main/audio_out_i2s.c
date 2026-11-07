@@ -22,7 +22,7 @@
 #define DMA_DESCS 4   // 8 мс в DMA: задержка ноты от BSP меньше, чем 12 мс у свистка
 // У PCM5102A громкость не крутится, полная шкала - 2.1 В rms (громче свистка):
 // ослабляем цифрой. Подобрать на слух, как у свистка.
-#define VOLUME_DB (-18)
+#define VOLUME_DB (-6)
 #define MAX_FRAMES 256
 
 static const char *TAG = "audio_out";
