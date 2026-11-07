@@ -451,9 +451,7 @@ function buildScene(form, vk, ins = 'blank') {
     }
     if (vk === 'dac') {
       const dac = [[2, 'VIN'], [3, 'G'], [4, 'BCK'], [5, 'LCK'], [6, 'DIN']];
-      dac.forEach(([i, t]) => { if (i > 3) tr([[pinX(i), yJ1], [pinX(i), frontY]]); pad(pinX(i), frontY); silk(pinX(i), frontY + 2.1, t, 1.0); });
-      // VIN ЦАП с шины 5 В (J1-21), не с 3V3: стабилизаторы модуля отсекают шум павербанка
-      tr([[pinX(21), yJ1], [pinX(21) - 1.27, yJ1 - 2.6], [pinX(2) + 1.27, yJ1 - 2.6], [pinX(2) + 1.27, frontY - 1.3], [pinX(2), frontY]], '#e05050', .55);
+      dac.forEach(([i, t]) => { if (i !== 3) tr([[pinX(i), yJ1], [pinX(i), frontY]]); pad(pinX(i), frontY); silk(pinX(i), frontY + 2.1, t, 1.0); });
       tr([[pinX(22), yJ1], [pinX(22) + 1.3, yJ1 + 1.4], [pinX(22) + 1.3, frontY + 3.6], [pinX(3), frontY + 3.6], [pinX(3), frontY]], '#202020', .55);
       silk((pinX(2) + pinX(6)) / 2, frontY + 3.6 + .9, 'DAC I2S', 1.15);
     }
@@ -511,7 +509,7 @@ function buildScene(form, vk, ins = 'blank') {
   // ===== I2S ЦАП или хаб со свистком =====
   if (vk === 'dac') {
     const dac = P('ЦАП PCM5102A (модуль GY)', `Модуль ~19 x 31.5 (оценка), гнездо 3.5 прямо в задней стенке: удлинителей нет.<br>
-      <code>VIN</code> шина 5 В (J1-21, на модуле свои стабилизаторы 3.3 В: чище, чем от 3V3 платы) · <code>G</code> J1-22 · <code>BCK</code> J1-4 IO4 · <code>LCK</code> J1-5 IO5 · <code>DIN</code> J1-6 IO6.
+      <code>VIN</code> J1-2 3V3 (проверено на железе 2026-11-07: тихо; от павербанка на 5 В щёлкало. Фон с экраном - ШИМ подсветки выше 20 кГц, иначе VIN на 5 В) · <code>G</code> J1-22 · <code>BCK</code> J1-4 IO4 · <code>LCK</code> J1-5 IO5 · <code>DIN</code> J1-6 IO6.
       <br>На модуле: <code>SCK</code> на землю (внутренний PLL), <code>FMT</code>=0 (I2S), <code>XSMT</code>=1 (без мьюта): перемычки H1L-H4L.`, [-10, -20, 20], 'in');
     const DX0 = fc.dacX || 9, DX1 = DX0 + 19, DY0 = .6, DY1 = 32.1, JX = DX0 + 9.5, pinLen = fc.low ? 2.5 : 8.5;
     for (const [x, y] of [[DX0 + 2.5, DY1 - 2.5], [DX1 - 2.5, DY1 - 2.5]]) cylZ(dac.g(MAT.brass), x, y, 0, ZC0, 2, 6);
