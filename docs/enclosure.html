@@ -436,7 +436,7 @@ function drawWires() {
     ['Сервис', 'плата COM (CH343, GPIO43/44)', 'стенка COM', 'панельный USB-C; только к ПК, прошивка и лог'],
     ['Экран TFT', 'J1: 3V3, G, IO12 SCK, IO11 MOSI, IO10 CS, IO13 DC, IO14 RST, IO9 BL', 'модуль ST7789', 'шлейф 8 жил 15 см, через DISP 2x4 на носителе; MISO не нужен'],
     ['Экран OLED', 'J1: 3V3, G, IO8 SDA, IO18 SCL', 'SH1106/SSD1306', '4 жилы; подтяжки 4.7к обычно уже на модуле'],
-    ['Резерв', 'J1: IO4 BCK, IO5 WS, IO6 DOUT, 5V, G', 'I2S ЦАП PCM5102A', 'на будущее, см. заметку ниже'],
+    ['Резерв', 'J1: IO4 BCK, IO5 WS, IO6 DOUT, 3V3, G', 'I2S ЦАП PCM5102A', 'работает (сборка build-i2s), см. заметку ниже'],
   ];
   const t = document.getElementById('wires');
   t.innerHTML = rows.map((r, i) => '<tr>' + r.map(c => i ? `<td>${c}</td>` : `<th>${c}</th>`).join('') + '</tr>').join('');
