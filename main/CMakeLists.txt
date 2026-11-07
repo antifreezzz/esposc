@@ -20,3 +20,7 @@ endif()
 if(ESPOSC_STRESS_PETRI)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE ESPOSC_STRESS_PETRI)
 endif()
+# Проверка ЦАПа тоном вместо синта (вместе с ESPOSC_I2S): -DESPOSC_I2S_TONE=1, каталог build-i2s-tone.
+if(ESPOSC_I2S_TONE)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE ESPOSC_I2S_TONE)
+endif()

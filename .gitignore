@@ -12,4 +12,5 @@ build-stress/
 build-stress-layers/
 build-stress-petri/
 build-i2s/
+build-i2s-tone/
 panel/build-bench/
