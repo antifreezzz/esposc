@@ -11,4 +11,5 @@ __pycache__/
 build-stress/
 build-stress-layers/
 build-stress-petri/
+build-i2s/
 panel/build-bench/

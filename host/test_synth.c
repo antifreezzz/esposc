@@ -117,6 +117,22 @@ TEST(test_pcm_lr)
     }
 }
 
+TEST(test_pcm_gain)
+{
+    // Q15: 16384 = половина, округление к ближайшему, знак сохраняется.
+    const int16_t in[5] = {32767, -32768, 3, -3, 0};
+    int16_t out[5];
+    acid_pcm_gain_s16(in, out, 5, 16384);
+    const int16_t expect[5] = {16384, -16384, 2, -2, 0};
+    for (int i = 0; i < 5; i++) {
+        CHECK(out[i] == expect[i]);
+    }
+    acid_pcm_gain_s16(in, out, 5, 32768); // единица: без изменений
+    for (int i = 0; i < 5; i++) {
+        CHECK(out[i] == in[i]);
+    }
+}
+
 TEST(test_bsp_page_mapping)
 {
     // На BSP: 0-9 штатные, 10-15 свои, 16-17 слои, 18 чашка. Внутри: 0-9, слои 10-11, Grids 12, чашка 13, свои 14-19.
@@ -141,5 +157,6 @@ int main(void)
     RUN(test_render_mono_is_mean);
     RUN(test_pcm_convert);
     RUN(test_pcm_lr);
+    RUN(test_pcm_gain);
     TEST_MAIN_END();
 }

@@ -36,6 +36,8 @@
 cmake -S host -B host/build && cmake --build host/build && ctest --test-dir host/build
 # прошивка
 . ~/esp/esp-idf-v6.1/export.sh && idf.py -p /dev/ttyACM0 flash
+# прошивка со звуком на ЦАП PCM5102A (I2S: BCK 4, WS 5, DIN 6) вместо свистка
+idf.py -B build-i2s -DESPOSC_I2S=1 -p /dev/ttyACM0 flash
 # образ тарелок (раздел samples, idf.py flash его не трогает; сборка - в README)
 esptool.py --chip esp32s3 -p /dev/ttyACM0 write_flash 0x210000 cymbals.bin
 # прошивка тач-панели (её USB-C, CH340)
