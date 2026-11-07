@@ -1,8 +1,8 @@
-# Вывод звука: свисток UAC по умолчанию, ЦАП PCM5102A на I2S - idf.py -B build-i2s -DESPOSC_I2S=1 ...
-if(ESPOSC_I2S)
-    set(AUDIO_OUT_SRC "audio_out_i2s.c")
-else()
+# Вывод звука: ЦАП PCM5102A на I2S по умолчанию, USB-свисток (UAC) для опытов - idf.py -B build-uac -DESPOSC_UAC=1 ...
+if(ESPOSC_UAC)
     set(AUDIO_OUT_SRC "audio_out_uac.c")
+else()
+    set(AUDIO_OUT_SRC "audio_out_i2s.c")
 endif()
 idf_component_register(SRCS "main.c" "usb_host_task.c" ${AUDIO_OUT_SRC} "midi_in_usb.c" "store.c" "samples_part.c" "panel_uart.c"
                        INCLUDE_DIRS "."
@@ -20,7 +20,7 @@ endif()
 if(ESPOSC_STRESS_PETRI)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE ESPOSC_STRESS_PETRI)
 endif()
-# Проверка ЦАПа тоном вместо синта (вместе с ESPOSC_I2S): -DESPOSC_I2S_TONE=1, каталог build-i2s-tone.
+# Проверка ЦАПа тоном вместо синта (сборка I2S): -DESPOSC_I2S_TONE=1, каталог build-i2s-tone.
 if(ESPOSC_I2S_TONE)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE ESPOSC_I2S_TONE)
 endif()
