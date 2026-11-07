@@ -396,7 +396,10 @@ static void synth_task(void *arg)
     uint8_t mode;
     if (!BENCH && store_load(STORE_MODE, &mode, 1) == 1 && mode <= MODE_SEQ) {
         s_demo_song = mode; // режим без BSP, выбранный тапом по статусу
+    } else if (!BENCH) {
+        s_demo_song = PL_DEMO_ACID; // без выбора - акид: в метале перегруз, артефакты на слух не отличить
     }
+    ESP_LOGI(TAG, "mode %d (0 metal, 1 acid, 2 drone, 3 seq)", s_demo_song);
     enter_mode(0, blob, blob_ok);
     if (BENCH) {
         ESP_LOGW(TAG, "STRESS BENCH build: stress song, BSP ignored, overload guard %s", GUARD ? "on" : "off");
