@@ -13,6 +13,7 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "freertos/task.h"
 #include "midi_in.h"
 #include "nvs.h"
@@ -89,6 +90,13 @@ static TaskHandle_t s_synth_task;
 static TaskHandle_t s_slot1_task;
 static int64_t s_slot1_worst_us;
 static int64_t s_slot1_sum_us;
+// Статистика раз в 10 с печатается не из synth_task: строка в COM на 115200 блокирует ~15 мс,
+// а в DMA ЦАПа запас 6-8 мс (недогруз каждые 10 с, слышно). Печать - задача стата на ядре 0.
+typedef struct {
+    uint32_t underruns, new_underruns, xfer_errors, petri;
+    int64_t worst_us, mean_us, slot1_worst_us, slot1_mean_us;
+} stats_msg_t;
+static QueueHandle_t s_stats_q;
 static pl_load_acc_t s_load; // период индикатора загрузки панели: ядро 0 копит в slot1_task, ядро 1 - в цикле
 
 // Стенд замеров (сборка с -DESPOSC_STRESS=1): вместо демо стресс-песня, BSP не слушаем, защита от перегруза
@@ -511,17 +519,17 @@ static void synth_task(void *arg)
             uint32_t u = audio_out_underruns();
             int64_t mean_us = blocks ? sum_us / blocks : 0;
             int64_t slot1_mean_us = blocks ? s_slot1_sum_us / (blocks * (BLOCK / CHUNK)) : 0;
-            if (u != last_underruns || worst_us > BLOCK_US * 7 / 10) {
-                ESP_LOGW(TAG, "underruns %lu (+%lu), xfer errors %lu, render worst %lld mean %lld us of %d, "
-                         "core 0 worst %lld mean %lld us of %d, petri %lu",
-                         (unsigned long)u, (unsigned long)(u - last_underruns),
-                         (unsigned long)audio_out_transfer_errors(), worst_us, mean_us, BLOCK_US,
-                         s_slot1_worst_us, slot1_mean_us, CHUNK * 1000000 / SR, (unsigned long)panel_uart_petri_count());
-            } else {
-                ESP_LOGI(TAG, "ok, render worst %lld mean %lld us of %d, core 0 worst %lld mean %lld us of %d, petri %lu",
-                         worst_us, mean_us, BLOCK_US, s_slot1_worst_us, slot1_mean_us, CHUNK * 1000000 / SR,
-                         (unsigned long)panel_uart_petri_count());
-            }
+            stats_msg_t m = {
+                .underruns = u,
+                .new_underruns = u - last_underruns,
+                .xfer_errors = audio_out_transfer_errors(),
+                .petri = panel_uart_petri_count(),
+                .worst_us = worst_us,
+                .mean_us = mean_us,
+                .slot1_worst_us = s_slot1_worst_us,
+                .slot1_mean_us = slot1_mean_us,
+            };
+            xQueueOverwrite(s_stats_q, &m);
 #ifdef ACID_PROFILE
             if (blocks) {
                 uint32_t div = (uint32_t)blocks * 240; // такты -> мкс на блок
@@ -538,9 +546,29 @@ static void synth_task(void *arg)
             worst_us = sum_us = 0;
             blocks = 0;
             s_slot1_worst_us = s_slot1_sum_us = 0;
-            ESP_LOGI(TAG, "%s (1 poweron or en, 3 sw, 4 panic, 5-7 wdt, 9 brownout, 14 glitch)", s_boot_str);
             next_stats = t0 + STATS_PERIOD_US;
         }
+    }
+}
+
+static void stats_task(void *arg)
+{
+    (void)arg;
+    stats_msg_t m;
+    for (;;) {
+        xQueueReceive(s_stats_q, &m, portMAX_DELAY);
+        if (m.new_underruns || m.worst_us > BLOCK_US * 7 / 10) {
+            ESP_LOGW(TAG, "underruns %lu (+%lu), xfer errors %lu, render worst %lld mean %lld us of %d, "
+                     "core 0 worst %lld mean %lld us of %d, petri %lu",
+                     (unsigned long)m.underruns, (unsigned long)m.new_underruns, (unsigned long)m.xfer_errors,
+                     m.worst_us, m.mean_us, BLOCK_US, m.slot1_worst_us, m.slot1_mean_us, CHUNK * 1000000 / SR,
+                     (unsigned long)m.petri);
+        } else {
+            ESP_LOGI(TAG, "ok, render worst %lld mean %lld us of %d, core 0 worst %lld mean %lld us of %d, petri %lu",
+                     m.worst_us, m.mean_us, BLOCK_US, m.slot1_worst_us, m.slot1_mean_us, CHUNK * 1000000 / SR,
+                     (unsigned long)m.petri);
+        }
+        ESP_LOGI(TAG, "%s (1 poweron or en, 3 sw, 4 panic, 5-7 wdt, 9 brownout, 14 glitch)", s_boot_str);
     }
 }
 
@@ -554,5 +582,7 @@ void app_main(void)
     ESP_ERROR_CHECK(midi_in_start());
     ESP_ERROR_CHECK(audio_out_start());
     ESP_ERROR_CHECK(panel_uart_start(&s_synth, &s_link, &s_custom, &s_scene, &s_seq, &s_demo_on, &s_live, &s_demo_song));
+    s_stats_q = xQueueCreate(1, sizeof(stats_msg_t));
+    xTaskCreatePinnedToCore(stats_task, "stats", 3072, NULL, 1, NULL, 0);
     xTaskCreatePinnedToCore(synth_task, "synth", 4096, NULL, 6, &s_synth_task, 1);
 }
