@@ -1,4 +1,5 @@
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "acid.h"
@@ -9,10 +10,12 @@
 #include "audio_out.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "midi_in.h"
+#include "nvs.h"
 #include "panel_uart.h"
 #include "pl_load.h"
 #include "samples_part.h"
@@ -30,6 +33,34 @@
 #define DEMO_EVENTS 96
 
 static const char *TAG = "main";
+
+// Счётчик загрузок и причины последних сбросов в NVS (своё пространство "diag", не store.h): переживает и
+// пропадание питания. Видно, сколько раз плата перезапускалась, пока COM был выдернут и лога не было.
+#define BOOT_HIST 8
+static char s_boot_str[80];
+
+static void boot_count(void)
+{
+    uint32_t boots = 0;
+    uint8_t hist[BOOT_HIST] = {0};
+    size_t len = sizeof hist;
+    nvs_handle_t h;
+    if (nvs_open("diag", NVS_READWRITE, &h) == ESP_OK) {
+        nvs_get_u32(h, "boots", &boots);
+        nvs_get_blob(h, "resets", hist, &len);
+        memmove(hist + 1, hist, BOOT_HIST - 1);
+        hist[0] = (uint8_t)esp_reset_reason();
+        boots++;
+        nvs_set_u32(h, "boots", boots);
+        nvs_set_blob(h, "resets", hist, sizeof hist);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+    int n = snprintf(s_boot_str, sizeof s_boot_str, "boot %lu, last resets", (unsigned long)boots);
+    for (int i = 0; i < BOOT_HIST && i < (int)boots && n < (int)sizeof s_boot_str - 4; i++) {
+        n += snprintf(s_boot_str + n, sizeof s_boot_str - n, " %d", hist[i]);
+    }
+}
 
 static acid_synth_t s_synth;
 static acid_demo_t s_demo;
@@ -507,6 +538,7 @@ static void synth_task(void *arg)
             worst_us = sum_us = 0;
             blocks = 0;
             s_slot1_worst_us = s_slot1_sum_us = 0;
+            ESP_LOGI(TAG, "%s (1 poweron or en, 3 sw, 4 panic, 5-7 wdt, 9 brownout, 14 glitch)", s_boot_str);
             next_stats = t0 + STATS_PERIOD_US;
         }
     }
@@ -515,6 +547,8 @@ static void synth_task(void *arg)
 void app_main(void)
 {
     ESP_ERROR_CHECK(store_start());
+    boot_count();
+    ESP_LOGI(TAG, "%s", s_boot_str);
     load_user_data();
     usb_host_start();
     ESP_ERROR_CHECK(midi_in_start());
