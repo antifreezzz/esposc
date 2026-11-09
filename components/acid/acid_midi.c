@@ -28,3 +28,19 @@ int acid_midi_parse(const uint8_t *buf, size_t len, acid_midi_event_t *out, int 
     }
     return n;
 }
+
+void acid_midi_count(acid_midi_stats_t *s, const acid_midi_event_t *ev, int n)
+{
+    for (int i = 0; i < n; i++) {
+        switch (ev[i].type) {
+        case ACID_MIDI_NOTE_ON:
+        case ACID_MIDI_NOTE_OFF: s->notes[ev[i].ch & 15]++; break;
+        case ACID_MIDI_CC: s->cc[ev[i].ch & 15]++; break;
+        case ACID_MIDI_CLOCK: s->clock++; break;
+        case ACID_MIDI_START:
+        case ACID_MIDI_CONTINUE: s->start++; break;
+        case ACID_MIDI_STOP: s->stop++; break;
+        default: break;
+        }
+    }
+}

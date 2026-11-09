@@ -95,6 +95,24 @@ TEST(test_midi_masks_data_bytes)
     CHECK(ev[1].type == ACID_MIDI_NOTE_ON && ev[1].d1 == 60 && ev[1].d2 == 100);
 }
 
+TEST(test_midi_count_by_channel)
+{
+    // Ноты (включая отпускания) и CC - по каналу, клок и транспорт - отдельно.
+    const uint8_t p[] = {
+        0x09, 0x94, 0x3C, 0x64, 0x08, 0x84, 0x3C, 0x00, 0x09, 0x91, 0x24, 0x7F,
+        0x0B, 0xB1, 0x0A, 0x05, 0x0F, 0xF8, 0x00, 0x00, 0x0F, 0xF8, 0x00, 0x00,
+        0x0F, 0xFA, 0x00, 0x00, 0x0F, 0xFC, 0x00, 0x00,
+    };
+    acid_midi_event_t e[16];
+    int n = acid_midi_parse(p, sizeof p, e, 16);
+    acid_midi_stats_t st = {0};
+    acid_midi_count(&st, e, n);
+    acid_midi_count(&st, e, 1);
+    CHECK(st.notes[4] == 3 && st.notes[1] == 1 && st.notes[0] == 0);
+    CHECK(st.cc[1] == 1 && st.cc[4] == 0);
+    CHECK(st.clock == 2 && st.start == 1 && st.stop == 1);
+}
+
 int main(void)
 {
     RUN(test_midi_note_on);
@@ -106,5 +124,6 @@ int main(void)
     RUN(test_midi_clock_start_continue);
     RUN(test_midi_parse_multi_and_padding);
     RUN(test_midi_masks_data_bytes);
+    RUN(test_midi_count_by_channel);
     TEST_MAIN_END();
 }

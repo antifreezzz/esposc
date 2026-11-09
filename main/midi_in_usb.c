@@ -26,6 +26,9 @@ static int s_in_flight;
 static int s_closing;
 static int s_errors;
 static volatile int s_connected;
+// Диагностика: что пришло от устройства. Пишет только колбэк приёма, читает stats_task.
+static acid_midi_stats_t s_stats;
+static uint32_t s_packets, s_dropped;
 
 int midi_in_connected(void)
 {
@@ -80,8 +83,12 @@ static void xfer_cb(usb_transfer_t *xfer)
         s_errors = 0;
         acid_midi_event_t ev[16];
         int n = acid_midi_parse(xfer->data_buffer, (size_t)xfer->actual_num_bytes, ev, 16);
+        s_packets += (uint32_t)xfer->actual_num_bytes / 4;
+        acid_midi_count(&s_stats, ev, n);
         for (int i = 0; i < n; i++) {
-            xQueueSend(s_queue, &ev[i], 0); // очередь полна - событие теряем, рендер не ждёт
+            if (xQueueSend(s_queue, &ev[i], 0) != pdTRUE) { // очередь полна - событие теряем, рендер не ждёт
+                s_dropped++;
+            }
         }
         submit();
     } else if (xfer->status == USB_TRANSFER_STATUS_NO_DEVICE || xfer->status == USB_TRANSFER_STATUS_CANCELED) {
@@ -179,6 +186,13 @@ static void client_cb(const usb_host_client_event_msg_t *msg, void *arg)
             finish_close();
         }
     }
+}
+
+void midi_in_stats(acid_midi_stats_t *st, uint32_t *packets, uint32_t *dropped)
+{
+    *st = s_stats;
+    *packets = s_packets;
+    *dropped = s_dropped;
 }
 
 static void client_task(void *arg)

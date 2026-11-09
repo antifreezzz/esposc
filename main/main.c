@@ -554,6 +554,32 @@ static void synth_task(void *arg)
     }
 }
 
+// Что пришло по USB-MIDI за 10 с: каналы 1..16 с нотами или CC, клок, Start/Stop, потери очереди.
+static void log_midi_in(void)
+{
+    static acid_midi_stats_t last;
+    static uint32_t last_packets, last_dropped;
+    acid_midi_stats_t st;
+    uint32_t packets, dropped;
+    midi_in_stats(&st, &packets, &dropped);
+    char buf[200];
+    int len = 0;
+    for (int ch = 0; ch < 16 && len < (int)sizeof buf - 32; ch++) {
+        uint32_t nt = st.notes[ch] - last.notes[ch], cc = st.cc[ch] - last.cc[ch];
+        if (nt || cc) {
+            len += snprintf(buf + len, sizeof buf - len, " ch%d n%lu c%lu", ch + 1, (unsigned long)nt,
+                            (unsigned long)cc);
+        }
+    }
+    ESP_LOGI(TAG, "midi in: packets %lu, dropped %lu, clock %lu, start %lu, stop %lu,%s",
+             (unsigned long)(packets - last_packets), (unsigned long)(dropped - last_dropped),
+             (unsigned long)(st.clock - last.clock), (unsigned long)(st.start - last.start),
+             (unsigned long)(st.stop - last.stop), len ? buf : " no notes/cc");
+    last = st;
+    last_packets = packets;
+    last_dropped = dropped;
+}
+
 static void stats_task(void *arg)
 {
     (void)arg;
@@ -572,6 +598,7 @@ static void stats_task(void *arg)
                      (unsigned long)m.petri);
         }
         ESP_LOGI(TAG, "%s (1 poweron or en, 3 sw, 4 panic, 5-7 wdt, 9 brownout, 14 glitch)", s_boot_str);
+        log_midi_in();
     }
 }
 
