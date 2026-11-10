@@ -27,7 +27,9 @@ static const group_t GROUP[PL_GROUPS] = {
     [PL_GRP_FX] = {"FX", 5, 345,
                    {{"FX", PL_TAB_PAGE, 8}, {"TONAL", PL_TAB_PAGE, 9}, {"MIX", PL_TAB_PAGE, 0},
                     {"USER", PL_TAB_USER, PL_USER_FIRST}, {"PETRI", PL_TAB_PAGE, PL_PAGE_PETRI}}},
-    [PL_GRP_MOD] = {"MOD", 0, 0, {{0}}},
+    [PL_GRP_MOD] = {"MOD", 4, 480,
+                    {{"M1", PL_TAB_PAGE, PL_PAGE_MOD1}, {"M2", PL_TAB_PAGE, PL_PAGE_MOD1 + 1},
+                     {"M3", PL_TAB_PAGE, PL_PAGE_MOD1 + 2}, {"M4", PL_TAB_PAGE, PL_PAGE_MOD1 + 3}}},
 };
 
 static const group_t *grp(int group)
@@ -43,7 +45,7 @@ const char *pl_ia_group_name(int group)
 
 int pl_ia_group_on(int group)
 {
-    return grp(group) && group != PL_GRP_MOD;
+    return grp(group) != NULL;
 }
 
 int pl_ia_tabs(int group)

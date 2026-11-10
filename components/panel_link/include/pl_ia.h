@@ -24,7 +24,7 @@ typedef struct {
 } pl_tab_t;
 
 const char *pl_ia_group_name(int group);
-int pl_ia_group_on(int group); // 0 - кнопка дока тусклая и не нажимается (MOD до модуляторов)
+int pl_ia_group_on(int group); // 0 - нет такой группы (кнопка дока тусклая и не нажимается)
 int pl_ia_tabs(int group);     // число вкладок, 0 - группа из одного экрана
 const pl_tab_t *pl_ia_tab(int group, int tab); // NULL - нет такой
 // Где живёт страница page (внутренний номер): 1 - нашлась. Своя страница - вкладка USER.

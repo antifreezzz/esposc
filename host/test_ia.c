@@ -19,11 +19,11 @@ TEST(test_groups)
 {
     CHECK(PL_GROUPS == 6);
     CHECK(!strcmp(pl_ia_group_name(PL_GRP_PERF), "PERF") && !strcmp(pl_ia_group_name(PL_GRP_SYN2), "SYN 2"));
-    CHECK(pl_ia_tabs(PL_GRP_PERF) == 0 && pl_ia_tabs(PL_GRP_MOD) == 0); // PERF - один экран, MOD - позже
+    CHECK(pl_ia_tabs(PL_GRP_PERF) == 0 && pl_ia_tabs(PL_GRP_MOD) == 4); // PERF - один экран, MOD - M1-M4
     CHECK(pl_ia_tabs(PL_GRP_DRUMS) == 7 && pl_ia_tabs(PL_GRP_SYN1) == 4 && pl_ia_tabs(PL_GRP_SYN2) == 4);
     CHECK(pl_ia_tabs(PL_GRP_FX) == 5);
     CHECK(pl_ia_tab(PL_GRP_PERF, 0) == NULL && pl_ia_tab(PL_GRP_FX, 5) == NULL && pl_ia_tab(-1, 0) == NULL);
-    CHECK(pl_ia_group_on(PL_GRP_PERF) && pl_ia_group_on(PL_GRP_FX) && !pl_ia_group_on(PL_GRP_MOD));
+    CHECK(pl_ia_group_on(PL_GRP_PERF) && pl_ia_group_on(PL_GRP_FX) && pl_ia_group_on(PL_GRP_MOD) && pl_ia_group_on(PL_GRP_DRUMS));
 }
 
 TEST(test_tab_pages)
@@ -47,11 +47,26 @@ TEST(test_tab_pages)
     CHECK(PL_PAGE_MIX_DRUMS == PL_USER_FIRST + PL_USER_PAGES && PL_PAGE_MIX_SYN1 == PL_PAGE_MIX_DRUMS + 1);
 }
 
+// Модуляторы: вкладки M1-M4 на страницы 23-26, на BSP 19-22.
+TEST(test_mod_tabs)
+{
+    CHECK(PL_PAGE_MOD1 == 23 && PL_BSP_MOD_FIRST == 19);
+    for (int k = 0; k < 4; k++) {
+        const pl_tab_t *t = pl_ia_tab(PL_GRP_MOD, k);
+        char name[3] = {'M', (char)('1' + k), 0};
+        CHECK(t != NULL && !strcmp(t->name, name) && t->kind == PL_TAB_PAGE && t->page == PL_PAGE_MOD1 + k);
+        CHECK(pl_ia_tab_bsp(PL_GRP_MOD, k, 0) == 19 + k);
+        int g = -1, tb = -1;
+        CHECK(pl_ia_find(PL_PAGE_MOD1 + k, &g, &tb) && g == PL_GRP_MOD && tb == k);
+    }
+    CHECK(!pl_ia_find(PL_PAGE_MOD1 + 4, &(int){0}, &(int){0}));
+}
+
 // Любая страница синта находится ровно в одном месте: энкодер 1 BSP открывает группу и вкладку.
 TEST(test_find_every_page)
 {
     int seen[PL_GROUPS][8] = {{0}};
-    for (int page = 0; page < PL_PAGE_MIX_DRUMS + PL_MIX_PAGES; page++) {
+    for (int page = 0; page < PL_PAGE_MOD1 + PL_MOD_PAGES; page++) {
         int g = -1, t = -1;
         CHECK(pl_ia_find(page, &g, &t));
         const pl_tab_t *tab = pl_ia_tab(g, t);
@@ -117,6 +132,7 @@ int main(void)
 {
     RUN(test_groups);
     RUN(test_tab_pages);
+    RUN(test_mod_tabs);
     RUN(test_find_every_page);
     RUN(test_tab_bsp_number);
     RUN(test_strips);
