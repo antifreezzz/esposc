@@ -185,12 +185,12 @@ void VirtualAnalogEngine::Render(
   float pw = 0.5f + (parameters.morph - 0.66f) * 1.46f;
   CONSTRAIN(pw, 0.5f, 0.995f);
   
-  // Render monster sync to AUX.
-  primary_.Render(primary_f, primary_sync_f, pw, shape, out, size);
-  auxiliary_.Render(auxiliary_f, auxiliary_sync_f, pw, shape, aux, size);
-  for (size_t i = 0; i < size; ++i) {
-    aux[i] = (aux[i] - out[i]) * 0.5f;
-  }
+  // acid: AUX (monster sync) is never read, and OUT is overwritten below;
+  // skipping it halves the cost of this model.
+  (void)primary_sync_f;
+  (void)auxiliary_sync_f;
+  (void)pw;
+  (void)shape;
   
   // Render double varishape to OUT.
   float square_pw = 1.3f * parameters.timbre - 0.15f;
