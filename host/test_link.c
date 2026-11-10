@@ -2,6 +2,7 @@
 #include "acid.h"
 #include "acid_custom.h"
 #include "acid_link.h"
+#include "pl_proto.h"
 #include "test.h"
 
 #define SR 48000.0f
@@ -274,7 +275,10 @@ TEST(test_user_panel_page)
     CHECK(l.user == 3 && ev.value == ACID_USER_FIRST + 3 && acid_link_page(&l, &s) == ACID_USER_FIRST + 3);
     CHECK(acid_link_panel_page(&l, &s, 2, &ev) == 1);
     CHECK(l.user == -1 && s.page == 2);
-    CHECK(acid_link_panel_page(&l, &s, ACID_USER_FIRST + 6, &ev) == 0);
+    CHECK(acid_link_panel_page(&l, &s, ACID_USER_FIRST + 6, &ev) == 1); // следом за своими - вкладки MIX
+    CHECK(l.user == -1 && l.mix == ACID_USER_FIRST + 6);
+    CHECK(acid_link_panel_page(&l, &s, ACID_USER_FIRST + 3, &ev) == 1 && l.mix == -1 && l.user == 3);
+    CHECK(acid_link_panel_page(&l, &s, PL_PAGE_MIX_DRUMS + PL_MIX_PAGES, &ev) == 0);
 }
 
 TEST(test_link_init_keeps_custom)
@@ -397,6 +401,43 @@ TEST(test_init_drops_deferred)
     CHECK(drain() == 0);
 }
 
+// Вкладка MIX инструмента открыта на панели: энкодеры BSP крутят её слоты, слот ведёт на штатную ручку.
+TEST(test_mix_page_from_bsp)
+{
+    reset();
+    bsp(1, 6);
+    CHECK(acid_link_panel_page(&l, &s, PL_PAGE_MIX_SYN1, &ev) == 1);
+    CHECK(ev.enc == 0 && ev.value == PL_PAGE_MIX_SYN1 && acid_link_page(&l, &s) == PL_PAGE_MIX_SYN1);
+    CHECK(s.page == 6); // штатная страница синта прежняя
+    CHECK(bsp(2, 90) == 1);
+    CHECK(knob(0, 4) == 90); // громкость синта 1: MIX E4
+    CHECK(ev.page == 0 && ev.enc == 3 && ev.value == 90 && ev.bsp_pos == 90 && ev.src == ACID_SRC_BSP);
+    CHECK(bsp(6, 70) == 1);
+    CHECK(knob(6, 10) == 70); // TRANS у 303 - E10
+    int was = knob(0, 12);
+    CHECK(bsp(12, 50) == 0); // пустой слот
+    CHECK(knob(0, 12) == was && knob(6, 12) != 50);
+    CHECK(acid_link_panel_page(&l, &s, PL_PAGE_MIX_DRUMS, &ev) == 1);
+    CHECK(bsp(2, 55) == 1 && knob(0, 6) == 55); // бочка: MIX E6
+    bsp(1, 2); // энкодер 1 - снова страница с BSP
+    CHECK(acid_link_page(&l, &s) == 2);
+    bsp(2, 33);
+    CHECK(knob(2, 2) == 33);
+    CHECK(acid_link_panel_page(&l, &s, PL_PAGE_MIX_DRUMS + PL_MIX_PAGES, &ev) == 0);
+}
+
+// Подхват на вкладке MIX - по цели: ручку, поправленную с панели, энкодер не двигает, пока не дойдёт.
+TEST(test_mix_page_pickup)
+{
+    reset();
+    panel(0, 4, 100);
+    acid_link_panel_page(&l, &s, PL_PAGE_MIX_SYN1, &ev);
+    CHECK(bsp(2, 20) == 1);
+    CHECK(knob(0, 4) == 100 && ev.held == 1 && ev.page == 0 && ev.enc == 3 && ev.bsp_pos == 20);
+    bsp(2, 110);
+    CHECK(knob(0, 4) == 110 && ev.held == 0);
+}
+
 TEST(test_bsp_user_page_still_10)
 {
     reset_custom();
@@ -452,6 +493,8 @@ int main(void)
     RUN(test_user_page_pickup);
     RUN(test_user_panel_set_macro);
     RUN(test_user_panel_page);
+    RUN(test_mix_page_from_bsp);
+    RUN(test_mix_page_pickup);
     RUN(test_link_init_keeps_custom);
     RUN(test_page_reports_user);
     RUN(test_custom_edit_marks_due);

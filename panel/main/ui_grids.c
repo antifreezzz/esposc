@@ -61,7 +61,7 @@ static lv_obj_t *tile_at(int id, int idx, lv_obj_t **lbl, const char *text)
 {
     int x, y, w, h;
     pl_gui_rect(id, idx, &x, &y, &w, &h);
-    lv_obj_t *t = ui_box(g.box, x, y - UI_TOP_H, w, h, C_TILE);
+    lv_obj_t *t = ui_box(g.box, x, y - UI_WORK_Y, w, h, C_TILE);
     lv_obj_set_style_radius(t, 10, 0);
     lv_obj_set_style_border_width(t, 1, 0);
     lv_obj_set_style_border_color(t, lv_color_hex(C_TILE_BRD), 0);
@@ -80,7 +80,7 @@ static void lit(lv_obj_t *t, lv_obj_t *lbl, int on, uint32_t color)
 
 void ug_build(lv_obj_t *scr)
 {
-    g.box = ui_box(scr, 0, UI_TOP_H, UI_W, UI_W - UI_TOP_H, C_BG);
+    g.box = ui_box(scr, 0, UI_WORK_Y, UI_W, UI_WORK_H, C_BG);
     g.on = tile_at(PL_GUI_ON, 0, &g.on_lbl, "OFF");
     g.fill = tile_at(PL_GUI_FILL, 0, &g.fill_lbl, "FILL");
     static const uint8_t SEG_ENC[PL_GUI_IDS] = {[PL_GUI_HAT] = 8, [PL_GUI_TIME] = 9, [PL_GUI_EVERY] = 10, [PL_GUI_LEN] = 11};
@@ -95,7 +95,7 @@ void ug_build(lv_obj_t *scr)
 
     int x, y, w, h;
     pl_gui_rect(PL_GUI_XY, 0, &x, &y, &w, &h);
-    g.field = ui_box(g.box, x, y - UI_TOP_H, w, h, C_FIELD);
+    g.field = ui_box(g.box, x, y - UI_WORK_Y, w, h, C_FIELD);
     lv_obj_set_style_radius(g.field, 10, 0);
     lv_obj_set_style_border_width(g.field, 1, 0);
     lv_obj_set_style_border_color(g.field, lv_color_hex(C_TILE_BRD), 0);
@@ -108,7 +108,7 @@ void ug_build(lv_obj_t *scr)
 
     for (int i = 0; i < 4; i++) {
         pl_gui_rect(PL_GUI_SLIDER, i, &x, &y, &w, &h);
-        g.track[i] = ui_box(g.box, x, y - UI_TOP_H, w, h, C_TILE);
+        g.track[i] = ui_box(g.box, x, y - UI_WORK_Y, w, h, C_TILE);
         lv_obj_set_style_radius(g.track[i], 10, 0);
         g.bar[i] = ui_box(g.track[i], 0, h, w, 0, i < 3 ? C_HIT : C_CHAOS);
         lv_obj_set_style_radius(g.bar[i], 10, 0);
@@ -124,15 +124,15 @@ void ug_build(lv_obj_t *scr)
         pl_gui_cell(0, p, &x, &y, &w, &h);
         lv_obj_t *l = ui_label(g.box, &bc_17, C_DIM);
         lv_label_set_text(l, PART_NAME[p]);
-        lv_obj_set_pos(l, 12, y - UI_TOP_H + h / 2 - 8);
+        lv_obj_set_pos(l, 12, y - UI_WORK_Y + h / 2 - 8);
     }
     int x1, y1;
     pl_gui_cell(0, 0, &x, &y, &w, &h);
     pl_gui_cell(STEPS - 1, PARTS - 1, &x1, &y1, &w, &h);
-    g.grid = ui_box(g.box, x, y - UI_TOP_H, x1 + w - x, y1 + h - y, C_BG);
+    g.grid = ui_box(g.box, x, y - UI_WORK_Y, x1 + w - x, y1 + h - y, C_BG);
     lv_obj_add_event_cb(g.grid, grid_draw, LV_EVENT_DRAW_MAIN, NULL);
     pl_gui_cell(0, PARTS - 1, &x, &y, &w, &h);
-    g.mark = ui_box(g.box, x, y + h + 2 - UI_TOP_H, w, 4, C_ACCENT); // бегущий шаг под сеткой
+    g.mark = ui_box(g.box, x, y + h + 2 - UI_WORK_Y, w, 4, C_ACCENT); // бегущий шаг под сеткой
     lv_obj_set_style_radius(g.mark, 2, 0);
 
     g.drawn_on = g.drawn_fill = g.drawn_step = -1;

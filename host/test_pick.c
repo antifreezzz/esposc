@@ -199,6 +199,18 @@ TEST(test_dish_link)
     CHECK(!pl_view_dish(&m, PL_USER_FIRST));
 }
 
+// Вкладка MIX: класс ручки - как у цели (TRANS - сетка значений), значения берутся с её страницы.
+TEST(test_view_mix)
+{
+    static pl_model_t m;
+    pl_model_init(&m);
+    m.have = 1;
+    int tp, te;
+    CHECK(pl_pick_view(&m, PL_PAGE_MIX_SYN1, 1, &tp, &te) == PL_PICK_NONE && tp == 0 && te == 3);
+    CHECK(pl_pick_view(&m, PL_PAGE_MIX_SYN1, 5, &tp, &te) == PL_PICK_GRID && tp == PL_PAGE_SYNTH1 && te == 9);
+    CHECK(pl_pick_view(&m, PL_PAGE_MIX_SYN1, 12, &tp, &te) == PL_PICK_NONE); // пустой слот
+}
+
 int main(void)
 {
     RUN(test_kind_synth);
@@ -212,5 +224,6 @@ int main(void)
     RUN(test_cells_hit_and_fit);
     RUN(test_view_alias);
     RUN(test_dish_link);
+    RUN(test_view_mix);
     TEST_MAIN_END();
 }

@@ -61,6 +61,9 @@ int pl_pick_kind(int page, int enc, const uint8_t raw[16])
 int pl_pick_view(const pl_model_t *m, int page, int enc, int *tp, int *te)
 {
     *tp = page, *te = enc;
+    if (page >= PL_PAGE_MIX_DRUMS) { // вкладка MIX: класс цели, пустой слот - ничего
+        return pl_view_mix(m, page, enc, tp, te) ? pl_pick_kind(*tp, *te, m->raw[*tp]) : PL_PICK_NONE;
+    }
     if (page < PL_PAGES) {
         return page >= 0 ? pl_pick_kind(page, enc, m->raw[page]) : PL_PICK_NONE;
     }

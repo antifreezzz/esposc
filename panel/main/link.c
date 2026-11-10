@@ -84,9 +84,10 @@ void link_scene(int op, int n, int bars)
     send(PL_SCENE, &s, sizeof s);
 }
 
-void link_demo(void)
+void link_mode(int mode)
 {
-    send(PL_DEMO, NULL, 0);
+    uint8_t m = (uint8_t)mode;
+    send(PL_MODE, &m, 1);
 }
 
 void link_petri(const uint8_t out[4][PL_PETRI_PART_MAX], const size_t len[4])

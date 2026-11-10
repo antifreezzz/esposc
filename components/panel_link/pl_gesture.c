@@ -26,12 +26,23 @@ int pl_sector(int x, int y)
     return (int)((a + SECTOR_DEG / 2) / SECTOR_DEG) % SECTORS;
 }
 
+#define GRID_X 9                                // левый край первой карточки
+#define GRID_Y (PL_IA_TOP_H + PL_IA_TABS_H + 4) // верх первого ряда
+#define GRID_DX 156
+
 int pl_grid_cell(int x, int y)
 {
-    if (x < 6 || x >= 6 + 3 * 156 || y < 44 || y >= 44 + 5 * 86) {
+    int x0 = GRID_X - 3, y0 = GRID_Y - 2; // зазор поровну по краям
+    if (x < x0 || x >= x0 + 3 * GRID_DX || y < y0 || y >= y0 + 5 * PL_IA_ROW_H) {
         return -1;
     }
-    return ((y - 44) / 86) * 3 + (x - 6) / 156;
+    return ((y - y0) / PL_IA_ROW_H) * 3 + (x - x0) / GRID_DX;
+}
+
+void pl_grid_rect(int i, int *x, int *y)
+{
+    *x = GRID_X + (i % 3) * GRID_DX;
+    *y = GRID_Y + (i / 3) * PL_IA_ROW_H;
 }
 
 void pl_turn_begin(pl_turn_t *t, int x, int y, int v, int lo, int hi)

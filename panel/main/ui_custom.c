@@ -1,4 +1,4 @@
-// Экран сцен и оверлеи редактора своих страниц (список целей слота, ход lo/hi).
+// Оверлеи редактора своих страниц (список целей слота, ход lo/hi) и XY-пэд своей страницы.
 #include <stdio.h>
 
 #include "link.h"
@@ -8,25 +8,22 @@
 #include "pl_xy.h"
 #include "ui_priv.h"
 
-#define STORE_MS 600   // удержание плитки сцены дольше - запись
-#define SAVED_STEPS 100 // ~1 с подписи SAVED (шаг интерфейса 10 мс)
 #define ROW_Y0 10
 #define ROW_DY 72
 #define ROW_H 62
 #define ROW_X_DEL 400 // правее - крестик «убрать цель»
 #define RANGE_H 150   // верх оверлея хода: плитки LO и HI, ниже - зона вращения
-// XY-пэд в координатах экрана: поле, под ним полоса с HOLD и подписями осей.
+#define SIDE_W 222
+// XY-пэд в координатах экрана между вкладками и доком: поле, под ним полоса с HOLD и подписями осей.
 #define XY_X 8
-#define XY_Y (UI_TOP_H + 8)
+#define XY_Y (UI_WORK_Y + 6)
 #define XY_W (UI_W - 16)
-#define XY_H 368
-#define XY_STRIP_Y (XY_Y + XY_H + 8)
+#define XY_H 292
+#define XY_STRIP_Y (XY_Y + XY_H + 6)
 #define XY_HOLD_W 100
 #define XY_DOT 24
 
 static struct {
-    lv_obj_t *sc_box, *sc_tile[10], *sc_name[10], *sc_sub[10];
-    int bars, saved_tile, saved_steps, drawn_cur;
     lv_obj_t *ed_box, *row[PL_TARGETS + 1], *row_name[PL_TARGETS + 1], *row_sub[PL_TARGETS + 1], *row_del[PL_TARGETS];
     lv_obj_t *rng_box, *side[2], *side_val[2], *rng_name;
     int drawn_which;
@@ -54,26 +51,6 @@ static void border(lv_obj_t *t, int on, uint32_t color)
 
 void uc_build(lv_obj_t *scr)
 {
-    // Сцены: 8 плиток в раскладке меню, девятая - длина перехода, десятая - подсказка.
-    c.sc_box = ui_box(scr, 0, UI_TOP_H, UI_W, UI_W - UI_TOP_H, C_BG);
-    for (int p = 0; p < 10; p++) {
-        int x, y;
-        ui_tile_xy(p, &x, &y);
-        c.sc_tile[p] = p < 9 ? tile(c.sc_box, x, y, UI_TILE_W, UI_TILE_H) : ui_box(c.sc_box, x, y, UI_TILE_W, UI_TILE_H, C_BG);
-        c.sc_name[p] = ui_label(c.sc_tile[p], &bc_22, p == 8 ? C_ACCENT : C_TEXT);
-        lv_obj_align(c.sc_name[p], LV_ALIGN_TOP_LEFT, 16, 12);
-        c.sc_sub[p] = ui_label(c.sc_tile[p], &bc_15, C_DIM);
-        lv_obj_align(c.sc_sub[p], LV_ALIGN_BOTTOM_LEFT, 17, -11);
-        if (p < 8) {
-            lv_label_set_text_fmt(c.sc_name[p], "SCENE %d", p + 1);
-        }
-    }
-    lv_label_set_text(c.sc_name[9], "TAP - RECALL");
-    lv_label_set_text(c.sc_sub[9], "HOLD - SAVE CURRENT SOUND");
-    c.bars = 0;
-    c.saved_tile = -1;
-    c.drawn_cur = -2;
-
     // Редактор: цели слота строками, последняя строка - добавить.
     c.ed_box = ui_box(scr, 0, UI_TOP_H, UI_W, UI_W - UI_TOP_H, C_BG);
     for (int i = 0; i <= PL_TARGETS; i++) {
@@ -94,7 +71,7 @@ void uc_build(lv_obj_t *scr)
     // Ход цели: плитки LO и HI сверху (тап выбирает), ниже - вращение пальцем вокруг центра.
     c.rng_box = ui_box(scr, 0, UI_TOP_H, UI_W, UI_W - UI_TOP_H, C_BG);
     for (int s = 0; s < 2; s++) {
-        c.side[s] = tile(c.rng_box, 12 + s * 234, 10, UI_TILE_W, RANGE_H - 20);
+        c.side[s] = tile(c.rng_box, 12 + s * 234, 10, SIDE_W, RANGE_H - 20);
         lv_obj_t *t = ui_label(c.side[s], &bc_22, C_DIM);
         lv_label_set_text(t, s ? "HI (127)" : "LO (0)");
         lv_obj_align(t, LV_ALIGN_TOP_LEFT, 16, 12);
@@ -109,8 +86,8 @@ void uc_build(lv_obj_t *scr)
     c.drawn_which = -1;
 
     // XY-пэд своей страницы: перекрестие и точка - живые значения слотов E2 (X) и E3 (Y).
-    c.xy_box = ui_box(scr, 0, UI_TOP_H, UI_W, UI_W - UI_TOP_H, C_BG);
-    c.xy_field = ui_box(c.xy_box, XY_X, XY_Y - UI_TOP_H, XY_W, XY_H, C_FIELD);
+    c.xy_box = ui_box(scr, 0, UI_WORK_Y, UI_W, UI_WORK_H, C_BG);
+    c.xy_field = ui_box(c.xy_box, XY_X, XY_Y - UI_WORK_Y, XY_W, XY_H, C_FIELD);
     lv_obj_set_style_radius(c.xy_field, UI_R, 0);
     lv_obj_set_style_border_width(c.xy_field, 1, 0);
     lv_obj_set_style_border_color(c.xy_field, lv_color_hex(C_TILE_BRD), 0);
@@ -118,7 +95,7 @@ void uc_build(lv_obj_t *scr)
     c.xy_hl = ui_box(c.xy_field, 0, 0, XY_W, 2, C_TRACK);
     c.xy_dot = ui_box(c.xy_field, 0, 0, XY_DOT, XY_DOT, C_ACCENT);
     lv_obj_set_style_radius(c.xy_dot, XY_DOT / 2, 0);
-    c.xy_hold = tile(c.xy_box, XY_X, XY_STRIP_Y - UI_TOP_H, XY_HOLD_W, UI_W - XY_STRIP_Y - 6);
+    c.xy_hold = tile(c.xy_box, XY_X, XY_STRIP_Y - UI_WORK_Y, XY_HOLD_W, UI_WORK_Y + UI_WORK_H - XY_STRIP_Y - 6);
     c.xy_hold_lbl = ui_label(c.xy_hold, &bc_17, C_DIM);
     lv_label_set_text(c.xy_hold_lbl, "HOLD");
     lv_obj_center(c.xy_hold_lbl);
@@ -126,7 +103,7 @@ void uc_build(lv_obj_t *scr)
         c.xy_lab[a] = ui_label(c.xy_box, &bc_17, C_TEXT);
         lv_obj_set_size(c.xy_lab[a], UI_W - XY_HOLD_W - 32, 18);
         lv_label_set_long_mode(c.xy_lab[a], LV_LABEL_LONG_MODE_DOTS);
-        lv_obj_set_pos(c.xy_lab[a], XY_X + XY_HOLD_W + 14, XY_STRIP_Y - UI_TOP_H + 2 + a * 22);
+        lv_obj_set_pos(c.xy_lab[a], XY_X + XY_HOLD_W + 14, XY_STRIP_Y - UI_WORK_Y + 3 + a * 22);
     }
     pl_xy_init(&c.xy, XY_X, XY_Y, XY_W, XY_H);
     c.xy_drawn[0] = c.xy_drawn[1] = -1;
@@ -134,59 +111,8 @@ void uc_build(lv_obj_t *scr)
     c.xy_page = -1;
 
     ui_show(c.xy_box, 0);
-    ui_show(c.sc_box, 0);
     ui_show(c.ed_box, 0);
     ui_show(c.rng_box, 0);
-}
-
-void uc_scenes_show(int on)
-{
-    ui_show(c.sc_box, on);
-}
-
-void uc_scenes_draw(const pl_model_t *m)
-{
-    int cur = m->scene.cur == PL_NONE ? -1 : m->scene.cur;
-    for (int p = 0; p < 8; p++) {
-        int used = m->scene.used >> p & 1;
-        const char *sub = !used ? "EMPTY" : p != cur ? "READY" : m->scene.state == 1 ? "WAIT BAR" : m->scene.state == 2 ? "MORPH" : "ON";
-        if (p == c.saved_tile && c.saved_steps > 0) {
-            sub = "SAVED";
-        }
-        ui_text(c.sc_sub[p], sub);
-        lv_obj_set_style_bg_color(c.sc_tile[p], lv_color_hex(used ? C_TILE : C_TILE_EMPTY), 0);
-    }
-    if (cur != c.drawn_cur) {
-        for (int p = 0; p < 8; p++) {
-            border(c.sc_tile[p], p == cur, C_ACCENT);
-        }
-        c.drawn_cur = cur;
-    }
-    if (c.saved_steps > 0) {
-        c.saved_steps--;
-    }
-    char buf[16];
-    snprintf(buf, sizeof buf, "MORPH %d", c.bars);
-    ui_text(c.sc_name[8], buf);
-    ui_text(c.sc_sub[8], c.bars == 0 ? "AT NEXT BAR" : c.bars == 1 ? "OVER 1 BAR" : "OVER BARS");
-}
-
-void uc_scenes_input(const pl_model_t *m, int ev, int x0, int y0, int x1, int y1, uint32_t held_ms)
-{
-    int done = pl_press_tap(ev);
-    int p = ui_tile_at(x0, y0);
-    if (!done || p < 0 || p != ui_tile_at(x1, y1) || !m->have) {
-        return;
-    }
-    if (p == 8) {
-        c.bars = (c.bars + 1) % 9;
-    } else if (p < 8 && ev == PL_PRESS_RELEASE && held_ms >= STORE_MS) {
-        link_scene(PL_SCENE_STORE, p, 0);
-        c.saved_tile = p;
-        c.saved_steps = SAVED_STEPS;
-    } else if (p < 8 && (m->scene.used >> p & 1)) {
-        link_scene(PL_SCENE_RECALL, p, c.bars);
-    }
 }
 
 static int count(const pl_model_t *m, const pl_edit_t *e)
@@ -371,7 +297,8 @@ void uc_xy_release(pl_model_t *m)
 void uc_xy_input(pl_model_t *m, int page, int ev, int down, int x, int y, int x0, int y0, uint32_t ms)
 {
     if (!down) {
-        if (c.xy_page < 0 && pl_press_tap(ev) && x0 >= XY_X && x0 < XY_X + XY_HOLD_W && y0 >= XY_STRIP_Y) {
+        if (c.xy_page < 0 && pl_press_tap(ev) && x0 >= XY_X && x0 < XY_X + XY_HOLD_W && y0 >= XY_STRIP_Y &&
+            y0 < UI_WORK_Y + UI_WORK_H) {
             c.xy.hold = !c.xy.hold;
         }
         uc_xy_release(m);

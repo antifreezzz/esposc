@@ -25,7 +25,7 @@ TEST(test_hit_centers)
     }
 }
 
-// Элементы внутри рабочей области 480 x 440 под шапкой и не налезают друг на друга.
+// Элементы между полосой вкладок и доком (y 76..432) и не налезают друг на друга.
 TEST(test_rects_inside_and_apart)
 {
     int x, y, w, h;
@@ -34,12 +34,14 @@ TEST(test_rects_inside_and_apart)
             if (!pl_gui_rect(id, i, &x, &y, &w, &h)) {
                 continue;
             }
-            CHECK(x >= 0 && y >= 40 && x + w <= 480 && y + h <= 480 && w > 0 && h > 0);
+            CHECK(x >= 0 && y >= 76 && x + w <= 480 && y + h <= 432 && w > 0 && h > 0);
             int arg;
             CHECK(pl_gui_at(x, y, &arg) == id && arg == i); // угол свой
         }
     }
-    CHECK(pl_gui_at(5, 20, &x) == PL_GUI_NONE); // шапка
+    CHECK(pl_gui_at(5, 20, &x) == PL_GUI_NONE);  // шапка
+    CHECK(pl_gui_at(5, 60, &x) == PL_GUI_NONE);  // вкладки
+    CHECK(pl_gui_at(5, 450, &x) == PL_GUI_NONE); // док
 }
 
 TEST(test_enc_of)
@@ -68,13 +70,13 @@ TEST(test_slider_value)
     CHECK(mid > 55 && mid < 72);
 }
 
-// Клетка сетки шагов: 32 столбца, 3 дорожки.
+// Клетка сетки шагов: 32 столбца, 3 дорожки, под сеткой помещается бегущий шаг до дока.
 TEST(test_cell_rects)
 {
     int x0, y0, w, h, x1, y1;
     CHECK(pl_gui_cell(0, 0, &x0, &y0, &w, &h));
     CHECK(pl_gui_cell(31, 2, &x1, &y1, &w, &h));
-    CHECK(x1 > x0 && y1 > y0 && x1 + w <= 480 && y1 + h <= 480);
+    CHECK(x1 > x0 && y1 > y0 && y0 >= 76 && x1 + w <= 480 && y1 + h + 6 <= 432);
     CHECK(!pl_gui_cell(32, 0, &x0, &y0, &w, &h));
 }
 

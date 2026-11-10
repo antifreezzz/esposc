@@ -394,6 +394,7 @@ static void synth_task(void *arg)
     int live = 0;
     int fade = 0; // блоков ухода громкости до смены режима
     int next_song = 0; // уход громкости - ради следующей песни демо, режим тот же
+    int next_mode = 0; // какой режим без BSP включить после ухода (next_song)
     int save_pending = 0;
     int quiet = 0;
 
@@ -448,6 +449,22 @@ static void synth_task(void *arg)
             } else {
                 fade = FADE_BLOCKS; // тап по статусу панели: следующая песня или дрон, синт с нуля
                 next_song = 1;
+                next_mode = (s_demo_song + 1) % (MODE_SEQ + 1);
+            }
+        }
+        int want = BENCH || fade ? -1 : panel_uart_take_mode(); // режим из списка; пока идёт уход - ждёт
+        if (want >= 0 && fade == 0 && pl_mode_ok(live, want)) {
+            if (live) {
+                if ((want == PL_DEMO_DRONE) != s_drone) {
+                    s_drone = !s_drone;
+                    acid_synth_set_drone(&s_synth, s_drone);
+                    panel_uart_snapshot_due();
+                    ESP_LOGI(TAG, "live drone %d", s_drone);
+                }
+            } else if (want != s_demo_song) {
+                fade = FADE_BLOCKS;
+                next_song = 1;
+                next_mode = want;
             }
         }
         int64_t t0 = esp_timer_get_time();
@@ -458,7 +475,7 @@ static void synth_task(void *arg)
                 keep_user_knobs(blob, &blob_ok, &save_pending); // звук ушёл: синт сейчас начнётся с нуля
             }
             if (--fade == 0 && next_song) {
-                s_demo_song = (s_demo_song + 1) % (MODE_SEQ + 1);
+                s_demo_song = next_mode;
                 uint8_t mode = (uint8_t)s_demo_song;
                 store_save(STORE_MODE, &mode, 1); // звук ушёл: можно писать
                 enter_mode(0, blob, blob_ok);

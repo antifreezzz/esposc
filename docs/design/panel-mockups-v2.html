@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>esposc: панель по инструментам, макеты</title>
+<style>
+@font-face { font-family: 'Barlow Condensed'; src: url(fonts/BarlowCondensed-Medium.ttf); font-weight: 500; }
+@font-face { font-family: 'Barlow Condensed'; src: url(fonts/BarlowCondensed-SemiBold.ttf); font-weight: 600; }
+body { margin: 0; background: #1a1b1e; color: #d8d8d8; font: 15px/1.5 system-ui, sans-serif; }
+main { max-width: 1560px; margin: 0 auto; padding: 24px 32px 64px; }
+h1 { font-size: 26px; margin: 0 0 6px; }
+p, li { color: #a9abb2; max-width: 980px; }
+.bar { display: flex; gap: 8px; align-items: center; margin: 12px 0 20px; }
+.bar button { background: #2a2c31; color: #ddd; border: 1px solid #3a3d44; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+.bar button.on { background: #ddd; color: #111; }
+.screens { display: flex; flex-wrap: wrap; gap: 24px 20px; }
+.shot { margin: 0; width: 480px; }
+.shot figcaption { font-size: 13px; color: #a9abb2; margin-top: 8px; }
+.shot figcaption b { color: #d8d8d8; font-weight: 500; }
+.scr { position: relative; width: 480px; height: 480px; overflow: hidden; background: #13110e; }
+.scr * { box-sizing: border-box; }
+.a { position: absolute; }
+.t { position: absolute; white-space: nowrap; }
+.screens.x2 .scr { zoom: 2; }
+.screens.x2 .shot { width: 960px; }
+code { background: #26282d; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+<h1>esposc: панель по инструментам, макеты 480x480</h1>
+<p>Каркас вместо меню с плитками: шапка 40 px (что открыто, PLAY и темп, режим, загрузка ядер - всегда на экране),
+вкладки 36 px, рабочая область 356 px, док 48 px. Стиль «Б. Тёплый аналог» без изменений, цвета из
+<code>panel/main/ui_priv.h</code> и <code>pl_labels.c</code>. Только то, что LVGL рисует дёшево: заливка, рамка,
+радиус, дуга, линия, текст.</p>
+<ul>
+<li>Док: любое место - один тап. Голубая точка на кнопке дока - там стоит энкодер 1 BSP.</li>
+<li>Вкладки: всё про инструмент рядом. Число перед именем - номер страницы на экране BSP (у вкладок без номера
+энкодеры BSP 2-16 крутят их, пока вкладка открыта).</li>
+<li>Карточка ручки стала ниже: 80 -> 66 px, дуга 56 -> 48 px. Захват и большая дуга в центре - как сейчас.</li>
+</ul>
+<div class="bar"><span>Масштаб:</span><button data-z="1" class="on">1x</button><button data-z="2">2x</button></div>
+<div class="screens" id="screens"></div>
+</main>
+
+<script>
+// Токены стиля Б (ui_priv.h)
+const C = { bg: "#13110e", bar: "#1b1814", line: "#2b2720", surf: "#1d1a15", field: "#171410", brd: "#2b2720",
+  text: "#f1e7d0", dim: "#a99f8a", muted: "#5f574a", track: "#2b2720", cell: "#26221c", ok: "#a8d672", bsp: "#8fd3e8",
+  warn: "#ffb648", bad: "#ff6b4a", accent: "#ff9d2e" };
+// Цвета страниц (pl_labels.c PAGE_COLOR): MIX, DRUMS, CYM, TOMS, RIM, COW, S1, S2, FX, TONAL, L1, L2, GRIDS, PETRI
+const PC = ["#f2c46d", "#ff6b4a", "#ffb648", "#ff8a4c", "#ffa25e", "#ffd66b", "#ff9d2e", "#a8d672", "#e39bb0", "#7fd1c0",
+  "#ff9d2e", "#a8d672", "#ff6b4a", "#7fd1a0"];
+const MODC = "#c4a6e0"; // новая группа MOD
+// Док: имя, цвет группы
+const DOCK = [["PERF", C.text], ["DRUMS", PC[1]], ["SYN 1", PC[6]], ["SYN 2", PC[7]], ["FX", PC[8]], ["MOD", MODC]];
+const TOP = 40, TABS = 36, DOCK_H = 48, WORK_Y = TOP + TABS, DOCK_Y = 480 - DOCK_H;
+
+function mix(a, b, k) {
+  const p = (h, i) => parseInt(h.slice(1 + i * 2, 3 + i * 2), 16);
+  return "#" + [0, 1, 2].map(i => Math.round(p(a, i) * (1 - k) + p(b, i) * k).toString(16).padStart(2, "0")).join("");
+}
+function B(x, y, w, h, st, inner = "") {
+  return `<div class="a" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;${st}">${inner}</div>`;
+}
+function T(x, y, txt, st) {
+  return `<div class="t" style="left:${x}px;top:${y}px;${st}">${txt}</div>`;
+}
+function TC(x, y, w, h, txt, st) {
+  return `<div class="t" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;line-height:${h}px;text-align:center;${st}">${txt}</div>`;
+}
+function F(size, color, bold = false, extra = "") {
+  return `font-family:'Barlow Condensed';font-weight:${bold ? 600 : 500};font-size:${size}px;color:${color};letter-spacing:0.02em;${extra}`;
+}
+function arcPath(c, r, a0, a1) {
+  const pt = a => [c + r * Math.cos(a * Math.PI / 180), c + r * Math.sin(a * Math.PI / 180)];
+  const [x0, y0] = pt(a0), [x1, y1] = pt(a1);
+  return `M${x0.toFixed(2)} ${y0.toFixed(2)} A${r} ${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+}
+function arc(x, y, d, w, v, color, inner = "", mod = null) {
+  const c = d / 2, r = c - w / 2, end = 135 + 270 * v / 127;
+  let s = `<path d="${arcPath(c, r, 135, 405)}" stroke="${C.track}" stroke-width="${w}" fill="none" stroke-linecap="round"/>`;
+  if (v > 0) s += `<path d="${arcPath(c, r, 135, Math.max(end, 135.5))}" stroke="${color}" stroke-width="${w}" fill="none" stroke-linecap="round"/>`;
+  if (mod !== null) { // метка модуляции: действующее значение
+    const a = (135 + 270 * mod / 127) * Math.PI / 180;
+    s += `<circle cx="${(c + r * Math.cos(a)).toFixed(1)}" cy="${(c + r * Math.sin(a)).toFixed(1)}" r="${w / 2 + 1.5}" fill="${MODC}" stroke="${C.surf}" stroke-width="2"/>`;
+  }
+  return B(x, y, d, d, "", `<svg width="${d}" height="${d}" style="position:absolute">${s}</svg>${inner}`);
+}
+
+// Шапка: слева что открыто, справа PLAY + темп, режим, загрузка ядер
+function header(title, sub, pc, o = {}) {
+  let h = B(0, 0, 480, TOP, `background:${C.bar};border-bottom:1px solid ${C.line}`);
+  h += T(12, 0, title, F(22, pc, true, "line-height:40px"));
+  if (sub) h += T(12 + title.length * 10.5 + 8, 0, sub, F(17, C.dim, false, "line-height:42px"));
+  // PLAY: треугольник (в LVGL - lv_draw_triangle) или квадрат STOP
+  const run = o.run ?? true;
+  h += B(228, 6, 84, 28, `background:${C.surf};border:1px solid ${run ? C.ok : C.brd};border-radius:8px`,
+    (run ? `<div class="a" style="left:10px;top:7px;border-left:11px solid ${C.ok};border-top:6px solid transparent;border-bottom:6px solid transparent"></div>`
+      : B(10, 8, 10, 10, `background:${C.dim}`)) + TC(26, 0, 54, 26, o.bpm ?? "125", F(19, C.text, true)));
+  h += B(318, 6, 82, 28, `background:${C.surf};border:1px solid ${o.modeOn ? C.accent : C.brd};border-radius:8px`,
+    TC(0, 0, 80, 26, o.mode ?? "LIVE", F(17, o.mode === "NO LINK" ? C.bad : C.ok)));
+  h += T(0, 3, "C1 76%", F(15, C.dim, false, "right:10px;left:auto;line-height:17px"));
+  h += T(0, 20, "C0 67%", F(15, C.dim, false, "right:10px;left:auto;line-height:17px"));
+  return h;
+}
+// Вкладки: [имя, номер BSP или null]
+function tabs(list, cur, pc) {
+  let h = B(0, TOP, 480, TABS, `background:${C.bg};border-bottom:1px solid ${C.line}`);
+  const w = Math.floor(480 / Math.max(list.length, 4));
+  list.forEach(([name, num], i) => {
+    const on = i === cur, x = i * w;
+    const txt = (num !== null && num !== undefined ? `<span style="color:${on ? mix(pc, C.bg, 0.35) : C.muted};font-size:14px">${num}</span> ` : "") + name;
+    h += TC(x, TOP, w, TABS - 2, txt, F(18, on ? pc : C.dim, on));
+    if (on) h += B(x + 10, TOP + TABS - 4, w - 20, 3, `background:${pc};border-radius:2px`);
+  });
+  return h;
+}
+function dock(cur, bsp = -1) {
+  let h = B(0, DOCK_Y, 480, DOCK_H, `background:${C.bar};border-top:1px solid ${C.line}`);
+  DOCK.forEach(([name, pc], i) => {
+    const on = i === cur, x = i * 80;
+    if (on) h += B(x + 4, DOCK_Y + 5, 72, DOCK_H - 10, `background:${C.surf};border:2px solid ${pc};border-radius:12px`);
+    h += TC(x, DOCK_Y, 80, DOCK_H, name, F(19, on ? pc : C.dim, on));
+    if (!on) h += B(x + 34, DOCK_Y + DOCK_H - 9, 12, 3, `background:${mix(pc, C.bar, 0.45)};border-radius:2px`);
+    if (i === bsp) h += B(x + 62, DOCK_Y + 9, 8, 8, `background:${C.bsp};border-radius:4px`);
+  });
+  return h;
+}
+// Карточка 150x66 в сетке 3 x rows от y0. k: [имя, значение, текст, {list, src, mod, btn}]
+function card(i, k, pc, y0 = WORK_Y, enc0 = 2) {
+  const x = 9 + (i % 3) * 156, y = y0 + 4 + Math.floor(i / 3) * 70;
+  if (!k) return B(x, y, 150, 66, `background:${mix(C.surf, C.bg, 0.5)};border-radius:14px`, B(72, 30, 6, 6, `background:${C.track};border-radius:3px`));
+  const [name, v, txt, o = {}] = k, val = txt ?? String(v), kc = o.src ? o.src[1] : pc;
+  let inner = "";
+  if (o.btn !== undefined) {
+    inner += B(8, 15, 52, 34, `background:${o.btn ? kc : C.cell};border-radius:10px`, TC(0, 0, 52, 34, val, F(17, o.btn ? C.bg : C.dim, true)));
+  } else {
+    inner += arc(8, 8, 48, 6, v, kc, TC(0, 0, 48, 48, val, F(val.length > 3 ? 15 : 18, C.text, true)), o.mod ?? null);
+  }
+  inner += T(64, 9, name, F(16, C.text, false, "white-space:normal;width:64px;line-height:16px"));
+  inner += T(64, 42, o.src ? o.src[0] : "E" + (i + enc0), F(13, o.src ? mix(kc, C.surf, 0.3) : C.muted));
+  inner += B(132, 9, 9, 9, `background:${kc};border-radius:5px;border:2px solid ${mix(kc, C.surf, 0.55)}`);
+  if (o.list) inner += B(118, 54, 20, 3, `background:${C.muted};border-radius:2px`);
+  if (o.mod !== undefined) inner += T(112, 40, "M1", F(13, MODC, true));
+  return B(x, y, 150, 66, `background:${C.surf};border:1px solid ${C.brd};border-radius:14px`, inner);
+}
+function tile(x, y, w, h, txt, on, pc, size = 17) {
+  return B(x, y, w, h, `background:${C.surf};border:${on ? 2 : 1}px solid ${on ? pc : C.brd};border-radius:10px`,
+    TC(0, 0, w - (on ? 4 : 2), h - (on ? 4 : 2), txt, F(size, on ? pc : C.dim, on)));
+}
+function segs(ax, ay, aw, ah, labels, cur, pc) {
+  const step = Math.floor(aw / labels.length);
+  return labels.map((l, i) => tile(ax + i * step, ay, step - 4, ah, l, i === cur, pc)).join("");
+}
+// Горизонтальный ползунок; center - ход от середины (DJ-фильтр)
+function hbar(x, y, w, h, name, v, pc, txt, center = false) {
+  const fill = mix(pc, C.bg, 0.5), px = Math.round((w - 4) * v / 127);
+  let s = center ? B(Math.min(px, w / 2), 0, Math.abs(px - w / 2), h - 2, `background:${fill}`) : B(0, 0, px, h - 2, `background:${fill}`);
+  if (center) s += B(w / 2 - 1, 0, 2, h - 2, `background:${C.muted}`);
+  s += T(10, 0, name, F(16, C.text, false, `line-height:${h - 2}px`));
+  s += T(0, 0, txt ?? String(v), F(19, C.text, true, `right:10px;left:auto;line-height:${h - 2}px`));
+  return B(x, y, w, h, `background:${C.surf};border:1px solid ${C.brd};border-radius:10px;overflow:hidden`, s);
+}
+
+// 1. Синт 1, звук
+const K303 = [["TYPE", 0, "303", { list: 1 }], ["CUTOFF", 87, null, { mod: 104 }], ["RESO", 104], ["ENV", 64], ["DECAY", 52], ["ACCENT", 96],
+  ["WAVE", 0, "SAW", { btn: 0 }], ["GLIDE", 20], ["TRANS", 64, "+0", { list: 1 }], null, null, null, ["DRIVE", 40], ["TONE", 70], ["HOWL", 0]];
+const SYN_TABS = [["SOUND", 6], ["LAYER", 16], ["SEQ", null], ["MIX", null]];
+function scrSound() {
+  let h = header("SYNTH 1", "303", PC[6]) + tabs(SYN_TABS, 0, PC[6]);
+  K303.forEach((k, i) => (h += card(i, k, PC[6])));
+  return h + dock(2, 2);
+}
+// 2. Синт 1, MIX: псевдонимы ручек с других страниц
+function scrSynMix() {
+  const src = p => [["MIX", "", "", "", "", "", "SYNTH 1", "", "FX", "", "LAYER 1"][p], PC[p]];
+  const K = [["VOLUME", 100, null, { src: src(0) }], ["PAN", 64, "C", { src: src(0) }], ["DLY SEND", 38, null, { src: src(8) }],
+    ["LYR VOL", 100, null, { src: src(8) }], ["TRANS", 64, "+0", { src: src(6), list: 1 }], ["LYR TRANS", 76, "+12", { src: src(10), list: 1 }],
+    ["DRIVE", 40, null, { src: src(6) }], ["TONE", 70, null, { src: src(6) }], ["HOWL", 0, null, { src: src(6) }],
+    null, null, null, null, null, null];
+  let h = header("SYNTH 1", "303", PC[6]) + tabs(SYN_TABS, 3, PC[6]);
+  K.forEach((k, i) => (h += card(i, k, PC[6])));
+  return h + dock(2, 2);
+}
+// 3. PERF: дом
+function scrPerf() {
+  let h = header("PERF", "", C.text);
+  // сцены: 8 плиток и MORPH
+  for (let i = 0; i < 8; i++) {
+    const used = i < 5, cur = i === 2;
+    h += B(8 + i * 50, 48, 46, 52, `background:${used ? C.surf : mix(C.surf, C.bg, 0.5)};border:${cur ? 2 : 1}px solid ${cur ? C.accent : C.brd};border-radius:10px`,
+      TC(0, 0, 46 - (cur ? 4 : 2), 52 - (cur ? 4 : 2), String(i + 1), F(26, cur ? C.accent : used ? C.text : C.muted, true)));
+  }
+  h += B(410, 48, 62, 52, `background:${C.surf};border:1px solid ${C.brd};border-radius:10px`,
+    TC(0, 4, 60, 18, "MORPH", F(14, C.dim)) + TC(0, 22, 60, 26, "2", F(24, C.text, true)));
+  // XY-пэд USER 1
+  let f = B(118, 0, 2, 200, `background:${C.track}`) + B(0, 84, 200, 2, `background:${C.track}`);
+  f += B(110, 76, 18, 18, `background:${PC[6]};border-radius:9px`);
+  f += T(8, 6, "XY · USER 1", F(14, C.muted)) + T(8, 176, "CUTOFF 75 / RESO 73", F(14, C.muted));
+  h += B(8, 108, 200, 200, `background:${C.field};border:1px solid ${C.brd};border-radius:10px;overflow:hidden`, f);
+  // справа: FILL, Grids, статтер, DJ-фильтр, пампинг
+  h += tile(216, 108, 124, 52, "FILL", false, PC[12], 22) + tile(348, 108, 124, 52, "GRIDS ON", true, PC[12], 19);
+  h += T(216, 164, "STUTTER", F(14, C.muted));
+  h += segs(216, 182, 260, 38, ["OFF", "1/4", "1/8", "1/16", "1/32"], 0, PC[8]);
+  h += hbar(216, 226, 256, 38, "DJ FILTER", 64, PC[0], "OFF", true);
+  h += hbar(216, 270, 256, 38, "PUMP", 70, PC[0]);
+  // громкости
+  const FD = [["MASTER", 100, PC[0]], ["KICK", 110, PC[1]], ["HATS", 80, PC[1]], ["CLAP", 60, PC[1]], ["SNARE", 96, PC[1]], ["SYN 1", 100, PC[6]], ["SYN 2", 84, PC[7]]];
+  FD.forEach(([n, v, pc], i) => {
+    const w = 62, hh = Math.round(108 * v / 127);
+    let s = B(0, 108 - hh, w, hh, `background:${mix(pc, C.bg, 0.5)}`);
+    s += TC(0, 5, w, 16, n, F(15, C.text)) + TC(0, 84, w, 20, String(v), F(19, C.text, true));
+    h += B(8 + i * 66.5, 316, w, 108, `background:${C.surf};border:1px solid ${C.brd};border-radius:10px;overflow:hidden`, s);
+  });
+  return h + dock(0, 2);
+}
+// 4. Выбор режима: сетка значений, как у списков
+function scrMode() {
+  let h = scrSound();
+  h += B(0, TOP, 480, 480 - TOP, `background:${C.bg}`);
+  h += B(0, 0, 480, TOP, `background:${C.bar};border-bottom:1px solid ${C.line}`);
+  h += tile(4, 5, 80, 30, "× CLOSE", false, C.text) + TC(92, 0, 296, 40, "MODE", F(22, C.text, true));
+  const M = [["METAL", "DEMO 150 BPM"], ["ACID", "DEMO 125 BPM"], ["DRONE", "YOUR KNOBS, DRONE"], ["SEQ", "YOUR KNOBS, SEQUENCER"]];
+  M.forEach(([n, d], i) => {
+    const on = i === 3, x = 24 + (i % 2) * 220, y = 100 + Math.floor(i / 2) * 124;
+    h += B(x, y, 212, 104, `background:${C.surf};border:${on ? 2 : 1}px solid ${on ? C.accent : C.brd};border-radius:14px`,
+      TC(0, 18, 208, 36, n, F(32, on ? C.accent : C.text, true)) + TC(0, 60, 208, 20, d, F(16, C.dim)));
+  });
+  h += TC(0, 372, 480, 24, "WITH BSP: LIVE / DRONE", F(16, C.muted));
+  return h;
+}
+// 5. Ударка: 7 вкладок
+function scrDrums() {
+  const K = [["KICK TUNE", 50], ["KICK SWP", 80], ["SWP TIME", 40], ["KICK LEN", 64], ["HAT TONE", 90], ["CLSD LEN", 30],
+    ["OPEN LEN", 70], ["CLAP TONE", 64], ["CLAP TAIL", 50], ["SNR TUNE", 60], ["SNAPPY", 80], ["SNR LEN", 55],
+    ["HAT PAN", 80, "R16"], ["CLAP PAN", 48, "L16"], ["SNR PAN", 64, "C"]];
+  let h = header("DRUMS", "808 / 909", PC[1]);
+  h += tabs([["KIT", 1], ["CYM", 2], ["TOMS", 3], ["RIM", 4], ["BELL", 5], ["GRIDS", null], ["MIX", null]], 0, PC[1]);
+  K.forEach((k, i) => (h += card(i, k, PC[1])));
+  return h + dock(1, 1);
+}
+// 6. MOD (проект B): полоска формы, 12 карточек
+function scrMod() {
+  let h = header("MOD 1", "ENV · SNARE", MODC) + tabs([["M1", 19], ["M2", 20], ["M3", 21], ["M4", 22]], 0, MODC);
+  // форма: огибающая атака-спад и бегущая точка
+  const sx = 9, sy = WORK_Y + 6, sw = 356, sh = 54;
+  const env = `<svg width="${sw}" height="${sh}" style="position:absolute"><path d="M10 46 L40 8 Q90 40 200 44 L346 46" stroke="${MODC}" stroke-width="3" fill="none"/>
+    <circle cx="96" cy="33" r="5" fill="${C.text}"/></svg>`;
+  h += B(sx, sy, sw, sh, `background:${C.field};border:1px solid ${C.brd};border-radius:10px`, env);
+  h += tile(373, sy, 98, sh, "TARGETS 2", false, MODC);
+  const K = [["SHAPE", 6, "ENV", { list: 1 }], ["RATE", 64], ["SYNC", 0, "FREE", { list: 1 }], ["TRIG", 6, "SNARE", { list: 1 }], ["PROB", 127, "100%"],
+    ["ATTACK", 8], ["DECAY", 70], ["DEPTH 1", 96, "+32", { src: ["S1 CUTOFF", PC[6]] }], ["DEPTH 2", 40, "-24", { src: ["FX DLY FB", PC[8]] }],
+    ["DEPTH 3", 64, "+0"], ["DEPTH 4", 64, "+0"], null];
+  K.forEach((k, i) => (h += card(i, k, MODC, WORK_Y + 62)));
+  return h + dock(5, 2);
+}
+
+const SHOTS = [
+  ["SYN 1 / SOUND", "Страница синта. У CUTOFF метка модулятора M1: сиреневая точка - действующее значение, дуга - твоя ручка.", scrSound],
+  ["SYN 1 / MIX", "Всё, что касается синта 1 с других страниц, псевдонимами: под именем - страница-источник её цветом.", scrSynMix],
+  ["PERF (дом)", "Сцены (тап - вызвать, удержание - записать), MORPH, XY-пэд USER 1, FILL, статтер, DJ-фильтр, пампинг, громкости.", scrPerf],
+  ["Режим: список вместо круга", "Тап по плашке режима в шапке. Тап по плашке PLAY - секвенсеры, темп тянется вправо-влево.", scrMode],
+  ["DRUMS / KIT", "Семь вкладок ударки: проверка, что влезают. GRIDS - нынешний экран Grids, MIX - громкости и панорамы ударки.", scrDrums],
+  ["MOD 1 (проект B)", "Модулятор: форма с бегущей точкой, TARGETS - редактор целей. DEPTH показывает цель и глубину со знаком.", scrMod],
+];
+function render() {
+  const root = document.getElementById("screens");
+  for (const [cap, about, fn] of SHOTS) {
+    const fig = document.createElement("figure");
+    fig.className = "shot";
+    fig.innerHTML = `<div class="scr">${fn()}</div><figcaption><b>${cap}.</b> ${about}</figcaption>`;
+    root.appendChild(fig);
+  }
+}
+document.querySelectorAll(".bar button").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".bar button").forEach(x => x.classList.toggle("on", x === b));
+  document.getElementById("screens").classList.toggle("x2", b.dataset.z === "2");
+});
+document.fonts.ready.then(render);
+</script>
+</body>
+</html>

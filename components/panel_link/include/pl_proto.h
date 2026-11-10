@@ -17,6 +17,10 @@
 #define PL_FRAME_MAX (PL_PAYLOAD_MAX + 4)
 #define PL_USER_PAGES 6 // свои страницы 14..19 (на BSP 10..15)
 #define PL_USER_FIRST 14
+// Встроенные страницы псевдонимов (вкладки MIX инструментов): следом за своими, номера BSP нет.
+#define PL_MIX_PAGES 3
+#define PL_PAGE_MIX_DRUMS (PL_USER_FIRST + PL_USER_PAGES) // 20
+#define PL_PAGE_MIX_SYN1 (PL_PAGE_MIX_DRUMS + 1)          // 21, синт 2 - следом
 #define PL_TARGETS 4
 #define PL_NONE 0xFF
 #define PL_TYPE_PETRI 25 // тип синта (энкодер 2 страниц 6-7): чашка Петри, у слоя не бывает
@@ -48,6 +52,7 @@ enum {
     PL_SEQ_DUMP = 23, // синт -> панель: всё одного синта (pl_seq_dump_t), после PL_HELLO
     PL_SEQ_POS = 24,  // синт -> панель: позиция игры и темп (pl_seq_pos_t), при изменении
     PL_SEQ_SCALE = 25, // панель -> синт: лад такта {synth, pat, scale} (0 - со страницы 9, 1 + k - лад k)
+    PL_MODE = 26,      // панель -> синт: поставить режим (1 байт: PL_DEMO_* без BSP, с BSP - PL_MODE_LIVE или PL_DEMO_DRONE)
 };
 
 // Секвенсер: байт шага - ступень 0..14 (PL_SEQ_REST - пауза) и флаги; совпадает с ACID_SEQ_* синта.
@@ -97,6 +102,9 @@ int pl_petri_collect(pl_petri_rx_t *r, uint8_t type, const uint8_t *payload, siz
 
 // Песня демо, режим дрона или режим секвенсера в снимке.
 enum { PL_DEMO_METAL, PL_DEMO_ACID, PL_DEMO_DRONE, PL_DEMO_SEQ, PL_DEMO_SONGS = PL_DEMO_DRONE };
+#define PL_MODE_LIVE 4 // PL_MODE с BSP: играть с BSP (не дрон); вне PL_DEMO_*, чтобы не спутать с песней
+// Годится ли режим mode для PL_MODE: без BSP (live 0) - любой PL_DEMO_*, с BSP - PL_MODE_LIVE или PL_DEMO_DRONE.
+int pl_mode_ok(int live, int mode);
 
 // Нагрузки - только байты, без выравнивания.
 typedef struct {

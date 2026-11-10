@@ -2,6 +2,9 @@
 
 #include <string.h>
 
+#include "pl_mix.h"
+#include "pl_proto.h"
+
 #define POS_NONE 0xFF
 #define TYPE_ENC 1 // энкодер 2 на страницах синтов - тип синтеза
 #define PAGE_SYNTH1 6
@@ -13,6 +16,7 @@ void acid_link_init(acid_link_t *l)
     l->demo_muted = 0;
     l->snapshot_due = 0;
     l->user = -1;
+    l->mix = -1;
     l->npend = l->pend_at = 0;
     l->custom_due = 0;
     memset(l->defer_st, 0, sizeof l->defer_st);
@@ -36,7 +40,7 @@ int acid_link_take(acid_link_t *l, acid_link_ev_t *out)
 
 int acid_link_page(const acid_link_t *l, const acid_synth_t *s)
 {
-    return l->user >= 0 ? ACID_USER_FIRST + l->user : s->page;
+    return l->mix >= 0 ? l->mix : l->user >= 0 ? ACID_USER_FIRST + l->user : s->page;
 }
 
 int acid_link_custom_edit(acid_link_t *l, int up, int enc, int idx, int page, int tenc, int lo, int hi)
@@ -157,6 +161,34 @@ int acid_link_step(acid_link_t *l, acid_synth_t *s, acid_link_ev_t *out)
     return got > 0;
 }
 
+// Энкодер BSP на вкладке MIX: слот ведёт на штатную ручку, подхват - по ней, событие панели - её же
+// (позиция BSP - энкодера слота).
+static int mix_midi(acid_link_t *l, acid_synth_t *s, int enc, int v, int src, acid_link_ev_t *out)
+{
+    int k = l->mix == PL_PAGE_MIX_SYN1 + 1; // у ударки типы не важны
+    int page, tenc, prev = l->bsp_pos[enc];
+    if (src == ACID_SRC_BSP) {
+        l->bsp_pos[enc] = (uint8_t)v;
+    }
+    if (!pl_mix_target(l->mix, enc, acid_synth_knob(s, PAGE_SYNTH1 + k, TYPE_ENC),
+                       acid_synth_knob(s, ACID_PAGE_LAYER1 + k, TYPE_ENC), &page, &tenc)) {
+        return 0;
+    }
+    int go = 1;
+    if (src == ACID_SRC_BSP && l->held[page][tenc]) {
+        int target = acid_synth_knob(s, page, tenc);
+        go = prev != POS_NONE && (prev - target) * (v - target) <= 0; // дошёл до значения ручки
+        l->held[page][tenc] = (uint8_t)!go;
+    }
+    if (go) {
+        defer_cancel(l, page, tenc);
+        acid_synth_set_knob(s, page, tenc, v);
+    }
+    report(l, s, page, tenc, src, out);
+    out->bsp_pos = l->bsp_pos[enc];
+    return 1;
+}
+
 int acid_link_midi(acid_link_t *l, acid_synth_t *s, const acid_midi_event_t *ev, int src, acid_link_ev_t *out)
 {
     int enc = ev->type == ACID_MIDI_CC ? enc_of(ev->d1) : -1;
@@ -176,6 +208,7 @@ int acid_link_midi(acid_link_t *l, acid_synth_t *s, const acid_midi_event_t *ev,
         acid_synth_midi(s, ev);
         int p = acid_page_from_bsp(ev->d2); // на экране BSP свои номера страниц
         if (is_user(l, p)) {
+            l->mix = -1;
             l->user = p - ACID_USER_FIRST; // синт её проигнорировал, штатная s->page прежняя
             *out = (acid_link_ev_t){.page = (uint8_t)p, .enc = 0, .value = (uint8_t)p, .src = (uint8_t)src};
             return 1;
@@ -184,8 +217,12 @@ int acid_link_midi(acid_link_t *l, acid_synth_t *s, const acid_midi_event_t *ev,
             return 0; // не страница: синт её проигнорировал, экран не дёргаем
         }
         l->user = -1;
+        l->mix = -1;
         *out = (acid_link_ev_t){.page = (uint8_t)s->page, .enc = 0, .value = (uint8_t)s->page, .src = (uint8_t)src};
         return 1;
+    }
+    if (l->mix >= 0) {
+        return mix_midi(l, s, enc, ev->d2, src, out);
     }
     int page = acid_link_page(l, s);
     if (src == ACID_SRC_BSP) {
@@ -230,8 +267,15 @@ int acid_link_panel_set(acid_link_t *l, acid_synth_t *s, int page, int enc, int 
 
 int acid_link_panel_page(acid_link_t *l, acid_synth_t *s, int page, acid_link_ev_t *out)
 {
+    if (pl_mix_is(page)) {
+        l->mix = page;
+        l->user = -1;
+        *out = (acid_link_ev_t){.page = (uint8_t)page, .enc = 0, .value = (uint8_t)page, .src = ACID_SRC_PANEL};
+        return 1;
+    }
     if (is_user(l, page)) {
         l->user = page - ACID_USER_FIRST;
+        l->mix = -1;
         *out = (acid_link_ev_t){.page = (uint8_t)page, .enc = 0, .value = (uint8_t)page, .src = ACID_SRC_PANEL};
         return 1;
     }
@@ -239,6 +283,7 @@ int acid_link_panel_page(acid_link_t *l, acid_synth_t *s, int page, acid_link_ev
         return 0;
     }
     l->user = -1;
+    l->mix = -1;
     s->page = page;
     *out = (acid_link_ev_t){.page = (uint8_t)page, .enc = 0, .value = (uint8_t)page, .src = ACID_SRC_PANEL};
     return 1;

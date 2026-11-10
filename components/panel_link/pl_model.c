@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "pl_labels.h"
+#include "pl_mix.h"
 
 #define SRC_BSP 0
 
@@ -51,6 +52,23 @@ static void apply_snapshot2(pl_model_t *m, const pl_snapshot2_t *s)
     }
 }
 
+// Чья позиция BSP в событии: на открытой у синта вкладке MIX энкодер BSP - слот, событие несёт его цель.
+static int pos_enc(const pl_model_t *m, const pl_knob_t *k)
+{
+    if (k->src != SRC_BSP || !pl_mix_is(m->bsp_page)) {
+        return k->enc;
+    }
+    int t = m->bsp_page == PL_PAGE_MIX_SYN1 + 1; // у ударки типы не важны
+    for (int e = 1; e < PL_KNOBS; e++) {
+        int tp, te;
+        if (pl_mix_target(m->bsp_page, e, m->raw[PL_PAGE_SYNTH1 + t][1], m->raw[PL_PAGE_LAYER1 + t][1], &tp, &te) &&
+            tp == k->page && te == k->enc) {
+            return e;
+        }
+    }
+    return k->enc;
+}
+
 static void apply_knob(pl_model_t *m, const pl_knob_t *k, uint32_t ms)
 {
     if (k->enc == 0) {
@@ -76,7 +94,7 @@ static void apply_knob(pl_model_t *m, const pl_knob_t *k, uint32_t ms)
         return;
     }
     m->raw[k->page][k->enc] = k->value;
-    m->bsp_pos[k->enc] = k->bsp_pos;
+    m->bsp_pos[pos_enc(m, k)] = k->bsp_pos;
     m->held[k->page][k->enc] = k->held;
     if (k->src == SRC_BSP && pl_knob_label(k->page, k->enc, m->raw[k->page])) { // пустой энкодер не всплывает
         m->toast_page = k->page;

@@ -2,19 +2,19 @@
 
 #include "pl_proto.h"
 
-#define TOOL_Y 44 // тулбар
-#define TOOL_H 44
-#define PAT_Y 92 // такты A-H (вид ТАКТ)
-#define PAT_H 40
+#define TOOL_Y 78 // тулбар под вкладками
+#define TOOL_H 36
+#define PAT_Y 118 // такты A-H (вид ТАКТ)
+#define PAT_H 34
 #define PAT_W 59
-#define TIER_Y 138 // ярус шагов 1-8, следом 9-16
-#define TIER_H 168
+#define TIER_Y 158 // ярус шагов 1-8, следом 9-16
+#define TIER_H 132
 #define TIER_GAP 6
 #define BAR_W 60
-#define REST_H 18 // полоска паузы внизу яруса
-#define LEVEL_H 10 // (TIER_H - REST_H) / 15
-#define SONG_Y 96 // строки песни
-#define ROW_H 48
+#define REST_H 12 // полоска паузы внизу яруса
+#define LEVEL_H 8 // (TIER_H - REST_H) / 15
+#define SONG_Y 118 // строки песни
+#define ROW_H 39
 #define CELL_W 50
 #define REP_X 408
 
@@ -24,8 +24,8 @@ typedef struct {
 } tool_t;
 
 static const tool_t TOOLS[] = {
-    {PL_ST_SYNTH, 4, 70, 0},     {PL_ST_VIEW, 74, 154, 0},     {PL_ST_BPM, 158, 240, 0},  {PL_ST_OCT_DN, 244, 290, 1},
-    {PL_ST_OCT_UP, 294, 340, 1}, {PL_ST_SCALE, 344, 408, 1}, {PL_ST_BRUSH, 412, 476, 1},
+    {PL_ST_VIEW, 4, 94, 0},     {PL_ST_BPM, 100, 190, 0},    {PL_ST_OCT_DN, 196, 256, 1},
+    {PL_ST_OCT_UP, 262, 322, 1}, {PL_ST_SCALE, 328, 400, 1}, {PL_ST_BRUSH, 406, 476, 1},
 };
 #define NTOOLS (int)(sizeof TOOLS / sizeof TOOLS[0])
 

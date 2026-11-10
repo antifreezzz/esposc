@@ -2,6 +2,8 @@
 
 #include <stdio.h>
 
+#include "pl_mix.h"
+
 #define USER_COLOR 0xe8dcc0
 
 static int user_count(const pl_model_t *m, int up, int enc)
@@ -52,6 +54,12 @@ static void user_src(const pl_model_t *m, int up, int enc, pl_cell_t *c)
     c->src_color = USER_COLOR;
 }
 
+int pl_view_mix(const pl_model_t *m, int page, int enc, int *tpage, int *tenc)
+{
+    int k = page == PL_PAGE_MIX_SYN1 + 1; // у ударки типы не важны
+    return pl_mix_target(page, enc, m->raw[PL_PAGE_SYNTH1 + k][1], m->raw[PL_PAGE_LAYER1 + k][1], tpage, tenc);
+}
+
 void pl_view_cell(const pl_model_t *m, int page, int enc, pl_cell_t *c)
 {
     c->label = NULL;
@@ -62,6 +70,15 @@ void pl_view_cell(const pl_model_t *m, int page, int enc, pl_cell_t *c)
     c->hi = 127;
     c->skip = -1;
     c->color = 0;
+    int mp, me;
+    if (pl_view_mix(m, page, enc, &mp, &me)) {
+        pl_view_cell(m, mp, me, c); // ячейка цели как есть, под именем - её страница
+        if (c->label) {
+            c->src = pl_page_name(mp);
+            c->src_color = pl_page_color(mp);
+        }
+        return;
+    }
     if (page >= 0 && page < PL_PAGES) {
         const uint8_t *raw = m->raw[page];
         c->label = pl_knob_label(page, enc, raw);
@@ -105,26 +122,22 @@ void pl_view_cell(const pl_model_t *m, int page, int enc, pl_cell_t *c)
 
 const char *pl_view_page_name(int page)
 {
+    if (pl_mix_is(page)) {
+        static const char *const MIX[PL_MIX_PAGES] = {"DRUMS MIX", "SYNTH 1 MIX", "SYNTH 2 MIX"};
+        return MIX[page - PL_PAGE_MIX_DRUMS];
+    }
     return page < PL_PAGES ? pl_page_name(page) : pl_user_name(page - PL_USER_FIRST);
 }
 
 uint32_t pl_view_page_color(int page)
 {
+    if (pl_mix_is(page)) {
+        return pl_page_color(page == PL_PAGE_MIX_DRUMS ? 1 : PL_PAGE_SYNTH1 + page - PL_PAGE_MIX_SYN1);
+    }
     if (page >= PL_USER_FIRST && page < PL_USER_FIRST + PL_USER_PAGES) {
         return USER_COLOR;
     }
     return pl_page_color(page);
-}
-
-int pl_view_page_step(int page, int dir)
-{
-    if (page >= PL_USER_FIRST) {
-        return PL_USER_FIRST + (page - PL_USER_FIRST + dir + PL_USER_PAGES) % PL_USER_PAGES;
-    }
-    if (page == PL_PAGE_GRIDS) {
-        return page; // у Grids свой экран, в круге страниц его нет
-    }
-    return (page + dir + PL_PAGE_GRIDS) % PL_PAGE_GRIDS;
 }
 
 const char *pl_view_status(const pl_model_t *m, int linked)
