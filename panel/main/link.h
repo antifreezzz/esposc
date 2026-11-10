@@ -15,8 +15,6 @@ void link_page(int page);
 void link_custom_edit(const pl_custom_edit_t *e);
 // Сцена: op PL_SCENE_RECALL или PL_SCENE_STORE, слот n, переход bars тактов.
 void link_scene(int op, int n, int bars);
-// Тап по статусу в демо: синту - следующая песня демо.
-void link_demo(void);
 // Поставить режим: PL_DEMO_* без BSP, с BSP - PL_MODE_LIVE или PL_DEMO_DRONE.
 void link_mode(int mode);
 // Таблица чашки Петри синту: 4 кадра (из задачи чашки, ядро 1).
@@ -28,3 +26,6 @@ void link_seq_scale(int synth, int pat, int scale); // 0 - лад страниц
 void link_seq_row(int synth, int row, const uint8_t cells[PL_SEQ_CELLS], int rep);
 void link_seq_ctrl(int synth, int run, int edit);
 void link_seq_bpm(int bpm);
+// Свои рисунки Grids: клетка и рисунок целиком.
+void link_grids_cell(int slot, int part, int step, int lv);
+void link_grids_pat(int slot, const pl_grids_pat_t *pat);

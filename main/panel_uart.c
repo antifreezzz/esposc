@@ -37,11 +37,19 @@ _Static_assert(ACID_PAGE_MOD1 == PL_PAGE_MOD1 && ACID_BSP_MOD_FIRST == PL_BSP_MO
                    ACID_MODS == PL_MOD_PAGES && ACID_MOD_TARGETS == PL_MOD_TARGETS && ACID_MOD_NONE == PL_NONE,
                "modulator numbers shared by synth and panel");
 
+_Static_assert(sizeof(pl_grids_pat_frame_t) == 2 + PL_GRIDS_PARTS * PL_GRIDS_STEPS && ACID_BEAT_STEPS * 2 == PL_GRIDS_STEPS,
+               "grids pattern frame is bytes only, two bars of sixteenths");
+
 typedef struct {
     uint8_t type, p[PANEL_SEQ_MAX];
 } seq_frame_t;
 
-static QueueHandle_t s_set_q, s_knob_q, s_page_q, s_edit_q, s_mod_edit_q, s_scene_q, s_petri_q, s_seq_q;
+typedef struct {
+    uint8_t type, p[PANEL_GRIDS_MAX];
+} grids_frame_t;
+
+static QueueHandle_t s_set_q, s_knob_q, s_page_q, s_edit_q, s_mod_edit_q, s_scene_q, s_petri_q, s_seq_q, s_grids_q;
+static const pl_grids_pat_t *s_gpat;
 static const acid_seq_t *s_seq;
 static const acid_mod_t *s_mod;
 static volatile int s_bsp_bpm;
@@ -109,6 +117,22 @@ int panel_uart_receive_seq(uint8_t *type, uint8_t p[PANEL_SEQ_MAX])
     }
     *type = f.type;
     memcpy(p, f.p, PANEL_SEQ_MAX);
+    return 1;
+}
+
+void panel_uart_use_grids(const pl_grids_pat_t *user)
+{
+    s_gpat = user;
+}
+
+int panel_uart_receive_grids(uint8_t *type, uint8_t p[PANEL_GRIDS_MAX])
+{
+    grids_frame_t f;
+    if (!s_grids_q || xQueueReceive(s_grids_q, &f, 0) != pdTRUE) {
+        return 0;
+    }
+    *type = f.type;
+    memcpy(p, f.p, PANEL_GRIDS_MAX);
     return 1;
 }
 
@@ -323,6 +347,10 @@ static void link_task(void *arg)
                     seq_frame_t f = {.type = type};
                     memcpy(f.p, p, len);
                     xQueueSend(s_seq_q, &f, 0);
+                } else if ((type == PL_GRIDS_PAT || type == PL_GRIDS_CELL) && len <= PANEL_GRIDS_MAX) {
+                    grids_frame_t f = {.type = type};
+                    memcpy(f.p, p, len);
+                    xQueueSend(s_grids_q, &f, 0);
                 } else if (type == PL_DEMO) {
                     s_demo_due = 1;
                 } else if (type == PL_MODE && len == 1) {
@@ -343,6 +371,10 @@ static void link_task(void *arg)
             s_scene_due = 1;
             for (int k = 0; k < ACID_SEQ_SYNTHS; k++) {
                 send_seq_dump(k);
+            }
+            for (int k = 0; s_gpat && k < PL_GRIDS_USER; k++) {
+                pl_grids_pat_frame_t fr = {.slot = (uint8_t)k, .pat = s_gpat[k]};
+                send(PL_GRIDS_PAT, &fr, sizeof fr);
             }
         }
         for (int up = 0; up < ACID_USER_PAGES; up++) {
@@ -439,7 +471,9 @@ esp_err_t panel_uart_start(const acid_synth_t *s, const acid_link_t *l, const ac
     s_scene_q = xQueueCreate(4, sizeof(pl_scene_t));
     s_petri_q = xQueueCreate(1, sizeof(acid_petri_frame_t));
     s_seq_q = xQueueCreate(32, sizeof(seq_frame_t)); // рисование пальцем: шаг за шагом, кадр на шаг
-    if (!s_set_q || !s_knob_q || !s_page_q || !s_edit_q || !s_mod_edit_q || !s_scene_q || !s_petri_q || !s_seq_q) {
+    s_grids_q = xQueueCreate(8, sizeof(grids_frame_t)); // тапы по клеткам редактора и целые рисунки
+    if (!s_set_q || !s_knob_q || !s_page_q || !s_edit_q || !s_mod_edit_q || !s_scene_q || !s_petri_q || !s_seq_q ||
+        !s_grids_q) {
         return ESP_ERR_NO_MEM;
     }
     // Ниже slot1 и USB: связь с экраном подождёт, звук нет.

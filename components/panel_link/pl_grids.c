@@ -18,6 +18,8 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "pl_grids.h"
 
+#include <string.h>
+
 // U8Mix из avrlib: (a * (255 - w) + b * w) >> 8. Не /255: так в оригинале, потери до 2 единиц у углов.
 static uint8_t u8_mix(uint8_t a, uint8_t b, uint8_t w)
 {
@@ -79,4 +81,153 @@ void pl_grids_preview(const uint8_t knob[16], uint8_t out[PL_GRIDS_STEPS])
     for (int s = 0; s < PL_GRIDS_STEPS; s++) {
         out[s] = pl_grids_step(x, y, density, none, s);
     }
+}
+
+static uint8_t bank_level(const pl_grids_bank_t *b, int part, int step)
+{
+    int per_bar = b->grid == PL_GRIDS_12T ? 12 : 16;
+    int in = step % 16;
+    if (in >= per_bar) {
+        return 0;
+    }
+    switch (b->part[part][(step / 16) * per_bar + in]) {
+    case 'X': return PL_GRIDS_LV_ACC;
+    case 'x': return PL_GRIDS_LV_HIT;
+    case 'g': return PL_GRIDS_LV_GHOST;
+    case ',': return PL_GRIDS_LV_EXTRA;
+    default: return 0;
+    }
+}
+
+static const pl_grids_pat_t *user_pat(int src, const pl_grids_pat_t *user)
+{
+    return user && src >= PL_GRIDS_SRC_USER && src < PL_GRIDS_SRCS ? &user[src - PL_GRIDS_SRC_USER] : 0;
+}
+
+int pl_grids_src_grid(int src, const pl_grids_pat_t *user)
+{
+    if (src >= 1 && src < PL_GRIDS_SRC_USER) {
+        return pl_grids_bank[src - 1].grid;
+    }
+    const pl_grids_pat_t *u = user_pat(src, user);
+    return u && u->grid == PL_GRIDS_12T ? PL_GRIDS_12T : PL_GRIDS_16;
+}
+
+uint8_t pl_grids_src_level(int src, const pl_grids_pat_t *user, uint8_t x, uint8_t y, int part, int step)
+{
+    if (src == PL_GRIDS_SRC_MAP) {
+        return pl_grids_level(x, y, part, step);
+    }
+    if (src >= 1 && src < PL_GRIDS_SRC_USER) {
+        return bank_level(&pl_grids_bank[src - 1], part, step);
+    }
+    const pl_grids_pat_t *u = user_pat(src, user);
+    if (!u || (u->grid == PL_GRIDS_12T && step % 16 >= 12)) {
+        return 0;
+    }
+    return u->lv[part * PL_GRIDS_STEPS + step];
+}
+
+uint16_t pl_grids_src_step(int src, const pl_grids_pat_t *user, uint8_t x, uint8_t y, const uint8_t density[3],
+                           const uint8_t perturb[3], int step)
+{
+    uint16_t state = 0;
+    for (int p = 0; p < PL_GRIDS_PARTS; p++) {
+        uint8_t level = pl_grids_src_level(src, user, x, y, p, step);
+        if (level < 255 - perturb[p]) {
+            level = (uint8_t)(level + perturb[p]);
+        } else {
+            level = 255;
+        }
+        uint8_t threshold = (uint8_t)~density[p];
+        if (level > threshold) {
+            state |= (uint16_t)(1 << p);
+            if (level > PL_GRIDS_ACCENT) {
+                state |= (uint16_t)(8 << p);
+            } else if (src != PL_GRIDS_SRC_MAP && level < PL_GRIDS_GHOST) {
+                state |= (uint16_t)(64 << p);
+            }
+        }
+    }
+    return state;
+}
+
+void pl_grids_preview_src(const uint8_t knob[16], const pl_grids_pat_t *user, uint16_t out[PL_GRIDS_STEPS])
+{
+    const uint8_t density[3] = {pl_grids_u8(knob[4]), pl_grids_u8(knob[5]), pl_grids_u8(knob[6])};
+    const uint8_t none[3] = {0, 0, 0};
+    for (int s = 0; s < PL_GRIDS_STEPS; s++) {
+        out[s] = pl_grids_src_step(knob[13], user, pl_grids_u8(knob[2]), pl_grids_u8(knob[3]), density, none, s);
+    }
+}
+
+void pl_grids_copy(int src, const pl_grids_pat_t *user, uint8_t x, uint8_t y, const uint8_t density[3],
+                   pl_grids_pat_t *out)
+{
+    pl_grids_pat_t r;
+    r.grid = (uint8_t)pl_grids_src_grid(src, user);
+    for (int p = 0; p < PL_GRIDS_PARTS; p++) {
+        for (int s = 0; s < PL_GRIDS_STEPS; s++) {
+            uint8_t lv = pl_grids_src_level(src, user, x, y, p, s);
+            if (src == PL_GRIDS_SRC_MAP) {
+                lv = lv <= (uint8_t)~density[p] ? 0 : lv > PL_GRIDS_ACCENT ? PL_GRIDS_LV_ACC : PL_GRIDS_LV_HIT;
+            } else if (user_pat(src, user)) {
+                lv = user_pat(src, user)->lv[p * PL_GRIDS_STEPS + s]; // и немые слоты триолей: копия точная
+            }
+            r.lv[p * PL_GRIDS_STEPS + s] = lv;
+        }
+    }
+    *out = r; // out может быть одним из user
+}
+
+static const uint8_t BLOB_MAGIC[4] = {'G', 'P', '1', 1};
+
+void pl_grids_user_init(pl_grids_pat_t user[PL_GRIDS_USER])
+{
+    memset(user, 0, PL_GRIDS_USER * sizeof user[0]);
+}
+
+int pl_grids_user_cell(pl_grids_pat_t user[PL_GRIDS_USER], int slot, int part, int step, int lv)
+{
+    if (slot < 0 || slot >= PL_GRIDS_USER || part < 0 || part >= PL_GRIDS_PARTS || step < 0 ||
+        step >= PL_GRIDS_STEPS || lv < 0 || lv > 255) {
+        return 0;
+    }
+    user[slot].lv[part * PL_GRIDS_STEPS + step] = (uint8_t)lv;
+    return 1;
+}
+
+int pl_grids_user_set(pl_grids_pat_t user[PL_GRIDS_USER], int slot, const pl_grids_pat_t *pat)
+{
+    if (slot < 0 || slot >= PL_GRIDS_USER || pat->grid > PL_GRIDS_12T) {
+        return 0;
+    }
+    user[slot] = *pat;
+    return 1;
+}
+
+size_t pl_grids_user_export(const pl_grids_pat_t user[PL_GRIDS_USER], void *buf, size_t cap)
+{
+    if (cap < PL_GRIDS_BLOB) {
+        return 0;
+    }
+    uint8_t *b = buf;
+    memcpy(b, BLOB_MAGIC, 4);
+    memcpy(b + 4, user, PL_GRIDS_USER * sizeof user[0]); // рисунок - только байты, без выравнивания
+    return PL_GRIDS_BLOB;
+}
+
+int pl_grids_user_import(pl_grids_pat_t user[PL_GRIDS_USER], const void *buf, size_t len)
+{
+    const uint8_t *b = buf;
+    if (len != PL_GRIDS_BLOB || memcmp(b, BLOB_MAGIC, 4) != 0) {
+        return 0;
+    }
+    for (int k = 0; k < PL_GRIDS_USER; k++) {
+        if (b[4 + k * sizeof user[0]] > PL_GRIDS_12T) {
+            return 0;
+        }
+    }
+    memcpy(user, b + 4, PL_GRIDS_USER * sizeof user[0]);
+    return 1;
 }

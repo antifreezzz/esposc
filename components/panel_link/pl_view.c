@@ -140,20 +140,6 @@ uint32_t pl_view_page_color(int page)
     return pl_page_color(page);
 }
 
-int pl_view_page_step(int page, int dir)
-{
-    if (pl_mix_is(page)) {
-        return page; // вкладка инструмента, в круг страниц не входит
-    }
-    if (page >= PL_USER_FIRST) {
-        return PL_USER_FIRST + (page - PL_USER_FIRST + dir + PL_USER_PAGES) % PL_USER_PAGES;
-    }
-    if (page == PL_PAGE_GRIDS) {
-        return page; // у Grids свой экран, в круге страниц его нет
-    }
-    return (page + dir + PL_PAGE_GRIDS) % PL_PAGE_GRIDS;
-}
-
 const char *pl_view_status(const pl_model_t *m, int linked)
 {
     static const char *const NAMES[PL_DEMO_SONGS] = {"METAL", "ACID"};

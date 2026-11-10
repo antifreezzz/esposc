@@ -196,3 +196,11 @@ int pl_nav_mode_at(int n, int x, int y)
     }
     return -1;
 }
+
+int pl_nav_mode_demo(int live, int demo, int mode)
+{
+    if (!live || mode == PL_DEMO_DRONE) {
+        return mode;
+    }
+    return demo == PL_DEMO_DRONE ? PL_DEMO_METAL : demo; // песню за дроном панель не знает, снимок поправит
+}

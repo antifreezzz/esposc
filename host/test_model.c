@@ -72,6 +72,20 @@ TEST(test_page_event)
     CHECK(m.raw[0][0] == 0);
 }
 
+// Вкладка MIX открыта у синта (эхо страницы): событие BSP приходит с целью, а позиция - энкодера слота.
+TEST(test_mix_bsp_pos_goes_to_slot)
+{
+    pl_model_init(&m);
+    knob(PL_PAGE_MIX_DRUMS, 0, PL_PAGE_MIX_DRUMS, 2, 0xFF, 0, 5);
+    knob(0, 6, 55, 0, 55, 0, 10); // E2 вкладки DRUMS MIX - бочка, MIX E6
+    CHECK(m.raw[0][6] == 55 && m.bsp_pos[2] == 55 && m.bsp_pos[6] == 0xFF);
+    knob(0, 6, 60, 2, 0xFF, 1, 20); // эхо правки с панели - позиция самой цели
+    CHECK(m.raw[0][6] == 60 && m.bsp_pos[2] == 55 && m.bsp_pos[6] == 0xFF);
+    knob(0, 0, 0, 0, 0xFF, 0, 30); // энкодер 1 BSP закрыл MIX
+    knob(0, 6, 70, 0, 70, 0, 40);
+    CHECK(m.bsp_pos[6] == 70 && m.bsp_pos[2] == 55);
+}
+
 TEST(test_need_hello)
 {
     pl_model_init(&m);
@@ -331,8 +345,38 @@ TEST(test_seq_dump_pos_and_local_edits)
     CHECK(m.seq[1].pat[2][3] == (5 | PL_SEQ_ACC));
 }
 
+// Свои рисунки Grids: кадр с синта кладётся в модель, правки панели - сразу в свою копию.
+TEST(test_grids_patterns)
+{
+    static pl_model_t g;
+    pl_model_init(&g);
+    CHECK(g.gpat_have == 0);
+    CHECK(pl_model_grids_cell(&g, 0, 0, 0, 255) == 0); // рисунок ещё не пришёл
+    pl_grids_pat_frame_t fr;
+    memset(&fr, 0, sizeof fr);
+    fr.slot = 2;
+    fr.pat.grid = PL_GRIDS_12T;
+    fr.pat.lv[40] = 176;
+    pl_model_apply(&g, PL_GRIDS_PAT, (const uint8_t *)&fr, sizeof fr, 0);
+    CHECK(g.gpat_have == 4 && g.gpat[2].grid == PL_GRIDS_12T && g.gpat[2].lv[40] == 176);
+    CHECK(pl_model_grids_cell(&g, 2, 1, 9, 124) == 1 && g.gpat[2].lv[41] == 124);
+    CHECK(pl_model_grids_cell(&g, 1, 1, 9, 124) == 0);
+    fr.slot = PL_GRIDS_USER; // вне списка
+    pl_model_apply(&g, PL_GRIDS_PAT, (const uint8_t *)&fr, sizeof fr, 0);
+    CHECK(g.gpat_have == 4);
+    fr.slot = 0;
+    fr.pat.grid = 7; // битая сетка
+    pl_model_apply(&g, PL_GRIDS_PAT, (const uint8_t *)&fr, sizeof fr, 0);
+    CHECK(g.gpat_have == 4);
+    pl_grids_pat_t p = g.gpat[2];
+    p.lv[0] = 255;
+    CHECK(pl_model_grids_pat(&g, 2, &p) == 1 && g.gpat[2].lv[0] == 255);
+    CHECK(pl_model_grids_pat(&g, 3, &p) == 0);
+}
+
 int main(void)
 {
+    RUN(test_grids_patterns);
     RUN(test_load_frame_stored);
     RUN(test_grids_step_frame);
     RUN(test_load_wrong_len_ignored);
@@ -340,6 +384,7 @@ int main(void)
     RUN(test_knob_updates_value);
     RUN(test_toast_only_from_bsp);
     RUN(test_page_event);
+    RUN(test_mix_bsp_pos_goes_to_slot);
     RUN(test_need_hello);
     RUN(test_local_set);
     RUN(test_toast_skips_empty_knob);

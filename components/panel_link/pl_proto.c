@@ -61,6 +61,8 @@ static int payload_len(uint8_t type)
     case PL_SEQ_POS: return (int)sizeof(pl_seq_pos_t);
     case PL_SEQ_SCALE: return 3;
     case PL_MODE: return 1;
+    case PL_GRIDS_PAT: return (int)sizeof(pl_grids_pat_frame_t);
+    case PL_GRIDS_CELL: return 4;
     case PL_MOD: return (int)sizeof(pl_mod_t);
     case PL_MOD_EDIT: return (int)sizeof(pl_mod_edit_t);
     case PL_MOD_POS: return PL_MOD_PAGES;

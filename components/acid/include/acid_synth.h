@@ -235,6 +235,8 @@ int acid_synth_import(acid_synth_t *s, const void *buf, size_t len);
 // s перед первым init должен быть обнулён (static): init создаёт голоса Plaits один раз.
 // Отпустить все ноты обоих синтов (BSP переподключился, демо сменилось на BSP). Хвосты доигрывают.
 void acid_synth_notes_off(acid_synth_t *s);
+// Свои рисунки Grids [PL_GRIDS_USER]: живут вне синта (переживают смену режима). NULL - свои источники молчат.
+void acid_synth_use_grids(acid_synth_t *s, const pl_grids_pat_t *user);
 // Встроенный секвенсер: играет с тика клока в фазе событий. NULL - отключить. Позиция с начала песни.
 void acid_synth_use_seq(acid_synth_t *s, acid_seq_t *q);
 // ▶/■ секвенсера синта (0 или 1) с панели; стоп сразу отпускает его ноту.

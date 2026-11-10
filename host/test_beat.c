@@ -79,8 +79,44 @@ TEST(test_no_start_plays)
     CHECK(b.bar == 0);
 }
 
+// Шаг Grids на этом тике: прямая сетка совпадает с шагами такта, свинг задерживает нечётные шестнадцатые,
+// триольная сетка - 12 шагов по 8 тиков.
+TEST(test_grid_due)
+{
+    for (int swing = 0; swing <= 3; swing++) {
+        acid_beat_t b;
+        acid_beat_init(&b);
+        acid_beat_start(&b);
+        int seen = 0;
+        for (int t = 0; t < 192; t++) {
+            int hit = acid_beat_tick(&b);
+            int g = acid_beat_grid_due(&b, 0, swing);
+            int st = (t % 96) / 6, in = t % 6;
+            CHECK(g == (in == ((st & 1) ? swing : 0) ? st : -1));
+            if (swing == 0) {
+                CHECK((g >= 0) == hit && (g < 0 || g == b.step));
+            }
+            seen += g >= 0;
+        }
+        CHECK(seen == 32);
+    }
+    acid_beat_t b;
+    acid_beat_init(&b);
+    acid_beat_start(&b);
+    for (int t = 0; t < 192; t++) {
+        acid_beat_tick(&b);
+        int g = acid_beat_grid_due(&b, 1, 3); // свинг в триолях не действует
+        CHECK(g == (t % 8 == 0 ? (t % 96) / 8 : -1));
+    }
+    acid_beat_stop(&b);
+    acid_beat_tick(&b);
+    CHECK(acid_beat_grid_due(&b, 0, 0) == -1);
+    CHECK(acid_beat_grid_due(&b, 1, 0) == -1);
+}
+
 int main(void)
 {
+    RUN(test_grid_due);
     RUN(test_start_first_tick_is_step0);
     RUN(test_step_every_6_ticks);
     RUN(test_stop_silent);

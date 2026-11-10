@@ -159,6 +159,16 @@ TEST(test_modes)
     CHECK(!strcmp(pl_nav_mode_name(0, PL_DEMO_SEQ), "SEQ") && !strcmp(pl_nav_mode_name(1, PL_DEMO_DRONE), "DRONE"));
 }
 
+// Выбор режима до снимка: поле demo модели как его пришлёт синт (в live - песня, за дроном - PL_DEMO_DRONE).
+TEST(test_mode_picked_demo)
+{
+    CHECK(pl_nav_mode_demo(0, PL_DEMO_METAL, PL_DEMO_SEQ) == PL_DEMO_SEQ);
+    CHECK(pl_nav_mode_demo(1, PL_DEMO_ACID, PL_DEMO_DRONE) == PL_DEMO_DRONE);
+    CHECK(pl_nav_mode_demo(1, PL_DEMO_ACID, PL_MODE_LIVE) == PL_DEMO_ACID); // песня в live не меняется
+    CHECK(pl_nav_mode_demo(1, PL_DEMO_DRONE, PL_MODE_LIVE) != PL_DEMO_DRONE);
+    CHECK(pl_nav_mode_demo(1, PL_DEMO_DRONE, PL_MODE_LIVE) <= PL_DEMO_SEQ);
+}
+
 int main(void)
 {
     RUN(test_main_bar);
@@ -172,5 +182,6 @@ int main(void)
     RUN(test_tab_tap);
     RUN(test_actions);
     RUN(test_modes);
+    RUN(test_mode_picked_demo);
     TEST_MAIN_END();
 }

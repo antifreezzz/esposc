@@ -21,8 +21,6 @@ typedef struct {
 void pl_view_cell(const pl_model_t *m, int page, int enc, pl_cell_t *c);
 const char *pl_view_page_name(int page); // NULL вне 0..15
 uint32_t pl_view_page_color(int page);
-// Соседняя страница по кругу внутри своей группы: штатные 0..9, свои 10..15.
-int pl_view_page_step(int page, int dir);
 // Цель i слота своей страницы: её страница 0..9 и энкодер в *enc, -1 - нет такой.
 int pl_view_target(const pl_model_t *m, int page, int enc, int i, int *tenc);
 // На странице есть кнопка перехода к экрану чашки: страница её ручек или синт с типом PETRI.

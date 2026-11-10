@@ -2,6 +2,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "pl_grids.h"
+
 // Кадры UART синт <-> панель: 0xA5, тип, длина, полезная нагрузка, CRC-8 (полином 0x07 по типу, длине и нагрузке).
 // Битый кадр выбрасывается, приём ищет следующий синхробайт (в том числе внутри выброшенного).
 // Длина у каждого типа своя: заголовок с чужой длиной - не кадр, отбрасывается сразу.
@@ -58,10 +60,18 @@ enum {
     PL_SEQ_POS = 24,  // синт -> панель: позиция игры и темп (pl_seq_pos_t), при изменении
     PL_SEQ_SCALE = 25, // панель -> синт: лад такта {synth, pat, scale} (0 - со страницы 9, 1 + k - лад k)
     PL_MODE = 26,      // панель -> синт: поставить режим (1 байт: PL_DEMO_* без BSP, с BSP - PL_MODE_LIVE или PL_DEMO_DRONE)
-    PL_MOD = 27,       // синт -> панель: ручки, цели и подхват одного модулятора (pl_mod_t)
-    PL_MOD_EDIT = 28,  // панель -> синт: поставить или убрать цель модулятора (pl_mod_edit_t)
-    PL_MOD_POS = 29,   // синт -> панель: 4 байта out (int8, -127..127)
+    PL_GRIDS_PAT = 27,  // обе стороны: свой рисунок Grids целиком (pl_grids_pat_frame_t); синт шлёт все после PL_HELLO
+    PL_GRIDS_CELL = 28, // панель -> синт: клетка своего рисунка {slot, part, step, уровень}
+    PL_MOD = 29,        // синт -> панель: ручки, цели и подхват одного модулятора (pl_mod_t)
+    PL_MOD_EDIT = 30,   // панель -> синт: поставить или убрать цель модулятора (pl_mod_edit_t)
+    PL_MOD_POS = 31,    // синт -> панель: 4 байта out (int8, -127..127)
 };
+
+// Свой рисунок Grids в кадре: слот U1..U4 и рисунок (сетка и 96 уровней).
+typedef struct {
+    uint8_t slot;
+    pl_grids_pat_t pat;
+} pl_grids_pat_frame_t;
 
 // Секвенсер: байт шага - ступень 0..14 (PL_SEQ_REST - пауза) и флаги; совпадает с ACID_SEQ_* синта.
 #define PL_SEQ_SYNTHS 2
@@ -110,7 +120,7 @@ int pl_petri_collect(pl_petri_rx_t *r, uint8_t type, const uint8_t *payload, siz
 
 // Песня демо, режим дрона или режим секвенсера в снимке.
 enum { PL_DEMO_METAL, PL_DEMO_ACID, PL_DEMO_DRONE, PL_DEMO_SEQ, PL_DEMO_SONGS = PL_DEMO_DRONE };
-#define PL_MODE_LIVE 0 // PL_MODE с BSP: играть с BSP (не дрон)
+#define PL_MODE_LIVE 4 // PL_MODE с BSP: играть с BSP (не дрон); вне PL_DEMO_*, чтобы не спутать с песней
 // Годится ли режим mode для PL_MODE: без BSP (live 0) - любой PL_DEMO_*, с BSP - PL_MODE_LIVE или PL_DEMO_DRONE.
 int pl_mode_ok(int live, int mode);
 

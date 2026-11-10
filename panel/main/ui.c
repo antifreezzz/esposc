@@ -240,7 +240,8 @@ static void main_title(const pl_model_t *m, const char **title, char sub[24])
         *title = k ? "SYNTH 2" : "SYNTH 1";
         int sp = t && t->page == PL_PAGE_LAYER1 + k ? t->page : PL_PAGE_SYNTH1 + k;
         if (m && m->have) {
-            snprintf(sub, 24, "%s", pl_page_summary(sp, m->raw[sp], sub));
+            char tmp[24]; // сводка пишет в свой буфер: источник и приёмник snprintf не пересекаются
+            snprintf(sub, 24, "%s", pl_page_summary(sp, m->raw[sp], tmp));
         }
         return;
     }
@@ -252,7 +253,8 @@ static void main_title(const pl_model_t *m, const char **title, char sub[24])
         snprintf(sub, 24, "%s", pl_user_name(u.user));
     } else if (m->have) {
         int sp = t->page < PL_PAGES ? t->page : 1;
-        snprintf(sub, 24, "%s", pl_page_summary(sp, m->raw[sp], sub));
+        char tmp[24];
+        snprintf(sub, 24, "%s", pl_page_summary(sp, m->raw[sp], tmp));
     }
 }
 
@@ -951,16 +953,6 @@ static void place_mark(int pos, int lo, int hi)
     lv_obj_set_pos(u.bsp_mark, c + (int)lroundf(r * cosf(a)) - 8, c + (int)lroundf(r * sinf(a)) - 8);
 }
 
-// Позиция энкодера BSP для слота: на вкладке MIX событие от синта приходит с индексом целевого энкодера.
-static int slot_bsp_pos(const pl_model_t *m, int page, int enc)
-{
-    int tp, te;
-    if (pl_view_mix(m, page, enc, &tp, &te) && m->bsp_pos[te] != 0xFF) {
-        return m->bsp_pos[te];
-    }
-    return m->bsp_pos[enc];
-}
-
 static void draw_page(const pl_model_t *m)
 {
     int page = view_page();
@@ -994,7 +986,7 @@ static void draw_page(const pl_model_t *m)
             k->lit = lit;
             lv_obj_invalidate(k->card);
         }
-        int bpos = slot_bsp_pos(m, page, enc);
+        int bpos = m->bsp_pos[enc];
         int held = cell.held && bpos != 0xFF;
         if (held != k->held) {
             uint32_t lc = held ? C_BSP : k->color;
@@ -1048,7 +1040,7 @@ static void draw_page(const pl_model_t *m)
         snprintf(head, sizeof head, "E%d  %s", enc + 1, u.knob[g].lab);
     }
     ui_text(u.big_name, head);
-    int bpos = slot_bsp_pos(m, page, enc);
+    int bpos = m->bsp_pos[enc];
     int held = cell.held && bpos != 0xFF;
     ui_show(u.bsp_mark, held);
     if (held) {
@@ -1201,6 +1193,13 @@ static void set_knob(pl_model_t *m, int page, int enc, int v)
     }
 }
 
+void ui_open_pick(int page, int enc)
+{
+    u.pick_page = u.pick_tp = page;
+    u.pick_enc = u.pick_te = enc;
+    u.overlay = OVL_VAL;
+}
+
 static void card_tap(pl_model_t *m, int cell, uint32_t ms)
 {
     int enc = cell + 1, tp, te;
@@ -1325,7 +1324,7 @@ static void overlay_input(pl_model_t *m, int tap, int x0, int y0, int x1, int y1
         int i = pl_nav_mode_at(n, x0, y0);
         if (i >= 0 && i == pl_nav_mode_at(n, x1, y1) && pl_model_linked(m, ms) && pl_mode_ok(m->mode, modes[i])) {
             link_mode(modes[i]);
-            m->demo = modes[i];
+            m->demo = pl_nav_mode_demo(m->mode, m->demo, modes[i]);
         }
         u.overlay = OVL_NONE;
     } else if (u.overlay == OVL_MORPH) {

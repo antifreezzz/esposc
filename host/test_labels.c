@@ -1,5 +1,6 @@
 // Подписи ручек панели: покрытие всех страниц, типов синта и моделей перкуссии, списки значений.
 #include "pl_labels.h"
+#include "pl_grids.h"
 #include "test.h"
 
 #include <string.h>
@@ -17,7 +18,7 @@ static int empty(int page, int enc, int type)
     case 10:
     case 11: return type == 26 ? enc >= 2 : type == 0 && enc >= 10 && enc <= 12; // слой: как синт, OFF (26) - пусто
     case 8: return enc >= 15;
-    case 12: return enc >= 13;
+    case 12: return enc >= 15; // Grids: 13 PATTERN, 14 SWING
     default: return 0;
     }
 }
@@ -285,7 +286,9 @@ TEST(test_grids_labels)
     for (int e = 1; e <= 12; e++) {
         CHECK(pl_knob_label(PL_PAGE_GRIDS, e, raw) && strcmp(pl_knob_label(PL_PAGE_GRIDS, e, raw), L[e]) == 0);
     }
-    CHECK(pl_knob_label(PL_PAGE_GRIDS, 13, raw) == NULL);
+    CHECK(strcmp(pl_knob_label(PL_PAGE_GRIDS, 13, raw), "PATTERN") == 0);
+    CHECK(strcmp(pl_knob_label(PL_PAGE_GRIDS, 14, raw), "SWING") == 0);
+    CHECK(pl_knob_label(PL_PAGE_GRIDS, 15, raw) == NULL);
     int lo, hi;
     pl_knob_range(PL_PAGE_GRIDS, 2, raw, &lo, &hi);
     CHECK(lo == 0 && hi == 127);
@@ -304,6 +307,26 @@ TEST(test_grids_labels)
     CHECK(strcmp(pl_value_text(PL_PAGE_GRIDS, 10, 3, raw, buf), "16") == 0);
     CHECK(strcmp(pl_value_text(PL_PAGE_GRIDS, 11, 2, raw, buf), "4") == 0);
     CHECK(pl_page_color(PL_PAGE_GRIDS) != 0);
+    // Источник рисунка: карта, банк по именам, свои; свинг в процентах.
+    pl_knob_range(PL_PAGE_GRIDS, 13, raw, &lo, &hi);
+    CHECK(lo == 0 && hi == PL_GRIDS_SRCS - 1);
+    CHECK(strcmp(pl_value_text(PL_PAGE_GRIDS, 13, 0, raw, buf), "MAP") == 0);
+    for (int b = 0; b < PL_GRIDS_BANK; b++) {
+        CHECK(strcmp(pl_value_text(PL_PAGE_GRIDS, 13, 1 + b, raw, buf), pl_grids_bank[b].name) == 0);
+    }
+    CHECK(strcmp(pl_value_text(PL_PAGE_GRIDS, 13, PL_GRIDS_SRC_USER, raw, buf), "U1") == 0);
+    CHECK(strcmp(pl_value_text(PL_PAGE_GRIDS, 13, PL_GRIDS_SRCS - 1, raw, buf), "U4") == 0);
+    pl_knob_range(PL_PAGE_GRIDS, 14, raw, &lo, &hi);
+    CHECK(lo == 0 && hi == 3);
+    CHECK(strcmp(pl_value_text(PL_PAGE_GRIDS, 14, 0, raw, buf), "50%") == 0);
+    CHECK(strcmp(pl_value_text(PL_PAGE_GRIDS, 14, 2, raw, buf), "67%") == 0);
+    // В шапке - рисунок вместо точки карты.
+    uint8_t on[16] = {0};
+    char sum[24];
+    on[1] = 1, on[2] = 5, on[3] = 6;
+    CHECK(strcmp(pl_page_summary(PL_PAGE_GRIDS, on, sum), "ON X5 Y6") == 0);
+    on[13] = 7;
+    CHECK(strcmp(pl_page_summary(PL_PAGE_GRIDS, on, sum), "ON AMEN") == 0);
 }
 
 // Тип синта PETRI (25): свои подписи и списки, у слоя «выкл» теперь 26.

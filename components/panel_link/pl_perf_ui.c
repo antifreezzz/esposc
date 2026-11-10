@@ -92,3 +92,11 @@ int pl_pui_fader_value(int y)
     int v = (FADER_Y + FADER_H - 1 - y) * 127 / (FADER_H - 1);
     return v < 0 ? 0 : v > 127 ? 127 : v;
 }
+
+const char *pl_pui_scene_sub(int slot, int cur, int state)
+{
+    if (slot != cur) {
+        return "";
+    }
+    return state == 1 ? "WAIT" : state == 2 ? "MORPH" : "";
+}

@@ -11,8 +11,10 @@ enum {
     PL_GUI_TIME,   // сегменты HAT RIDE
     PL_GUI_EVERY,  // сегменты OFF 4 8 16
     PL_GUI_LEN,    // сегменты 1 2 4
-    PL_GUI_SLIDER, // KICK SNARE HAT CHAOS
-    PL_GUI_XY,     // карта: X и Y
+    PL_GUI_SLIDER, // KICK SNARE HAT CHAOS SWING
+    PL_GUI_XY,     // карта: X и Y; у банка и своих на её месте кнопка редактора
+    PL_GUI_SRC,    // источник рисунка: тап открывает сетку выбора
+    PL_GUI_GRID,   // сетка шагов: тап открывает редактор
     PL_GUI_IDS
 };
 
@@ -24,5 +26,29 @@ int pl_gui_at(int x, int y, int *arg);
 int pl_gui_enc(int id, int idx);
 // Значение ползунка по y пальца: верх 127, низ 0.
 int pl_gui_slider_value(int y);
+// Свинг по y пальца на своём ползунке: низ 0, верх 3.
+int pl_gui_swing_value(int y);
 // Клетка сетки шагов: шаг 0..31, дорожка 0..2 (бочка, малый, хэт). 0 - вне сетки.
 int pl_gui_cell(int step, int part, int *x, int *y, int *w, int *h);
+// То же с сеткой рисунка (pl_grids.h): у триольной 24 клетки пошире, слоты 12-15 такта - 0.
+int pl_gui_cell_at(int grid, int step, int part, int *x, int *y, int *w, int *h);
+
+// Редактор своего рисунка поверх экрана Grids: один такт в два яруса по 8 шагов (у триолей по 6), в ярусе
+// 3 дорожки. 16 узких клеток в ряд пальцем не попасть.
+enum {
+    PL_GED_NONE,
+    PL_GED_BACK,  // закрыть
+    PL_GED_SLOT,  // U1..U4
+    PL_GED_BAR,   // такт 1 / 2
+    PL_GED_TRIP,  // сетка 16 / 12T
+    PL_GED_COPY,  // скопировать источник, с которого пришли
+    PL_GED_CLEAR, // очистить рисунок
+    PL_GED_CELL,
+    PL_GED_IDS
+};
+int pl_ged_rect(int id, int idx, int *x, int *y, int *w, int *h); // кнопки; у клеток - pl_ged_cell
+int pl_ged_cell(int grid, int col, int part, int *x, int *y, int *w, int *h); // col - шаг такта 0..15 (0..11)
+// Что под точкой; у клетки arg = дорожка * 16 + шаг такта. Клетки яруса ловят и щели между собой.
+int pl_ged_at(int grid, int x, int y, int *arg);
+// Уровень клетки после тапа: пусто -> удар -> акцент -> гост -> пусто.
+int pl_ged_next(int lv);

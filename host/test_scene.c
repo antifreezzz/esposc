@@ -389,8 +389,24 @@ TEST(test_scene_layer_type_jumps)
     CHECK(knob(ACID_PAGE_LAYER1, 3) == 99);
 }
 
+// Сцена помнит рисунок и свинг Grids; это списки - при переходе по тактам прыгают, а не перебирают рисунки.
+TEST(test_scene_grids_pattern)
+{
+    reset();
+    set(ACID_PAGE_GRIDS, DRM_SRC, 7);
+    set(ACID_PAGE_GRIDS, DRM_SWING, 2);
+    acid_scene_store(&sc, 0, &s, &c);
+    set(ACID_PAGE_GRIDS, DRM_SRC, 1);
+    set(ACID_PAGE_GRIDS, DRM_SWING, 0);
+    CHECK(acid_scene_recall(&sc, 0, 4) == 1);
+    run_to_end();
+    CHECK(knob(ACID_PAGE_GRIDS, DRM_SRC) == 7 && knob(ACID_PAGE_GRIDS, DRM_SWING) == 2);
+    CHECK(sc.jump[ACID_PAGE_GRIDS][DRM_SRC] == 1 && sc.jump[ACID_PAGE_GRIDS][DRM_SWING] == 1);
+}
+
 int main(void)
 {
+    RUN(test_scene_grids_pattern);
     RUN(test_scene_layer_type_jumps);
     RUN(test_scene_import_old_blob);
     RUN(test_scene_skips_grids_actions);
