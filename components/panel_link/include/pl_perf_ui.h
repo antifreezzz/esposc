@@ -29,3 +29,6 @@ int pl_pui_target(int id, int idx, int *page, int *enc);
 int pl_pui_hbar_value(int x);
 // Значение вертикального ползунка громкости по y пальца: верх 127, низ 0.
 int pl_pui_fader_value(int y);
+// Подпись статуса под номером сцены slot: "WAIT" (вызвана, ждёт такта), "MORPH" (идёт переход) или "".
+// cur и state - из кадра PL_SCENE_STATE.
+const char *pl_pui_scene_sub(int slot, int cur, int state);

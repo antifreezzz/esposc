@@ -3,6 +3,8 @@
 #include "pl_proto.h"
 #include "test.h"
 
+#include <string.h>
+
 static void center(int id, int idx, int *x, int *y)
 {
     int rx, ry, rw, rh;
@@ -97,11 +99,22 @@ TEST(test_sliders)
     CHECK(vmid >= 58 && vmid <= 68);
 }
 
+// Статус сцены под номером: у текущей - ждёт такта или идёт морф, у остальных пусто (как READY/ON на старом экране).
+TEST(test_scene_sub)
+{
+    CHECK(!strcmp(pl_pui_scene_sub(2, 2, 1), "WAIT"));
+    CHECK(!strcmp(pl_pui_scene_sub(2, 2, 2), "MORPH"));
+    CHECK(!strcmp(pl_pui_scene_sub(2, 2, 0), ""));
+    CHECK(!strcmp(pl_pui_scene_sub(3, 2, 1), "")); // не текущая
+    CHECK(!strcmp(pl_pui_scene_sub(0, 0xFF, 2), "")); // не вызывали
+}
+
 int main(void)
 {
     RUN(test_hit_centers);
     RUN(test_rects_inside_and_apart);
     RUN(test_targets);
     RUN(test_sliders);
+    RUN(test_scene_sub);
     TEST_MAIN_END();
 }

@@ -193,8 +193,14 @@ static void draw_perf(lv_event_t *e)
         draw_tile(layer, ox, oy, x, y, w, h, bg, saved || cur, brd);
         char s[4] = {(char)('1' + i), 0};
         uint32_t tc = saved ? C_OK : cur ? C_ACCENT : used ? C_TEXT : C_MUTED;
-        draw_text(layer, ox + x, oy + y + (saved ? 17 : 14), ox + x + w - 1, oy + y + h - 1,
-                  saved ? &bc_17 : &bc_22, tc, LV_TEXT_ALIGN_CENTER, saved ? "OK" : s);
+        const char *sub = saved ? "" : pl_pui_scene_sub(i, m->scene.cur, m->scene.state);
+        int top = saved ? 17 : sub[0] ? 4 : 14; // со статусом номер выше, статус под ним
+        draw_text(layer, ox + x, oy + y + top, ox + x + w - 1, oy + y + h - 1, saved ? &bc_17 : &bc_22, tc,
+                  LV_TEXT_ALIGN_CENTER, saved ? "OK" : s);
+        if (sub[0]) {
+            draw_text(layer, ox + x, oy + y + 27, ox + x + w - 1, oy + y + h - 1, &bc_15, C_ACCENT, LV_TEXT_ALIGN_CENTER,
+                      sub);
+        }
     }
     {
         int x, y, w, h;
@@ -357,7 +363,7 @@ void upf_draw(const pl_model_t *m, uint32_t ms)
     int cur[2];
     pl_cell_t cell[2];
     xy_axes(m, cur, cell);
-    int k = (m->scene.cur & 15) | ((int)m->scene.used << 4) | (pf.bars << 12) | ((pf.saved_until > ms) << 16) |
+    int k = (m->scene.cur & 15) | ((int)m->scene.used << 4) | ((m->scene.state & 3) << 23) | (pf.bars << 12) | ((pf.saved_until > ms) << 16) |
             (m->raw[PL_PAGE_GRIDS][1] << 17) | (m->raw[PL_PAGE_GRIDS][12] << 18) | (m->raw[8][9] << 19) |
             ((m->raw[0][11] << 22) ^ (m->raw[0][9] * 131) ^ (cur[0] * 17) ^ (cur[1] * 53));
     for (int i = 0; i < PL_PUI_FADERS; i++) {
@@ -386,8 +392,9 @@ void upf_release(pl_model_t *m)
         }
     }
     if (pf.drag_id) {
-        int page, enc;
-        if (pl_pui_target(pf.drag_id, pf.drag_idx, &page, &enc)) {
+        int page, enc; // досылаем последнее значение только ползунку; GRIDS ON держит drag_id лишь от дребезга
+        int slider = pf.drag_id == PL_PUI_DJF || pf.drag_id == PL_PUI_PUMP || pf.drag_id == PL_PUI_FADER;
+        if (slider && pl_pui_target(pf.drag_id, pf.drag_idx, &page, &enc)) {
             send_knob(m, page, enc, pf.want, 0, 1);
         }
         pf.drag_id = PL_PUI_NONE;
@@ -399,7 +406,7 @@ void upf_input(pl_model_t *m, int ev, int down, int x, int y, int x0, int y0, in
 {
     int arg0 = -1, id0 = pl_pui_at(x0, y0, &arg0);
 
-    // Сцены 1-8 и MORPH: тап (вызвать) или удержание 0.6 с (записать), как в uc_scenes_input.
+    // Сцены 1-8 и MORPH: тап (вызвать) или удержание 0.6 с (записать).
     if (id0 == PL_PUI_SCENE) {
         int arg1 = -1, id1 = pl_pui_at(x1, y1, &arg1);
         if (pl_press_tap(ev) && id1 == PL_PUI_SCENE && arg1 == arg0 && m->have) {
