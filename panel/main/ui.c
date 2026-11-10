@@ -951,16 +951,6 @@ static void place_mark(int pos, int lo, int hi)
     lv_obj_set_pos(u.bsp_mark, c + (int)lroundf(r * cosf(a)) - 8, c + (int)lroundf(r * sinf(a)) - 8);
 }
 
-// Позиция энкодера BSP для слота: на вкладке MIX событие от синта приходит с индексом целевого энкодера.
-static int slot_bsp_pos(const pl_model_t *m, int page, int enc)
-{
-    int tp, te;
-    if (pl_view_mix(m, page, enc, &tp, &te) && m->bsp_pos[te] != 0xFF) {
-        return m->bsp_pos[te];
-    }
-    return m->bsp_pos[enc];
-}
-
 static void draw_page(const pl_model_t *m)
 {
     int page = view_page();
@@ -994,7 +984,7 @@ static void draw_page(const pl_model_t *m)
             k->lit = lit;
             lv_obj_invalidate(k->card);
         }
-        int bpos = slot_bsp_pos(m, page, enc);
+        int bpos = m->bsp_pos[enc];
         int held = cell.held && bpos != 0xFF;
         if (held != k->held) {
             uint32_t lc = held ? C_BSP : k->color;
@@ -1048,7 +1038,7 @@ static void draw_page(const pl_model_t *m)
         snprintf(head, sizeof head, "E%d  %s", enc + 1, u.knob[g].lab);
     }
     ui_text(u.big_name, head);
-    int bpos = slot_bsp_pos(m, page, enc);
+    int bpos = m->bsp_pos[enc];
     int held = cell.held && bpos != 0xFF;
     ui_show(u.bsp_mark, held);
     if (held) {

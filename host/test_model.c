@@ -72,6 +72,20 @@ TEST(test_page_event)
     CHECK(m.raw[0][0] == 0);
 }
 
+// Вкладка MIX открыта у синта (эхо страницы): событие BSP приходит с целью, а позиция - энкодера слота.
+TEST(test_mix_bsp_pos_goes_to_slot)
+{
+    pl_model_init(&m);
+    knob(PL_PAGE_MIX_DRUMS, 0, PL_PAGE_MIX_DRUMS, 2, 0xFF, 0, 5);
+    knob(0, 6, 55, 0, 55, 0, 10); // E2 вкладки DRUMS MIX - бочка, MIX E6
+    CHECK(m.raw[0][6] == 55 && m.bsp_pos[2] == 55 && m.bsp_pos[6] == 0xFF);
+    knob(0, 6, 60, 2, 0xFF, 1, 20); // эхо правки с панели - позиция самой цели
+    CHECK(m.raw[0][6] == 60 && m.bsp_pos[2] == 55 && m.bsp_pos[6] == 0xFF);
+    knob(0, 0, 0, 0, 0xFF, 0, 30); // энкодер 1 BSP закрыл MIX
+    knob(0, 6, 70, 0, 70, 0, 40);
+    CHECK(m.bsp_pos[6] == 70 && m.bsp_pos[2] == 55);
+}
+
 TEST(test_need_hello)
 {
     pl_model_init(&m);
@@ -340,6 +354,7 @@ int main(void)
     RUN(test_knob_updates_value);
     RUN(test_toast_only_from_bsp);
     RUN(test_page_event);
+    RUN(test_mix_bsp_pos_goes_to_slot);
     RUN(test_need_hello);
     RUN(test_local_set);
     RUN(test_toast_skips_empty_knob);
