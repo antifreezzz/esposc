@@ -6,6 +6,7 @@
 #include "driver/uart.h"
 #include "esp_check.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -315,8 +316,14 @@ static void link_task(void *arg)
     pl_rx_init(&rx);
     uint8_t buf[64];
     int mod_div = 0;
+    uint32_t last_ms = 0;
     for (;;) {
         int n = uart_read_bytes(PORT, buf, sizeof buf, POLL_TICKS);
+        uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
+        if (last_ms && now_ms - last_ms > 1000) {
+            ESP_LOGW(TAG, "link task gap %lu ms", (unsigned long)(now_ms - last_ms));
+        }
+        last_ms = now_ms;
         for (int i = 0; i < n; i++) {
             uint8_t type;
             const uint8_t *p;
