@@ -51,6 +51,7 @@ static const acid_scene_t *s_scene;
 static const volatile int *s_demo_on;
 static const volatile int *s_demo_song;
 static volatile int s_demo_due; // панель попросила следующее демо
+static volatile int s_mode_due = -1; // панель выбрала режим (PL_MODE), -1 - нет
 static volatile int s_snapshot_due;
 static unsigned s_custom_due; // бит своей страницы; ставит ядро 1, забирает задача связи (атомарно)
 static volatile int s_scene_due;
@@ -144,6 +145,11 @@ int panel_uart_take_demo(void)
     }
     s_demo_due = 0;
     return 1;
+}
+
+int panel_uart_take_mode(void)
+{
+    return __atomic_exchange_n(&s_mode_due, -1, __ATOMIC_RELAXED);
 }
 
 void panel_uart_snapshot_due(void)
@@ -269,6 +275,8 @@ static void link_task(void *arg)
                     xQueueSend(s_seq_q, &f, 0);
                 } else if (type == PL_DEMO) {
                     s_demo_due = 1;
+                } else if (type == PL_MODE && len == 1) {
+                    s_mode_due = p[0];
                 } else if (type == PL_HELLO) {
                     s_snapshot_due = 1;
                 }

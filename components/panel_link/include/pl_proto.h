@@ -48,6 +48,7 @@ enum {
     PL_SEQ_DUMP = 23, // синт -> панель: всё одного синта (pl_seq_dump_t), после PL_HELLO
     PL_SEQ_POS = 24,  // синт -> панель: позиция игры и темп (pl_seq_pos_t), при изменении
     PL_SEQ_SCALE = 25, // панель -> синт: лад такта {synth, pat, scale} (0 - со страницы 9, 1 + k - лад k)
+    PL_MODE = 26,      // панель -> синт: поставить режим (1 байт: PL_DEMO_* без BSP, с BSP - PL_MODE_LIVE или PL_DEMO_DRONE)
 };
 
 // Секвенсер: байт шага - ступень 0..14 (PL_SEQ_REST - пауза) и флаги; совпадает с ACID_SEQ_* синта.
@@ -97,6 +98,9 @@ int pl_petri_collect(pl_petri_rx_t *r, uint8_t type, const uint8_t *payload, siz
 
 // Песня демо, режим дрона или режим секвенсера в снимке.
 enum { PL_DEMO_METAL, PL_DEMO_ACID, PL_DEMO_DRONE, PL_DEMO_SEQ, PL_DEMO_SONGS = PL_DEMO_DRONE };
+#define PL_MODE_LIVE 0 // PL_MODE с BSP: играть с BSP (не дрон)
+// Годится ли режим mode для PL_MODE: без BSP (live 0) - любой PL_DEMO_*, с BSP - PL_MODE_LIVE или PL_DEMO_DRONE.
+int pl_mode_ok(int live, int mode);
 
 // Нагрузки - только байты, без выравнивания.
 typedef struct {

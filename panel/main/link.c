@@ -89,6 +89,12 @@ void link_demo(void)
     send(PL_DEMO, NULL, 0);
 }
 
+void link_mode(int mode)
+{
+    uint8_t m = (uint8_t)mode;
+    send(PL_MODE, &m, 1);
+}
+
 void link_petri(const uint8_t out[4][PL_PETRI_PART_MAX], const size_t len[4])
 {
     for (int k = 0; k < 4; k++) {

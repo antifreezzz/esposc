@@ -195,6 +195,26 @@ TEST(test_demo_frame)
     CHECK(frames == 2 && got_type == PL_SCENE);
 }
 
+// Прямой выбор режима: 1 байт; чужая длина - не кадр. Без BSP годятся все режимы, с BSP - только LIVE и DRONE.
+TEST(test_mode_frame)
+{
+    uint8_t f[PL_FRAME_MAX];
+    uint8_t mode = PL_DEMO_SEQ;
+    start();
+    feed(f, pl_encode(PL_MODE, &mode, 1, f));
+    CHECK(frames == 1 && got_type == PL_MODE && got_len == 1 && got_pl[0] == PL_DEMO_SEQ);
+    start();
+    feed(f, pl_encode(PL_MODE, NULL, 0, f));
+    CHECK(frames == 0);
+    CHECK(PL_MODE_LIVE == 0);
+    for (int m = PL_DEMO_METAL; m <= PL_DEMO_SEQ; m++) {
+        CHECK(pl_mode_ok(0, m));
+    }
+    CHECK(pl_mode_ok(1, PL_MODE_LIVE) && pl_mode_ok(1, PL_DEMO_DRONE));
+    CHECK(!pl_mode_ok(1, PL_DEMO_ACID) && !pl_mode_ok(1, PL_DEMO_SEQ));
+    CHECK(!pl_mode_ok(0, PL_DEMO_SEQ + 1) && !pl_mode_ok(0, -1) && !pl_mode_ok(1, 200));
+}
+
 TEST(test_snapshot_fits)
 {
     CHECK(PL_PAGES == 14 && PL_PAGE_GRIDS == 12 && PL_PAGE_PETRI == 13 && PL_USER_FIRST == 14);
@@ -254,6 +274,7 @@ int main(void)
     RUN(test_bad_header_resyncs_now);
     RUN(test_new_frame_sizes);
     RUN(test_demo_frame);
+    RUN(test_mode_frame);
     RUN(test_snapshot_fits);
     RUN(test_page_bsp);
     RUN(test_grids_step_frame);

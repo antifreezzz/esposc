@@ -24,6 +24,8 @@ void panel_uart_set_bsp_bpm(int bpm);
 void panel_uart_seq_pos_due(void);
 // Панель попросила следующую песню демо: 1 один раз на просьбу (без ожидания).
 int panel_uart_take_demo(void);
+// Панель выбрала режим (PL_MODE): его байт один раз, -1 - просьбы нет (без ожидания).
+int panel_uart_take_mode(void);
 // Правка с панели: 1 если есть (без ожидания).
 int panel_uart_receive(pl_set_t *out);
 // На панели открыли страницу: 1 если есть (без ожидания).

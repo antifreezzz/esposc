@@ -60,6 +60,7 @@ static int payload_len(uint8_t type)
     case PL_SEQ_DUMP: return (int)sizeof(pl_seq_dump_t);
     case PL_SEQ_POS: return (int)sizeof(pl_seq_pos_t);
     case PL_SEQ_SCALE: return 3;
+    case PL_MODE: return 1;
     default: return -1;
     }
 }
@@ -186,4 +187,12 @@ int pl_petri_collect(pl_petri_rx_t *r, uint8_t type, const uint8_t *payload, siz
 int pl_petri_synth(const uint8_t raw[PL_PAGES][PL_KNOBS])
 {
     return raw[PL_PAGE_SYNTH1][1] == PL_TYPE_PETRI ? 0 : raw[PL_PAGE_SYNTH1 + 1][1] == PL_TYPE_PETRI ? 1 : -1;
+}
+
+int pl_mode_ok(int live, int mode)
+{
+    if (live) {
+        return mode == PL_MODE_LIVE || mode == PL_DEMO_DRONE;
+    }
+    return mode >= PL_DEMO_METAL && mode <= PL_DEMO_SEQ;
 }
