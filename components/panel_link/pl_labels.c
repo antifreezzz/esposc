@@ -1,3 +1,4 @@
+#include "pl_grids.h"
 #include "pl_labels.h"
 
 #include <stdio.h>
@@ -36,7 +37,13 @@ static const char *const ORBIT[5] = {"CIRCLE", "EIGHT", "LISS 3:2", "ROSE", "EPI
 static const char *const FX[16] = {NULL, "CRUSH BITS", "CRUSH RATE", "DLY S1", "DLY S2", "DLY DRUMS", "DLY TIME",
                                    "DLY FB", "DLY TONE", "STUTTER", "MOTION", "WIDTH", "LYR1 VOL", "LYR2 VOL", "LYR HALF"};
 static const char *const GRIDS[16] = {NULL, "ON", "X", "Y", "KICK", "SNARE", "HAT", "CHAOS", "HAT MODE",
-                                      "TIME", "EVERY", "FILL LEN", "FILL", NULL, NULL, NULL};
+                                      "TIME", "EVERY", "FILL LEN", "FILL", "PATTERN", "SWING", NULL};
+// Источник рисунка: имена банка - те же, что в pl_grids_bank (сверяет test_labels).
+static const char *const GRIDS_SRC[PL_GRIDS_SRCS] = {
+    "MAP",        "FOUR FLOOR", "OFFBEAT HOUSE", "ELECTRO 808", "BREAK HOUSE", "HALF TECHNO", "TWO STEP", "AMEN",
+    "FUNK BREAK", "JUNGLE",     "HALF TIME",     "ROCK 8",      "ROCK 16",     "DOUBLE KICK", "GALLOP",   "BLAST",
+    "BOMB BLAST", "D-BEAT",     "SHUFFLE 12/8",  "U1",          "U2",          "U3",          "U4"};
+static const char *const SWING[4] = {"50%", "58%", "67%", "75%"};
 static const char *const TONAL[16] = {NULL, "STEP LEN", "STEPS", "ORDER", "TARGET", "HELD", "SCALE", "ROOT",
                                       "STEP 1", "STEP 2", "STEP 3", "STEP 4", "STEP 5", "STEP 6", "STEP 7", "STEP 8"};
 
@@ -175,10 +182,11 @@ static int list_of(int page, int enc, const uint8_t *raw, const char *const **wo
         static const char *const *const W[16] = {[1] = PRESET, [15] = RESEED};
         static const int HI[16] = {[1] = 5, [4] = 6, [5] = 16, [6] = 4, [7] = 4, [8] = 3, [15] = 1};
         *words = W[enc], *hi = HI[enc];
-    } else if (page == GRIDS_PAGE && (enc == 1 || (enc >= 8 && enc <= 12))) {
-        static const char *const *const W[13] = {[1] = OFF_ON, [8] = HAT_MODE, [9] = TIME_HAND, [10] = EVERY,
-                                                 [11] = FILL_LEN, [12] = FILL_NOW};
-        static const int HI[13] = {[1] = 1, [8] = 2, [9] = 1, [10] = 3, [11] = 2, [12] = 1};
+    } else if (page == GRIDS_PAGE && (enc == 1 || (enc >= 8 && enc <= 14))) {
+        static const char *const *const W[15] = {[1] = OFF_ON, [8] = HAT_MODE, [9] = TIME_HAND, [10] = EVERY,
+                                                 [11] = FILL_LEN, [12] = FILL_NOW, [13] = GRIDS_SRC, [14] = SWING};
+        static const int HI[15] = {[1] = 1, [8] = 2, [9] = 1, [10] = 3, [11] = 2, [12] = 1,
+                                   [13] = PL_GRIDS_SRCS - 1, [14] = 3};
         *words = W[enc], *hi = HI[enc];
     } else {
         return 0;
@@ -382,6 +390,10 @@ const char *pl_page_summary(int page, const uint8_t page_raw[16], char buf[24])
     case GRIDS_PAGE:
         if (!page_raw[1]) {
             return "OFF";
+        }
+        if (page_raw[13] != PL_GRIDS_SRC_MAP && page_raw[13] < PL_GRIDS_SRCS) {
+            snprintf(buf, 24, "ON %s", GRIDS_SRC[page_raw[13]]);
+            return buf;
         }
         snprintf(buf, 24, "ON X%d Y%d", page_raw[2], page_raw[3]);
         return buf;

@@ -63,7 +63,9 @@ TEST(test_kind_other_pages)
     CHECK(kind(PL_PAGE_GRIDS, 8) == PL_PICK_GRID);     // HAT MODE
     CHECK(kind(PL_PAGE_GRIDS, 9) == PL_PICK_TOGGLE);   // TIME HAND
     CHECK(kind(PL_PAGE_GRIDS, 12) == PL_PICK_TRIGGER); // FILL
-    CHECK(kind(PL_PAGE_GRIDS, 13) == PL_PICK_NONE);    // пусто
+    CHECK(kind(PL_PAGE_GRIDS, 13) == PL_PICK_GRID);    // PATTERN: карта, банк, свои
+    CHECK(kind(PL_PAGE_GRIDS, 14) == PL_PICK_GRID);    // SWING
+    CHECK(kind(PL_PAGE_GRIDS, 15) == PL_PICK_NONE);    // пусто
     CHECK(kind(PL_USER_FIRST, 1) == PL_PICK_NONE);     // своя страница: по цели, см. pl_pick_view
 }
 
