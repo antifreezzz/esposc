@@ -59,7 +59,8 @@ static const uint8_t PAN_DEFAULT[ACID_PANS] = {64, 64, 80, 48, 64};
 #define DRIVE_ENC 13   // энкодеры 14-16 страницы синта: перегруз, тон, вой (у 303 и Plaits одни)
 #define DRIVE_TONE 64  // тон и вой, пока их не трогали
 #define TYPE_ENC 1       // энкодер 2 на странице синта
-static const uint8_t BLOB_MAGIC[4] = {'A', 'S', '5', 4}; // 2: + ручки слоя тональности, 3: + слои синтов, 4: + PETRI
+// 2: + ручки слоя тональности, 3: + слои синтов, 4: + PETRI, 5: + страницы микса, ударки, эффектов, Grids, чашки.
+static const uint8_t BLOB_MAGIC[4] = {'A', 'S', '5', 5};
 #define OLD_TYPES 25 // версии 2-3: без PETRI, у слоя «выкл» = 25
 #define BLOB_OLD(slots) (4 + (slots) * (1 + OLD_TYPES * ACID_KNOBS) + ACID_TONAL_KNOBS)
 #define LAYER_GAIN_RAW 100 // громкость слоя после включения (FX 13-14)
@@ -79,9 +80,20 @@ static const uint8_t RAW_DEFAULT[ACID_PAGES][ACID_KNOBS] = {
     // Чашка: Митоз, F и k без сдвига, 4 шага, жители 3/1/2/1, аппетит 0.15, мутагены x1, маршруты -0.6/+0.7/+0.6.
     [ACID_PAGE_PETRI] = {0, 0, 64, 64, 4, 3, 1, 2, 1, 38, 42, 26, 108, 102, 0, 0},
 };
+// Страницы без своих knob[] синтов: их ручки в blob после тональности (версия 5).
+static const uint8_t SAVED_PAGES[ACID_SAVED_PAGES] = {0, 1, 2, 3, 4, 5, 8, ACID_PAGE_GRIDS, ACID_PAGE_PETRI};
 // Списки страницы «Чашка» (индекс энкодера с 0): пресет, шаги, численности. 0 - не список.
 static const uint8_t PETRI_PAGE_MAX[ACID_KNOBS] = {0, 5, 0, 0, 6, 16, 4, 4, 3, 0, 0, 0, 0, 0, 0, 1};
 #define PETRI_FREEZE_ENC 14 // энкодер 15: фриз (64 и выше вкл, каждый переход вверх - переснять)
+#define FX_STUTTER_ENC 9    // энкодер 10 страницы эффектов: статтер
+
+// Исполнительские ручки (статтер, фриз, сбивка Grids сейчас): из памяти не восстанавливаются, после включения
+// не должны заиграть сами.
+static int performance_knob(int page, int enc)
+{
+    return (page == PAGE_FX && enc == FX_STUTTER_ENC) || (page == ACID_PAGE_PETRI && enc == PETRI_FREEZE_ENC) ||
+           (page == ACID_PAGE_GRIDS && enc == DRM_FILL_NOW);
+}
 // Нетронутые ручки синта по типу: 303 и Plaits (перегруз 0, тон 64, вой 0 у обоих).
 static const uint8_t RAW_303[ACID_KNOBS] = {0, 0, 69, 111, 64, 60, 51, 0, 67, 64, 0, 0, 0, 0, 64, 0};
 static const uint8_t RAW_PLAITS[ACID_KNOBS] = {0, 0, 64, 64, 64, 38, 64, 67, 64, 64, 64, 64, 68, 0, 64, 0};
@@ -909,6 +921,16 @@ static void grids_play(acid_synth_t *s)
     s->grids_step = s->drummer.knob[DRM_ON] ? (int)(s->beat.bar & 1) * ACID_BEAT_STEPS + s->beat.step : -1;
 }
 
+// Ручка от пользователя (BSP, панель, сцена, демо): поменялось действующее значение - память пора записать.
+static void user_knob(acid_synth_t *s, int page, int slot, int v)
+{
+    int was = acid_synth_knob(s, page, slot);
+    apply_page(s, page, slot, v);
+    if (acid_synth_knob(s, page, slot) != was) {
+        s->save = 1;
+    }
+}
+
 static void control_change(acid_synth_t *s, int num, int v)
 {
     int slot = -1;
@@ -923,7 +945,7 @@ static void control_change(acid_synth_t *s, int num, int v)
             s->page = p; // значение на экране BSP - номер страницы, остальное (и свои страницы) не наше
         }
     } else if (slot > 0) {
-        apply_page(s, s->page, slot, v);
+        user_knob(s, s->page, slot, v);
     }
 }
 
@@ -937,7 +959,7 @@ void acid_synth_petri(acid_synth_t *s, const acid_petri_frame_t *f)
 void acid_synth_set_knob(acid_synth_t *s, int page, int enc, int v)
 {
     if (page >= 0 && page < ACID_PAGES && enc > 0 && enc < ACID_KNOBS && v >= 0 && v <= 127) {
-        apply_page(s, page, enc, v);
+        user_knob(s, page, enc, v);
     }
 }
 
@@ -1547,6 +1569,12 @@ size_t acid_synth_export(const acid_synth_t *s, void *buf, size_t cap)
         b += sizeof v->knob;
     }
     memcpy(b, s->tonal.knob, sizeof s->tonal.knob);
+    b += sizeof s->tonal.knob;
+    for (int i = 0; i < ACID_SAVED_PAGES; i++) {
+        for (int e = 0; e < ACID_KNOBS; e++) {
+            *b++ = e > 0 ? (uint8_t)acid_synth_knob(s, SAVED_PAGES[i], e) : 0;
+        }
+    }
     return ACID_SYNTH_BLOB;
 }
 
@@ -1554,14 +1582,15 @@ int acid_synth_import(acid_synth_t *s, const void *buf, size_t len)
 {
     const uint8_t *b = buf;
     // Версия 2 (до слоёв) - только синты; 2-3 - по 25 типов (без PETRI), у слоя «выкл» = 25.
-    int ver = len == ACID_SYNTH_BLOB && memcmp(b, BLOB_MAGIC, sizeof BLOB_MAGIC) == 0 ? 4
+    int ver = len == ACID_SYNTH_BLOB && memcmp(b, BLOB_MAGIC, sizeof BLOB_MAGIC) == 0       ? 5
+              : len == ACID_SYNTH_BLOB_V4 && memcmp(b, "AS5\x04", 4) == 0               ? 4
               : len == BLOB_OLD(2 * ACID_SLOTS) && memcmp(b, "AS5\x03", 4) == 0 ? 3
               : len == BLOB_OLD(ACID_SLOTS) && memcmp(b, "AS5\x02", 4) == 0     ? 2
                                                                                    : 0;
     if (!ver) {
         return 0;
     }
-    const int types = ver == 4 ? ACID_TYPES : OLD_TYPES;
+    const int types = ver >= 4 ? ACID_TYPES : OLD_TYPES;
     b += sizeof BLOB_MAGIC;
     for (int k = 0; k < (ver == 2 ? 1 : 2) * ACID_SLOTS; k++) {
         acid_slot_t *v = k < ACID_SLOTS ? &s->slot[k] : &s->layer[k - ACID_SLOTS];
@@ -1581,6 +1610,14 @@ int acid_synth_import(acid_synth_t *s, const void *buf, size_t len)
     for (int i = 0; i < ACID_TONAL_KNOBS; i++) {
         if (b[i] != KNOB_NONE) {
             acid_tonal_set(&s->tonal, i, b[i]);
+        }
+    }
+    b += ACID_TONAL_KNOBS;
+    for (int i = 0; ver == 5 && i < ACID_SAVED_PAGES; i++, b += ACID_KNOBS) {
+        for (int e = 1; e < ACID_KNOBS; e++) {
+            if (!performance_knob(SAVED_PAGES[i], e) && b[e] <= 127) {
+                apply_page(s, SAVED_PAGES[i], e, b[e]);
+            }
         }
     }
     if (s->drone) {

@@ -308,9 +308,18 @@ TEST(test_slot_save_flag)
     page(6);
     cc(3, 10);
     rms(960);
-    CHECK(acid_synth_take_save(&s) == 0); // ручка без смены типа - не пишем
+    CHECK(acid_synth_take_save(&s) == 1); // любая ручка - пора записать, иначе правка теряется
+    CHECK(acid_synth_take_save(&s) == 0);
     type(FM2);
     CHECK(acid_synth_take_save(&s) == 1);
+    CHECK(acid_synth_take_save(&s) == 0);
+    page(0);
+    cc(2, 70); // микс
+    CHECK(acid_synth_take_save(&s) == 1);
+    acid_synth_set_knob(&s, 8, 3, 50); // панель, сцена
+    CHECK(acid_synth_take_save(&s) == 1);
+    page(6);
+    cc(2, 26); // тип вне списка: ничего не поменялось
     CHECK(acid_synth_take_save(&s) == 0);
 }
 
@@ -389,6 +398,102 @@ TEST(test_slot_import_applies_type)
     CHECK(b.slot[0].type == FM2);
 }
 
+// Страницы без своих knob[] синтов (микс, ударка, тарелки, перкуссия, эффекты, Grids, чашка) - тоже в blob.
+static const int PAGES_V5[] = {0, 1, 2, 3, 4, 5, 8, ACID_PAGE_GRIDS, ACID_PAGE_PETRI};
+#define NPAGES_V5 ((int)(sizeof PAGES_V5 / sizeof PAGES_V5[0]))
+
+// Исполнительские ручки (статтер, фриз чашки, сбивка Grids сейчас) после перезагрузки не включаются сами.
+static int performance_knob(int page, int enc)
+{
+    return (page == 8 && enc == 9) || (page == ACID_PAGE_PETRI && enc == 14) ||
+           (page == ACID_PAGE_GRIDS && enc == DRM_FILL_NOW);
+}
+
+TEST(test_blob_v5_all_pages_roundtrip)
+{
+    static acid_synth_t b;
+    live();
+    acid_synth_set_knob(&s, 0, 1, 10);    // мастер
+    acid_synth_set_knob(&s, 0, 13, 20);   // панорама синта 1
+    acid_synth_set_knob(&s, 1, 1, 100);   // тон бочки
+    acid_synth_set_knob(&s, 2, 10, 5);    // чувствительность тарелок
+    acid_synth_set_knob(&s, 3, 2, 90);    // томы: тон
+    acid_synth_set_knob(&s, 5, 1, 2);     // ковбелл: модель
+    acid_synth_set_knob(&s, 8, 3, 77);    // посыл синта 1
+    acid_synth_set_knob(&s, 8, 6, 3);     // время дилэя
+    acid_synth_set_knob(&s, ACID_PAGE_GRIDS, DRM_X, 99);
+    acid_synth_set_knob(&s, ACID_PAGE_PETRI, 2, 30);
+    static uint8_t blob[ACID_SYNTH_BLOB];
+    CHECK(acid_synth_export(&s, blob, sizeof blob) == ACID_SYNTH_BLOB);
+    CHECK(blob[3] == 5);
+
+    acid_synth_init(&b, SR);
+    acid_synth_notes_off(&b);
+    CHECK(acid_synth_import(&b, blob, sizeof blob) == 1);
+    int same = 1;
+    for (int i = 0; i < NPAGES_V5; i++) {
+        for (int e = 1; e < ACID_KNOBS; e++) {
+            if (acid_synth_knob(&b, PAGES_V5[i], e) != acid_synth_knob(&s, PAGES_V5[i], e)) {
+                printf("  page %d enc %d: %d != %d\n", PAGES_V5[i], e, acid_synth_knob(&b, PAGES_V5[i], e),
+                       acid_synth_knob(&s, PAGES_V5[i], e));
+                same = 0;
+            }
+        }
+    }
+    CHECK(same);
+    CHECK(acid_synth_knob(&b, 0, 1) == 10);
+    CHECK_NEAR(b.master, s.master, 1e-6f);
+    CHECK_NEAR(b.kick_tune, s.kick_tune, 1e-6f);
+    CHECK_NEAR(b.send1, s.send1, 1e-6f);
+    CHECK_NEAR(b.pan_l[ACID_PAN_SYNTH1], s.pan_l[ACID_PAN_SYNTH1], 1e-6f);
+    CHECK(b.perc.inst[2].model == 2);
+    CHECK(b.dl_time == 3);
+    CHECK(acid_synth_take_save(&b) == 0); // загрузка - не правка пользователя
+}
+
+TEST(test_blob_v5_skips_performance_knobs)
+{
+    static acid_synth_t b;
+    live();
+    acid_synth_set_knob(&s, 8, 9, 3);                 // статтер
+    acid_synth_set_knob(&s, ACID_PAGE_PETRI, 14, 100); // фриз
+    static uint8_t blob[ACID_SYNTH_BLOB];
+    acid_synth_export(&s, blob, sizeof blob);
+    acid_synth_init(&b, SR);
+    acid_synth_notes_off(&b);
+    CHECK(acid_synth_import(&b, blob, sizeof blob) == 1);
+    for (int i = 0; i < NPAGES_V5; i++) {
+        for (int e = 1; e < ACID_KNOBS; e++) {
+            if (performance_knob(PAGES_V5[i], e)) {
+                static acid_synth_t d;
+                acid_synth_init(&d, SR);
+                CHECK(acid_synth_knob(&b, PAGES_V5[i], e) == acid_synth_knob(&d, PAGES_V5[i], e));
+            }
+        }
+    }
+}
+
+// Blob версии 4 (только синты, слои, тональность) применяется: прочие страницы - умолчания.
+TEST(test_blob_v4_still_imports)
+{
+    static acid_synth_t b;
+    live();
+    page(6);
+    type(FM2);
+    acid_synth_set_knob(&s, 0, 1, 10);
+    static uint8_t blob[ACID_SYNTH_BLOB];
+    acid_synth_export(&s, blob, sizeof blob);
+    blob[3] = 4;
+    size_t v4 = 4 + 2 * ACID_SLOTS * (1 + ACID_TYPES * ACID_KNOBS) + ACID_TONAL_KNOBS;
+    acid_synth_init(&b, SR);
+    acid_synth_notes_off(&b);
+    CHECK(acid_synth_import(&b, blob, v4) == 1);
+    CHECK(b.slot[0].type == FM2);
+    static acid_synth_t d;
+    acid_synth_init(&d, SR);
+    CHECK(acid_synth_knob(&b, 0, 1) == acid_synth_knob(&d, 0, 1));
+}
+
 int main(void)
 {
     RUN(test_slot_defaults);
@@ -408,5 +513,8 @@ int main(void)
     RUN(test_tonal_blob_roundtrip);
     RUN(test_blob_old_magic_rejected);
     RUN(test_slot_import_applies_type);
+    RUN(test_blob_v5_all_pages_roundtrip);
+    RUN(test_blob_v5_skips_performance_knobs);
+    RUN(test_blob_v4_still_imports);
     TEST_MAIN_END();
 }

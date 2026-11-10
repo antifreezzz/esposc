@@ -162,13 +162,16 @@ typedef struct {
     int page; // 0 микс, 1 ударка, 2 ударка 2, 3 томы, 4 рим, 5 ковбелл, 6 синт 1, 7 синт 2, 8 эффекты, 9 тональность
     int drone; // режим дрона: оба синта непрерывно тянут ноту, её высоту ведёт страница 9 TONAL
 
-    int save;          // сменили тип или ручку слоя тональности: память ручек пора записать
+    int save;          // ручка или тип поменялись: память ручек пора записать
 } acid_synth_t;
 
 #define ACID_DRONE_NOTE 36 // базовая нота дрона по умолчанию (C2, 65.41 Гц)
 
-// Память ручек для flash: метка, типы и сырые ручки обоих синтов.
-#define ACID_SYNTH_BLOB (4 + 2 * ACID_SLOTS * (1 + ACID_TYPES * ACID_KNOBS) + ACID_TONAL_KNOBS) // синты, слои
+// Память ручек для flash: метка, типы и сырые ручки обоих синтов и слоёв, тональность, затем ручки страниц
+// без своих knob[] (микс, ударка, тарелки, перкуссия, эффекты, Grids, чашка).
+#define ACID_SAVED_PAGES 9
+#define ACID_SYNTH_BLOB_V4 (4 + 2 * ACID_SLOTS * (1 + ACID_TYPES * ACID_KNOBS) + ACID_TONAL_KNOBS) // синты, слои
+#define ACID_SYNTH_BLOB (ACID_SYNTH_BLOB_V4 + ACID_SAVED_PAGES * ACID_KNOBS)
 
 // Умолчания всех ручек, тишина до первой ноты.
 void acid_synth_init(acid_synth_t *s, float sr);
@@ -218,7 +221,7 @@ void acid_synth_render_mix_lr(acid_synth_t *s, float *l, float *r, size_t n, con
 // Слой синта k отдельно, уже с громкостью (k = 0: слой синта 1 на ядре 0 рядом с синтом 2).
 void acid_synth_render_layer(acid_synth_t *s, int k, float *out, size_t n);
 float acid_synth_pitch_hz(const acid_synth_t *s); // высота слота 0
-// 1 и сброс флага, если с прошлого вызова сменили тип синтеза (пора записать память во flash).
+// 1 и сброс флага, если с прошлого вызова ручка или тип синтеза поменялись (пора записать память во flash).
 int acid_synth_take_save(acid_synth_t *s);
 // Память ручек в blob размера ACID_SYNTH_BLOB и обратно. import: 1 - применено, 0 - чужой blob.
 size_t acid_synth_export(const acid_synth_t *s, void *buf, size_t cap);
