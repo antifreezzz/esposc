@@ -27,6 +27,9 @@ int pl_view_page_step(int page, int dir);
 int pl_view_target(const pl_model_t *m, int page, int enc, int i, int *tenc);
 // На странице есть кнопка перехода к экрану чашки: страница её ручек или синт с типом PETRI.
 int pl_view_dish(const pl_model_t *m, int page);
+// Слот вкладки MIX инструмента (PL_PAGE_MIX_*): его цель на штатной странице по типам синта и слоя из модели.
+// 1 - цель есть; 0 - страница не MIX или слот пуст. Правки слота слать в цель.
+int pl_view_mix(const pl_model_t *m, int page, int enc, int *tpage, int *tenc);
 // Слот своей страницы - псевдоним (одна цель на весь ход).
 int pl_view_is_alias(const pl_model_t *m, int up, int enc);
 // Статус в шапке: "NO LINK", "DRONE", "LIVE", в демо - имя песни ("METAL", "ACID"; чужой номер - "DEMO").

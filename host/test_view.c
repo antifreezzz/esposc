@@ -33,6 +33,50 @@ TEST(test_standard_cell)
     CHECK(c.skip == -1);
 }
 
+// Вкладка MIX инструмента: ячейка показывает цель (подпись, значение, подхват), под именем - страница-источник.
+TEST(test_mix_cell_shows_target)
+{
+    setup();
+    m.raw[0][3] = 97; // громкость синта 1
+    m.held[0][3] = 1;
+    pl_view_cell(&m, PL_PAGE_MIX_SYN1, 1, &c);
+    pl_cell_t t;
+    pl_view_cell(&m, 0, 3, &t);
+    CHECK(c.label && strcmp(c.label, t.label) == 0 && c.v == 97 && c.held == 1 && c.color == t.color);
+    CHECK(c.src && strcmp(c.src, pl_page_name(0)) == 0 && c.src_color == pl_page_color(0));
+    int tp, te;
+    CHECK(pl_view_mix(&m, PL_PAGE_MIX_SYN1, 1, &tp, &te) && tp == 0 && te == 3);
+    CHECK(!pl_view_mix(&m, 0, 3, &tp, &te) && !pl_view_mix(&m, PL_USER_FIRST, 1, &tp, &te));
+    // TRANS по типу синта: 303 - E10, Plaits - E9, у чашки слота нет
+    m.raw[PL_PAGE_SYNTH1][1] = 0;
+    CHECK(pl_view_mix(&m, PL_PAGE_MIX_SYN1, 5, &tp, &te) && tp == PL_PAGE_SYNTH1 && te == 9);
+    m.raw[PL_PAGE_SYNTH1][1] = 4;
+    CHECK(pl_view_mix(&m, PL_PAGE_MIX_SYN1, 5, &tp, &te) && te == 8);
+    m.raw[PL_PAGE_SYNTH1][1] = PL_TYPE_PETRI;
+    pl_view_cell(&m, PL_PAGE_MIX_SYN1, 5, &c);
+    CHECK(c.label == NULL && !pl_view_mix(&m, PL_PAGE_MIX_SYN1, 5, &tp, &te));
+    // слой синта 2 выключен: его TRANS пуст
+    m.raw[PL_PAGE_LAYER1 + 1][1] = PL_LAYER_OFF;
+    pl_view_cell(&m, PL_PAGE_MIX_SYN1 + 1, 6, &c);
+    CHECK(c.label == NULL);
+    pl_view_cell(&m, PL_PAGE_MIX_SYN1, 12, &c);
+    CHECK(c.label == NULL); // пустой слот
+    pl_view_cell(&m, PL_PAGE_MIX_DRUMS, 5, &c); // крэш: громкость
+    pl_view_cell(&m, 2, 1, &t);
+    CHECK(c.label && strcmp(c.label, t.label) == 0 && strcmp(c.src, pl_page_name(2)) == 0);
+}
+
+TEST(test_mix_page_name_and_color)
+{
+    CHECK(strcmp(pl_view_page_name(PL_PAGE_MIX_DRUMS), "DRUMS MIX") == 0);
+    CHECK(strcmp(pl_view_page_name(PL_PAGE_MIX_SYN1), "SYNTH 1 MIX") == 0);
+    CHECK(strcmp(pl_view_page_name(PL_PAGE_MIX_SYN1 + 1), "SYNTH 2 MIX") == 0);
+    CHECK(pl_view_page_color(PL_PAGE_MIX_DRUMS) == pl_page_color(1));
+    CHECK(pl_view_page_color(PL_PAGE_MIX_SYN1) == pl_page_color(PL_PAGE_SYNTH1));
+    CHECK(pl_view_page_color(PL_PAGE_MIX_SYN1 + 1) == pl_page_color(PL_PAGE_SYNTH1 + 1));
+    CHECK(pl_view_page_step(PL_PAGE_MIX_SYN1, 1) == PL_PAGE_MIX_SYN1); // в круг страниц не входит
+}
+
 TEST(test_alias_cell_shows_target)
 {
     setup();
@@ -109,7 +153,7 @@ TEST(test_page_names_and_colors)
     CHECK(pl_view_page_color(10) == pl_page_color(6) && pl_view_page_color(11) == pl_page_color(7));
     CHECK(strcmp(pl_view_page_name(PL_USER_FIRST), "USER 1") == 0);
     CHECK(strcmp(pl_view_page_name(PL_USER_FIRST + 5), "USER 6") == 0);
-    CHECK(pl_view_page_name(PL_USER_FIRST + 6) == NULL);
+    CHECK(pl_view_page_name(PL_PAGE_MIX_DRUMS + PL_MIX_PAGES) == NULL); // за вкладками MIX страниц нет
     CHECK(pl_view_page_color(3) == pl_page_color(3));
     CHECK(pl_view_page_color(12) != 0);
 }
@@ -174,5 +218,7 @@ int main(void)
     RUN(test_page_step_stays_in_group);
     RUN(test_status_text);
     RUN(test_status_seq);
+    RUN(test_mix_cell_shows_target);
+    RUN(test_mix_page_name_and_color);
     TEST_MAIN_END();
 }
