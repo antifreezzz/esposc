@@ -13,6 +13,7 @@
 #define UI_TOP_H PL_IA_TOP_H
 #define UI_WORK_Y (PL_IA_TOP_H + PL_IA_TABS_H)
 #define UI_WORK_H (UI_W - UI_WORK_Y - PL_IA_DOCK_H)
+#define UI_DOCK_Y (UI_W - PL_IA_DOCK_H)
 #define UI_RING_DY 18 // центр вращения пальцем ниже центра экрана: посередине рабочей области
 
 // Стиль «Б. Тёплый аналог» (docs/design/panel-mockups.html): тёплый графит, кремовый текст, акценты-лампы.
@@ -99,3 +100,14 @@ void us_close_pick(void);
 void us_draw(const pl_model_t *m);
 void us_input(pl_model_t *m, int down, int x, int y, int x0, int y0, uint32_t ms);
 void us_release(void); // палец ушёл с экрана не отпусканием (смена вида)
+
+// ui_perf.c: экран PERF (дом панели). Ввод - без лока LVGL, каждый опрос тача.
+void upf_build(lv_obj_t *scr);
+void upf_show(int on);
+void upf_draw(const pl_model_t *m, uint32_t ms);
+void upf_input(pl_model_t *m, int ev, int down, int x, int y, int x0, int y0, int x1, int y1, uint32_t held_ms,
+               uint32_t ms);
+void upf_release(pl_model_t *m);
+int upf_morph(void);
+void upf_set_morph(int bars);
+void ui_open_morph(void);

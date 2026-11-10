@@ -36,7 +36,7 @@
 #define LOAD_WARN 85
 #define LOAD_STALE_MS 2000
 
-enum { OVL_NONE, OVL_VAL, OVL_USER, OVL_MODE };
+enum { OVL_NONE, OVL_VAL, OVL_USER, OVL_MODE, OVL_MORPH };
 
 typedef struct {
     lv_obj_t *card, *arc, *val, *name, *sub, *pdot, *empty_dot;
@@ -280,6 +280,9 @@ static void overlay_title(const pl_model_t *m, char nav[40], uint32_t *nc, const
     } else if (u.overlay == OVL_MODE) {
         snprintf(nav, 40, "MODE");
         *nc = C_TEXT;
+    } else if (u.overlay == OVL_MORPH) {
+        snprintf(nav, 40, "SCENE MORPH");
+        *nc = C_ACCENT;
     } else {
         snprintf(nav, 40, "SEQ");
         *nc = group_color(u.group);
@@ -683,6 +686,32 @@ static void pick_draw(lv_event_t *e)
         return;
     }
 
+    if (u.overlay == OVL_MORPH) {
+        int n = 9, cur = upf_morph();
+        for (int s = 0; s < n; s++) {
+            int x, y, w, h, on = s == cur;
+            pl_pick_rect(n, s, &x, &y, &w, &h);
+            lv_area_t a = {x, y, x + w - 1, y + h - 1};
+            lv_draw_fill(layer, &f, &a);
+            b.width = on ? 2 : 1;
+            b.color = lv_color_hex(on ? C_ACCENT : C_TILE_BRD);
+            lv_draw_border(layer, &b, &a);
+            char num[8];
+            snprintf(num, sizeof num, "%d", s);
+            l.font = &bc_32;
+            l.color = lv_color_hex(on ? C_ACCENT : C_TEXT);
+            l.text = num;
+            lv_area_t ta = {a.x1 + 2, a.y1 + h / 2 - 26, a.x2 - 2, a.y2};
+            lv_draw_label(layer, &l, &ta);
+            l.font = &bc_15;
+            l.color = lv_color_hex(C_DIM);
+            l.text = s == 0 ? "AT NEXT BAR" : s == 1 ? "OVER 1 BAR" : "OVER BARS";
+            lv_area_t sa = {a.x1 + 2, a.y1 + h / 2 + 12, a.x2 - 2, a.y2};
+            lv_draw_label(layer, &l, &sa);
+        }
+        return;
+    }
+
     if (u.overlay != OVL_VAL) {
         return;
     }
@@ -825,6 +854,7 @@ static void build(void)
     ug_build(scr);
     us_build(scr);
     up_build(scr);
+    upf_build(scr);
 
     u.pick = ui_box(scr, 0, TOP_H, W, W - TOP_H, C_BG);
     lv_obj_add_event_cb(u.pick, pick_draw, LV_EVENT_DRAW_MAIN, NULL);
@@ -1107,7 +1137,13 @@ static void release_all(pl_model_t *m)
     uc_xy_release(m);
     ug_release(m);
     us_release();
+    upf_release(m);
     u.grab = -1;
+}
+
+void ui_open_morph(void)
+{
+    u.overlay = OVL_MORPH;
 }
 
 // Открыть группу и вкладку: на вкладке с ручками сообщить страницу синту, чтобы энкодеры BSP крутили её.
@@ -1292,6 +1328,13 @@ static void overlay_input(pl_model_t *m, int tap, int x0, int y0, int x1, int y1
             m->demo = modes[i];
         }
         u.overlay = OVL_NONE;
+    } else if (u.overlay == OVL_MORPH) {
+        int n = 9;
+        int s = pl_pick_at(n, x0, y0);
+        if (s >= 0 && s == pl_pick_at(n, x1, y1)) {
+            upf_set_morph(s);
+        }
+        u.overlay = OVL_NONE;
     }
 }
 
@@ -1398,7 +1441,9 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
                     }
                 }
             }
-        } else if (u.group != PL_GRP_PERF) {
+        } else if (u.group == PL_GRP_PERF) {
+            upf_input(m, ev, down, x, y, x0, y0, x1, y1, ms - u.press.t0, ms);
+        } else {
             const pl_tab_t *t = cur_tab();
             if (u.dish) {
                 up_input(down, x, y, x0, y0);
@@ -1497,6 +1542,9 @@ static int pick_state_key(const pl_model_t *m)
     if (u.overlay == OVL_MODE) {
         return 0x300000 | m->mode << 4 | m->demo;
     }
+    if (u.overlay == OVL_MORPH) {
+        return 0x500000 | upf_morph();
+    }
     if (u.overlay == OVL_VAL) {
         return 0x400000 | ((u.pick_tp * 16 + u.pick_te) * 128 + m->raw[u.pick_tp][u.pick_te]);
     }
@@ -1533,6 +1581,7 @@ void ui_step(pl_model_t *m, int down, int x, int y, uint32_t ms)
     int edit_grid = editing() && (u.ed.state == PL_EDIT_SLOTS || u.ed.state == PL_EDIT_PICK_KNOB);
     const pl_tab_t *t = cur_tab();
     int show_tabs = !ovl && pl_ia_tabs(u.group) > 0;
+    int show_perf = !ovl && u.group == PL_GRP_PERF;
     int show_dish = !ovl && u.group != PL_GRP_PERF && u.dish;
     int show_grids = !ovl && !u.dish && t && t->kind == PL_TAB_GRIDS;
     int show_seq = !ovl && !u.dish && t && t->kind == PL_TAB_SEQ;
@@ -1543,6 +1592,7 @@ void ui_step(pl_model_t *m, int down, int x, int y, uint32_t ms)
     ui_show(u.dock, !ovl);
     ui_show(u.grid, show_grid);
     ui_show(u.pick, pick_vis);
+    upf_show(show_perf);
     uc_xy_show(show_xy);
     ug_show(show_grids);
     us_show(show_seq || us_picking());
@@ -1555,6 +1605,8 @@ void ui_step(pl_model_t *m, int down, int x, int y, uint32_t ms)
             u.drawn_pick = pk;
             lv_obj_invalidate(u.pick);
         }
+    } else if (show_perf) {
+        upf_draw(m, ms);
     } else if (show_xy) {
         uc_xy_draw(m, u.page);
     } else if (show_grid) {
