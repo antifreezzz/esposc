@@ -8,6 +8,7 @@ static const uint8_t FILL_BEATS[3] = {1, 2, 4};     // длина сбивки: 
 static const uint8_t TOMS[6] = {50, 48, 47, 45, 43, 41}; // сверху вниз по ходу сбивки
 
 enum { N_KICK = 36, N_SNARE = 38, N_PEDAL = 44, N_CRASH = 49 };
+enum { VEL_LEFT = 12, VEL_RUN = 6 }; // левая нога слабее; в очереди удар вне доли легче
 enum { VEL_ACCENT = 120, VEL_NORMAL = 90, VEL_GHOST = 45, VEL_PEDAL = 50, VEL_JITTER = 8 };
 
 void acid_drummer_init(acid_drummer_t *d)
@@ -32,6 +33,8 @@ void acid_drummer_reset(acid_drummer_t *d)
     d->fill_from = d->fill_to = 0;
     d->fill_pending = 0;
     d->crash_next = 0;
+    d->kick_next = 0;
+    d->kick_run = 0;
 }
 
 void acid_drummer_use_user(acid_drummer_t *d, const pl_grids_pat_t *user)
@@ -168,9 +171,20 @@ int acid_drummer_step(acid_drummer_t *d, int step, uint32_t bar, acid_hit_t out[
     unsigned m = pl_grids_src_step(src, d->user, x, y, dens, d->perturb, g);
     int n = 0;
 
-    // Правая нога: бочка по дорожке 0; после сбивки на шаге 0 - всегда, вместе с крэшем.
+    // Ноги: бочка по дорожке 0; после сбивки на шаге 0 - всегда, вместе с крэшем. На соседних шагах ноги
+    // чередуются: левая слабее, в очереди удары вне доли легче - иначе бластбит звучит пулемётом.
     if ((m & 1) || crash) {
-        add(out, &n, N_KICK, vel_of(d, crash || ((m >> 3) & 1), (m >> 6) & 1));
+        int vel = vel_of(d, crash || ((m >> 3) & 1), (m >> 6) & 1);
+        uint32_t at = bar * (uint32_t)bar_steps + (uint32_t)step + 1; // +1: ноль занят под «очереди нет»
+        d->kick_run = d->kick_next == at ? d->kick_run + 1 : 0;
+        d->kick_next = at + 1;
+        if (d->kick_run & 1) {
+            vel -= VEL_LEFT;
+        }
+        if (d->kick_run >= 2 && step % beat != 0) {
+            vel -= VEL_RUN;
+        }
+        add(out, &n, N_KICK, vel);
     }
     if (crash) {
         add(out, &n, N_CRASH, VEL_ACCENT); // крэш бьёт рука времени

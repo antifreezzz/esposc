@@ -14,11 +14,16 @@ typedef struct {
     float amp_coef;
     float low_hz;   // тон
     float sweep_hz; // глубина «щелчка»: старт на low + sweep
+    float hit_low, hit_sweep; // тон и глубина этого удара: ручки плюс разброс
+    unsigned rnd;             // свой ГПСЧ разброса (детерминизм демо и тестов)
     float sr, inv_sr;
 } acid_kick_t;
 
 void acid_kick_init(acid_kick_t *k, float sr);
-void acid_kick_trigger(acid_kick_t *k);
+void acid_kick_trigger(acid_kick_t *k); // ровно по ручкам, без разброса
+// Удар с силой v 0..1: тихий - меньше щелчка (высота стартует ниже), плюс разброс от удара к удару: тон +-0.5 %,
+// глубина +-5 %. Очередь бочек (бластбит) не звучит одним и тем же ударом. Всё на триггере, рендер тот же.
+void acid_kick_trigger_vel(acid_kick_t *k, float v);
 // Тон, глубина и время спада высоты, время спада громкости.
 void acid_kick_set(acid_kick_t *k, float low_hz, float sweep_hz, float pitch_s, float amp_s);
 float acid_kick_next(acid_kick_t *k);

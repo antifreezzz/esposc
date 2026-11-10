@@ -25,6 +25,8 @@ typedef struct {
     int crash_next;         // сбивка кончилась: крэш на следующем шаге 0
     uint8_t perturb[3];
     uint32_t rnd;           // ГПСЧ (LCG), сид в init - детерминизм тестов
+    uint32_t kick_next;     // шаг (такт * шагов + шаг), на котором бочка продолжит очередь; 0 - очереди нет
+    int kick_run;           // ударов бочки подряд до этого шага: чёт - правая нога, нечет - левая
     const pl_grids_pat_t *user; // свои рисунки [PL_GRIDS_USER] или NULL; живут вне барабанщика
 } acid_drummer_t;
 

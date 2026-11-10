@@ -476,7 +476,7 @@ static void drum_on(acid_synth_t *s, int note, int vel)
     // Пэды BSP при мягкой игре дают velocity 3-30: без пола такие удары не слышны.
     float v = DRUM_VEL_FLOOR + (1.0f - DRUM_VEL_FLOOR) * (float)vel / 127.0f;
     if (note == 36) {
-        acid_kick_trigger(&s->kick);
+        acid_kick_trigger_vel(&s->kick, v);
         s->kick_vel = v;
         acid_pump_hit(&s->pump, v); // от ноты: при бочке в нуле тоже качает
     } else if (note == 38 || note == 40) {

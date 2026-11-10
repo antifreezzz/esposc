@@ -6,7 +6,7 @@
 #include <string.h>
 
 #define GOLD_A 0x681deb03u
-#define GOLD_B 0xc3807805u
+#define GOLD_B 0x2a02f97du // плотный набор: очереди бочки двумя ногами (до них было 0xc3807805)
 #define GOLD_C 0x006aab7bu
 
 static acid_drummer_t d;
@@ -353,7 +353,8 @@ TEST(test_deterministic)
     }
 }
 
-// Источник MAP играет как до банка: контрольная сумма нот и силы по трём наборам ручек (снята до правки).
+// Источник MAP играет как до банка: контрольная сумма нот и силы по трём наборам ручек (снята до правки;
+// набор B пересчитан после двух ног - там бочка идёт очередями).
 static uint32_t run_sum(void)
 {
     uint32_t sum = 2166136261u;
@@ -486,8 +487,50 @@ TEST(test_triplet_grid)
     CHECK(d.fill_from == 6 && d.fill_to == 12);
 }
 
+// Две ноги: бочка на соседних шагах чередует правую и левую (левая слабее), в очереди удары вне доли легче,
+// первая доля группы - в полную силу. Одиночные удары не трогаем.
+TEST(test_two_feet)
+{
+    setup(64, 64, 80, 70, 90);
+    acid_drummer_set(&d, DRM_SRC, 16); // BOMB BLAST: бочка XxxxXxxx
+    CHECK(strcmp(pl_grids_bank[15].name, "BOMB BLAST") == 0);
+    int sum[4] = {0, 0, 0, 0}, n_sum = 0;
+    for (int i = 0; i < 64; i++) {
+        int n = acid_drummer_step(&d, i % 16, (uint32_t)(i / 16), h);
+        int v = vel_of_note(h, n, 36);
+        CHECK(v > 0);
+        if (i >= 4) { // первая доля - ещё не очередь
+            sum[i % 4] += v;
+            n_sum += i % 4 == 0;
+        }
+    }
+    int beat = sum[0] / n_sum, l1 = sum[1] / n_sum, r = sum[2] / n_sum, l2 = sum[3] / n_sum;
+    CHECK(beat > 112);              // доля: акцент в полную силу
+    CHECK(r < 90 && r > 76);        // правая вне доли: чуть легче обычного
+    CHECK(l1 < r - 6 && l2 < r - 6); // левая слабее правой
+    CHECK(l1 > 60 && l2 > 60);
+
+    // Одиночные удары (FOUR FLOOR) - как раньше.
+    setup(64, 64, 80, 70, 90);
+    acid_drummer_set(&d, DRM_SRC, 1);
+    for (int i = 0; i < 32; i++) {
+        int n = acid_drummer_step(&d, i % 16, (uint32_t)(i / 16), h);
+        if (i % 4 == 0) {
+            CHECK(vel_of_note(h, n, 36) >= 112);
+        }
+    }
+    // Стоп сбрасывает очередь: первый удар после него - правая в полную силу.
+    setup(64, 64, 80, 70, 90);
+    acid_drummer_set(&d, DRM_SRC, 16);
+    acid_drummer_step(&d, 0, 0, h);
+    acid_drummer_reset(&d);
+    int n = acid_drummer_step(&d, 1, 0, h);
+    CHECK(vel_of_note(h, n, 36) >= 82);
+}
+
 int main(void)
 {
+    RUN(test_two_feet);
     RUN(test_off_silent);
     RUN(test_limbs);
     RUN(test_hat_modes);
