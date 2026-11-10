@@ -177,6 +177,37 @@ TEST(test_drive_howl_dies_after_note)
     CHECK(rms(out + 3 * N / 4, N / 4) < 1e-4);
 }
 
+// После 0.5 с точных нулей на входе перегруз засыпает: выход ровно 0, состояние как у свежего (следующая нота
+// бит в бит как у нового перегруза), хвост к этому времени ниже -80 дБ.
+TEST(test_drive_sleeps_after_silence)
+{
+    setup(127, 64, 127);
+    run_sine(200.0, 0.3f, N / 2);
+    float tail = 0.0f;
+    for (int i = 0; i < ACID_DRIVE_SLEEP; i++) {
+        float y = acid_drive_run(&d, 0.0f);
+        tail = i > ACID_DRIVE_SLEEP - 480 && fabsf(y) > tail ? fabsf(y) : tail;
+    }
+    CHECK(tail < 1e-4f);
+    int zeros = 1;
+    for (int i = 0; i < 4800; i++) {
+        zeros &= acid_drive_run(&d, 0.0f) == 0.0f;
+    }
+    CHECK(zeros);
+
+    static acid_drive_t fresh;
+    acid_drive_init(&fresh, SR);
+    acid_drive_set(&fresh, 127, 64, 127);
+    acid_drive_pitch(&fresh, 300.0f);
+    acid_drive_pitch(&d, 300.0f);
+    int same = 1;
+    for (int i = 0; i < 4800; i++) {
+        float x = 0.4f * (float)sin(2.0 * PI_D * 300.0 * i / SR);
+        same &= acid_drive_run(&d, x) == acid_drive_run(&fresh, x);
+    }
+    CHECK(same);
+}
+
 // 2x оверсемплинг: гармоники 7 кГц выше Найквиста почти не заворачиваются (35 кГц в 13 кГц, 49 кГц в 1 кГц).
 // Без него на 13 кГц ~0.2 от основного, с ним ~0.03.
 TEST(test_drive_low_alias)
@@ -201,5 +232,6 @@ int main(void)
     RUN(test_drive_howl_dies_after_note);
     RUN(test_drive_set_rate_keeps_state);
     RUN(test_drive_low_alias);
+    RUN(test_drive_sleeps_after_silence);
     TEST_MAIN_END();
 }

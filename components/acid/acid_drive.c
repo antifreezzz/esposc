@@ -116,8 +116,32 @@ static inline float stages(acid_drive_t *d, float u, float howl)
     return clip((a + PEAK * bp) * d->post);
 }
 
+// Сон: состояние фильтров и истории как после init, ручки и коэффициенты остаются.
+static void drive_sleep(acid_drive_t *d)
+{
+    d->xover.ic1 = d->xover.ic2 = d->sub_lp.ic1 = d->sub_lp.ic2 = 0.0f;
+    d->post_hp.ic1 = d->post_hp.ic2 = d->bp.ic1 = d->bp.ic2 = 0.0f;
+    memset(d->sub_d, 0, sizeof d->sub_d);
+    memset(d->up, 0, sizeof d->up);
+    memset(d->dn, 0, sizeof d->dn);
+    memset(d->dn_even, 0, sizeof d->dn_even);
+    d->fb = d->env = 0.0f;
+    d->pos = 0;
+}
+
 float acid_drive_run(acid_drive_t *d, float x)
 {
+    if (x == 0.0f) {
+        if (d->quiet >= ACID_DRIVE_SLEEP) {
+            return 0.0f;
+        }
+        if (++d->quiet == ACID_DRIVE_SLEEP) {
+            drive_sleep(d);
+            return 0.0f;
+        }
+    } else {
+        d->quiet = 0;
+    }
     // Раздел Линквица-Райли 4-го порядка: саб - два ФНЧ, верх - ФВЧ до перегруза и ФВЧ после. Без перегруза
     // сумма ровная по громкости, а искажённые остатки саба срезает второй ФВЧ.
     float lp1, bp1 = svf_run(&d->xover, x, &lp1);
