@@ -4,6 +4,7 @@
 #include "link.h"
 #include "pl_gesture.h"
 #include "pl_labels.h"
+#include "pl_mod.h"
 #include "pl_view.h"
 #include "pl_xy.h"
 #include "ui_priv.h"
@@ -28,7 +29,7 @@ static struct {
     lv_obj_t *rng_box, *side[2], *side_val[2], *rng_name;
     int drawn_which;
     pl_turn_t turn;
-    int turning, sent;
+    int turning, sent, mod_hold;
     lv_obj_t *xy_box, *xy_field, *xy_vl, *xy_hl, *xy_dot, *xy_hold, *xy_hold_lbl, *xy_lab[2];
     pl_xy_t xy;
     int xy_drawn[2], xy_hold_drawn, xy_page; // xy_page - чья страница под пальцем, -1 нет касания
@@ -139,16 +140,42 @@ static void target_text(const pl_model_t *m, int pe, int lo, int hi, char *name,
     snprintf(sub, 40, "%s .. %s", ta, tb);
 }
 
+static void mod_targets_draw(const pl_model_t *m, const pl_edit_t *e)
+{
+    for (int i = 0; i < PL_MOD_TARGETS; i++) {
+        pl_mod_target_t t = m->mod_t[e->up][i];
+        int on = t.page < PL_PAGES && t.enc > 0 && t.enc < PL_KNOBS;
+        ui_show(c.row[i], 1);
+        ui_show(c.row_del[i], on);
+        char name[40], sub[40];
+        if (on) {
+            const char *knob = pl_knob_label(t.page, t.enc, m->raw[t.page]);
+            snprintf(name, sizeof name, "%s / %s", pl_page_name(t.page), knob ? knob : "?");
+            snprintf(sub, sizeof sub, "BASE %d  NOW %d  HOLD TO CLEAR", m->raw[t.page][t.enc],
+                     pl_mod_effective(m, t.page, t.enc));
+        } else {
+            snprintf(name, sizeof name, "TARGET %d", i + 1);
+            snprintf(sub, sizeof sub, "TAP TO ASSIGN");
+        }
+        ui_text(c.row_name[i], name);
+        ui_text(c.row_sub[i], sub);
+    }
+    ui_show(c.row[PL_TARGETS], 0);
+}
+
 void uc_edit_draw(const pl_model_t *m, const pl_edit_t *e)
 {
     ui_show(c.ed_box, e->state == PL_EDIT_TARGETS);
     ui_show(c.rng_box, e->state == PL_EDIT_RANGE);
     char name[40], sub[40];
-    if (e->state == PL_EDIT_TARGETS) {
+    if (e->state == PL_EDIT_TARGETS && e->mod) {
+        mod_targets_draw(m, e);
+    } else if (e->state == PL_EDIT_TARGETS) {
         int n = count(m, e);
         for (int i = 0; i < PL_TARGETS; i++) {
             ui_show(c.row[i], i < n);
             if (i < n) {
+                ui_show(c.row_del[i], 1);
                 const pl_target_t *t = &m->user_t[e->up][e->enc][i];
                 target_text(m, t->pe, t->lo, t->hi, name, sub);
                 ui_text(c.row_name[i], name);
@@ -179,6 +206,34 @@ void uc_edit_input(pl_model_t *m, pl_edit_t *e, int ev, int down, int x, int y, 
     int tap = pl_press_tap(ev); // обычное нажатие пальцем дольше 50 мс - это RELEASE, не TAP
     pl_custom_edit_t out;
     int wy = y0 - UI_TOP_H;
+    if (e->mod) {
+        if (e->state != PL_EDIT_TARGETS) {
+            return;
+        }
+        int row = wy >= ROW_Y0 ? (wy - ROW_Y0) / ROW_DY : -1;
+        int inside = row >= 0 && row < PL_MOD_TARGETS && (wy - ROW_Y0) % ROW_DY < ROW_H;
+        if (!down && c.mod_hold) {
+            c.mod_hold = 0;
+            return;
+        }
+        if (!down && !tap) {
+            c.mod_hold = 0;
+            return;
+        }
+        if (!inside) {
+            return;
+        }
+        if (ev == PL_PRESS_HOLD) {
+            pl_mod_edit_t mout;
+            c.mod_hold = 1;
+            if (pl_edit_mod_remove(e, m, row, &mout)) {
+                link_mod_edit(&mout);
+            }
+        } else if (tap) {
+            pl_edit_mod_row(e, m, row);
+        }
+        return;
+    }
     if (e->state == PL_EDIT_TARGETS) {
         int row = wy >= ROW_Y0 ? (wy - ROW_Y0) / ROW_DY : -1;
         if (!tap || row < 0 || (wy - ROW_Y0) % ROW_DY >= ROW_H) {

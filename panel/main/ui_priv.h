@@ -79,6 +79,12 @@ void uc_xy_input(pl_model_t *m, int page, int ev, int down, int x, int y, int x0
 // Палец ушёл с пэда не отпусканием (смена вида или страницы): вернуть оси, если HOLD выкл.
 void uc_xy_release(pl_model_t *m);
 
+// ui_mod.c: нижний ряд страницы модулятора, форма и кнопка целей.
+void um_build(lv_obj_t *grid);
+void um_show(int on);
+void um_draw(const pl_model_t *m, int page, uint32_t ms);
+int um_targets_at(int x, int y);
+
 // ui_petri.c: экран чашки Петри (сетка, орбита, жители; тап - капля). Ввод - без лока LVGL.
 void up_build(lv_obj_t *scr);
 void up_show(int on);

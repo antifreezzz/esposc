@@ -78,6 +78,11 @@ void link_custom_edit(const pl_custom_edit_t *e)
     send(PL_CUSTOM_EDIT, e, sizeof *e);
 }
 
+void link_mod_edit(const pl_mod_edit_t *e)
+{
+    send(PL_MOD_EDIT, e, sizeof *e);
+}
+
 void link_scene(int op, int n, int bars)
 {
     pl_scene_t s = {(uint8_t)op, (uint8_t)n, (uint8_t)bars};
