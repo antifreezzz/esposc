@@ -182,14 +182,33 @@ TEST(test_press_smear_ends)
 TEST(test_grid_cell)
 {
     CHECK(pl_grid_cell(100, 20) == -1);  // шапка
+    CHECK(pl_grid_cell(100, 60) == -1);  // вкладки
+    CHECK(pl_grid_cell(100, 450) == -1); // док
     CHECK(pl_grid_cell(2, 100) == -1);   // левое поле
     CHECK(pl_grid_cell(476, 100) == -1); // правое поле
-    CHECK(pl_grid_cell(60, 70) == 0);    // левый верх: 1-я ручка (энкодер 2)
-    CHECK(pl_grid_cell(240, 70) == 1);   // середина верх: 2-я ручка (энкодер 3)
-    CHECK(pl_grid_cell(400, 70) == 2);   // правый верх: 3-я ручка (энкодер 4)
-    CHECK(pl_grid_cell(60, 155) == 3);   // 2-й ряд, 1-й столбец: 4-я ручка
-    CHECK(pl_grid_cell(240, 250) == 7);  // центр (3-й ряд, 2-й столбец): 8-я ручка
-    CHECK(pl_grid_cell(400, 440) == 14); // правый низ: 15-я ручка (энкодер 16)
+    CHECK(pl_grid_cell(60, 100) == 0);   // левый верх: 1-я ручка (энкодер 2)
+    CHECK(pl_grid_cell(240, 100) == 1);  // середина верх: 2-я ручка (энкодер 3)
+    CHECK(pl_grid_cell(400, 100) == 2);  // правый верх: 3-я ручка (энкодер 4)
+    CHECK(pl_grid_cell(60, 170) == 3);   // 2-й ряд, 1-й столбец: 4-я ручка
+    CHECK(pl_grid_cell(240, 254) == 7);  // центр (3-й ряд, 2-й столбец): 8-я ручка
+    CHECK(pl_grid_cell(400, 420) == 14); // правый низ: 15-я ручка (энкодер 16)
+}
+
+// Карточка 150 x 66 с шагом 70 между вкладками и доком; её середина попадает в неё же.
+TEST(test_grid_rect)
+{
+    for (int i = 0; i < 15; i++) {
+        int x, y;
+        pl_grid_rect(i, &x, &y);
+        CHECK(x >= 0 && x + PL_CARD_W <= 480);
+        CHECK(y >= PL_IA_TOP_H + PL_IA_TABS_H && y + PL_CARD_H <= 480 - PL_IA_DOCK_H);
+        CHECK(pl_grid_cell(x + PL_CARD_W / 2, y + PL_CARD_H / 2) == i);
+        CHECK(pl_grid_cell(x, y) == i && pl_grid_cell(x + PL_CARD_W - 1, y + PL_CARD_H - 1) == i);
+    }
+    int x0, y0, x1, y1;
+    pl_grid_rect(0, &x0, &y0);
+    pl_grid_rect(4, &x1, &y1);
+    CHECK(x1 - x0 == 156 && y1 - y0 == PL_IA_ROW_H);
 }
 
 TEST(test_press_tap_includes_long_press)
@@ -218,6 +237,7 @@ int main(void)
     RUN(test_press_tap);
     RUN(test_press_smear_ends);
     RUN(test_grid_cell);
+    RUN(test_grid_rect);
     RUN(test_press_tap_includes_long_press);
     TEST_MAIN_END();
 }
