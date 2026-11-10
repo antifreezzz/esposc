@@ -51,7 +51,9 @@ static const uint8_t PAN_DEFAULT[ACID_PANS] = {64, 64, 80, 48, 64};
 #define MIX_CHUNK ACID_SPLIT_MAX // кусок буфера слота 1 в общем рендере
 #define FADE_N 192     // 4 мс ухода и столько же прихода при смене типа синтеза
 #define PLAITS_GAIN 1.0f // уровень Plaits относительно 303
-#define IDLE_BLOCKS 400  // 100 мс точной тишины без гейта: молчащий Plaits не считаем
+#define IDLE_BLOCKS 400  // 100 мс тишины без гейта: молчащий Plaits не считаем
+// Тишина Plaits: его выход после ноты не ноль, а +1 LSB (Clip16(1 + x)), у six-op хвост ±6 LSB. 8 LSB ~ -72 дБFS.
+#define PLAITS_QUIET (8.0f / 32768.0f)
 #define SEQ2_TYPE 11     // синт 2 по умолчанию: FM 2-op (модель Plaits 10)
 #define PLAITS_ACCENT 0.4f // обычная нота Plaits тише акцентной на столько
 #define KNOB_NONE 0xFF
@@ -1250,7 +1252,7 @@ static float plaits_next(acid_slot_t *v, int gate)
             acid_plaits_render(v->plaits, p, v->pbuf, ACID_PLAITS_BLOCK);
             int quiet = !gate;
             for (int i = 0; i < ACID_PLAITS_BLOCK && quiet; i++) {
-                quiet = v->pbuf[i] == 0.0f;
+                quiet = fabsf(v->pbuf[i]) <= PLAITS_QUIET;
             }
             v->idle = quiet ? v->idle + 1 : 0;
         }

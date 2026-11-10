@@ -301,6 +301,26 @@ TEST(test_slot_idle_plaits_silent)
     CHECK(zeros);
 }
 
+// После отпущенной ноты голос Plaits засыпает (не считается), какой бы ни была модель.
+TEST(test_slot_plaits_sleeps_after_note)
+{
+    for (int t = 1; t <= ACID_PLAITS_MODELS; t++) {
+        live();
+        page(7);
+        type(t);
+        on(SEQ2, 48, 100);
+        acid_synth_render_slot(&s, 1, buf, 4800);
+        off(SEQ2, 48);
+        for (int i = 0; i < 10; i++) {
+            acid_synth_render_slot(&s, 1, buf, 48000); // 10 с хвоста
+        }
+        if (s.slot[1].idle < 400) { // IDLE_BLOCKS
+            printf("  type %d: idle %d\n", t, s.slot[1].idle);
+            CHECK(0);
+        }
+    }
+}
+
 TEST(test_slot_save_flag)
 {
     live();
@@ -508,6 +528,7 @@ int main(void)
     RUN(test_slot_knob_during_switch);
     RUN(test_slot_plaits_page);
     RUN(test_slot_idle_plaits_silent);
+    RUN(test_slot_plaits_sleeps_after_note);
     RUN(test_slot_save_flag);
     RUN(test_slot_export_import);
     RUN(test_tonal_blob_roundtrip);
