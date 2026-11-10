@@ -1,5 +1,5 @@
 // Экран Grids: вкл, сбивка, источник рисунка (карта X/Y, банк, свои), плотности, хаос и свинг, режимы рук и сбивок,
-// сетка шагов с бегущим шагом. Поверх - редактор своего рисунка: один такт крупно.
+// сетка шагов с бегущим шагом. Поверх - редактор своего рисунка: один такт в два яруса.
 #include <stdio.h>
 #include <string.h>
 
@@ -77,7 +77,7 @@ static void grid_draw(lv_event_t *e)
     }
 }
 
-// Клетки редактора: сила удара - высотой столбика (гост треть, удар две трети, акцент целиком) и цветом.
+// Клетки редактора: сила удара - шириной заливки (гост треть, удар две трети, акцент целиком) и цветом.
 static void ed_grid_draw(lv_event_t *e)
 {
     lv_layer_t *layer = lv_event_get_layer(e);
@@ -100,7 +100,7 @@ static void ed_grid_draw(lv_event_t *e)
             lv_draw_fill(layer, &d, &a);
             if (lv > 0) {
                 int acc = lv > PL_GRIDS_ACCENT, ghost = lv < PL_GRIDS_GHOST;
-                a.y1 = a.y2 + 1 - (acc ? h : ghost ? h / 3 : 2 * h / 3);
+                a.x2 = a.x1 - 1 + (acc ? w : ghost ? w / 3 : 2 * w / 3);
                 d.color = lv_color_hex(acc ? C_ACC : ghost ? C_GHOST : C_HIT);
                 lv_draw_fill(layer, &d, &a);
             }
@@ -150,10 +150,10 @@ static void ed_build(void)
             g.ed_btn[id][i] = tile(g.ed, x, y, w, h, &g.ed_lbl[id][i], TEXT[id][i]);
         }
     }
-    for (int p = 0; p < PARTS; p++) {
-        pl_ged_cell(0, 0, p, &x, &y, &w, &h);
+    for (int p = 0; p < 2 * PARTS; p++) { // подписи дорожек у обоих ярусов
+        pl_ged_cell(0, p / PARTS * 8, p % PARTS, &x, &y, &w, &h);
         lv_obj_t *l = ui_label(g.ed, &bc_17, C_DIM);
-        lv_label_set_text(l, PART_NAME[p]);
+        lv_label_set_text(l, PART_NAME[p % PARTS]);
         lv_obj_set_pos(l, 10, y - UI_WORK_Y + h / 2 - 8);
     }
     int x1, y1;
@@ -161,7 +161,7 @@ static void ed_build(void)
     pl_ged_cell(0, 15, PARTS - 1, &x1, &y1, &w, &h);
     g.ed_grid = ui_box(g.ed, x, y - UI_WORK_Y, x1 + w - x, y1 + h - y, C_BG);
     lv_obj_add_event_cb(g.ed_grid, ed_grid_draw, LV_EVENT_DRAW_MAIN, NULL);
-    g.ed_mark = ui_box(g.ed, x, y1 + h + 3 - UI_WORK_Y, w, 4, C_ACCENT); // бегущий шаг под клетками
+    g.ed_mark = ui_box(g.ed, x, y1 + h + 2 - UI_WORK_Y, w, 4, C_ACCENT); // бегущий шаг под своим ярусом
     lv_obj_set_style_radius(g.ed_mark, 2, 0);
     g.ed_shown = g.ed_drawn_slot = g.ed_drawn_bar = g.ed_drawn_from = g.ed_drawn_trip = -1;
     g.ed_drawn_step = -2;
@@ -303,10 +303,10 @@ static void ed_draw(const pl_model_t *m)
     int step = m->raw[PAGE][1] && m->raw[PAGE][ENC_SRC] == PL_GRIDS_SRC_USER + slot ? m->grids_step : -1;
     if (step != g.ed_drawn_step) {
         int x, y, w, h;
-        int ok = step >= 0 && step / 16 == bar && pl_ged_cell(pat->grid, step % 16, 0, &x, &y, &w, &h);
+        int ok = step >= 0 && step / 16 == bar && pl_ged_cell(pat->grid, step % 16, PARTS - 1, &x, &y, &w, &h);
         ui_show(g.ed_mark, ok);
         if (ok) {
-            lv_obj_set_x(g.ed_mark, x);
+            lv_obj_set_pos(g.ed_mark, x, y + h + 2 - UI_WORK_Y);
             lv_obj_set_width(g.ed_mark, w);
         }
         g.ed_drawn_step = step;

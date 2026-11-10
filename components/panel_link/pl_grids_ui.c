@@ -119,13 +119,14 @@ int pl_gui_cell(int step, int part, int *x, int *y, int *w, int *h)
     return 1;
 }
 
-// Редактор: кнопки сверху, три дорожки крупно, COPY и CLEAR снизу.
+// Редактор: кнопки сверху, такт в два яруса по три дорожки, COPY и CLEAR снизу.
 #define ED_TOP_Y 82
 #define ED_TOP_H 40
 #define ED_X 28 // левее - подписи дорожек
 #define ED_Y 130
-#define ED_DY 76
-#define ED_H 72
+#define ED_ROW_DY 35 // дорожка в ярусе
+#define ED_ROW_H 33
+#define ED_TIER_DY 116 // ярус: три дорожки, под ними бегущий шаг
 #define ED_BOT_Y 370
 #define ED_BOT_H 44
 
@@ -152,20 +153,27 @@ int pl_ged_rect(int id, int idx, int *x, int *y, int *w, int *h)
     return 1;
 }
 
+// Шагов в ярусе и шаг клетки по x.
+static int ed_per(int grid)
+{
+    return grid == PL_GRIDS_12T ? 6 : 8;
+}
+
 static int ed_pitch(int grid)
 {
-    return grid == PL_GRIDS_12T ? 37 : 28;
+    return grid == PL_GRIDS_12T ? 74 : 56;
 }
 
 int pl_ged_cell(int grid, int col, int part, int *x, int *y, int *w, int *h)
 {
-    if (col < 0 || col >= (grid == PL_GRIDS_12T ? 12 : 16) || part < 0 || part >= 3) {
+    int per = ed_per(grid);
+    if (col < 0 || col >= 2 * per || part < 0 || part >= 3) {
         return 0;
     }
-    *x = ED_X + col * ed_pitch(grid);
-    *y = ED_Y + part * ED_DY;
-    *w = ed_pitch(grid) - 2;
-    *h = ED_H;
+    *x = ED_X + col % per * ed_pitch(grid);
+    *y = ED_Y + col / per * ED_TIER_DY + part * ED_ROW_DY;
+    *w = ed_pitch(grid) - 3;
+    *h = ED_ROW_H;
     return 1;
 }
 
@@ -181,10 +189,15 @@ int pl_ged_at(int grid, int x, int y, int *arg)
             }
         }
     }
-    int cols = grid == PL_GRIDS_12T ? 12 : 16;
-    if (x >= ED_X && x < ED_X + cols * ed_pitch(grid) && y >= ED_Y && y < ED_Y + 3 * ED_DY) {
-        *arg = (y - ED_Y) / ED_DY * 16 + (x - ED_X) / ed_pitch(grid);
-        return PL_GED_CELL;
+    int per = ed_per(grid);
+    if (x >= ED_X && x < ED_X + per * ed_pitch(grid)) {
+        for (int tier = 0; tier < 2; tier++) {
+            int ty = ED_Y + tier * ED_TIER_DY;
+            if (y >= ty && y < ty + 3 * ED_ROW_DY) {
+                *arg = (y - ty) / ED_ROW_DY * 16 + tier * per + (x - ED_X) / ed_pitch(grid);
+                return PL_GED_CELL;
+            }
+        }
     }
     *arg = -1;
     return PL_GED_NONE;

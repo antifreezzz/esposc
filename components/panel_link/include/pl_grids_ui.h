@@ -33,7 +33,8 @@ int pl_gui_cell(int step, int part, int *x, int *y, int *w, int *h);
 // То же с сеткой рисунка (pl_grids.h): у триольной 24 клетки пошире, слоты 12-15 такта - 0.
 int pl_gui_cell_at(int grid, int step, int part, int *x, int *y, int *w, int *h);
 
-// Редактор своего рисунка поверх экрана Grids: один такт крупно (16 или 12 колонок на 3 дорожки).
+// Редактор своего рисунка поверх экрана Grids: один такт в два яруса по 8 шагов (у триолей по 6), в ярусе
+// 3 дорожки. 16 узких клеток в ряд пальцем не попасть.
 enum {
     PL_GED_NONE,
     PL_GED_BACK,  // закрыть
@@ -46,8 +47,8 @@ enum {
     PL_GED_IDS
 };
 int pl_ged_rect(int id, int idx, int *x, int *y, int *w, int *h); // кнопки; у клеток - pl_ged_cell
-int pl_ged_cell(int grid, int col, int part, int *x, int *y, int *w, int *h);
-// Что под точкой; у клетки arg = дорожка * 16 + колонка. Клетки ловят и щели между собой.
+int pl_ged_cell(int grid, int col, int part, int *x, int *y, int *w, int *h); // col - шаг такта 0..15 (0..11)
+// Что под точкой; у клетки arg = дорожка * 16 + шаг такта. Клетки яруса ловят и щели между собой.
 int pl_ged_at(int grid, int x, int y, int *arg);
 // Уровень клетки после тапа: пусто -> удар -> акцент -> гост -> пусто.
 int pl_ged_next(int lv);

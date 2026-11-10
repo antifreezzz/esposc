@@ -126,7 +126,8 @@ TEST(test_cell_grid)
     CHECK(x >= gx && y >= gy);
 }
 
-// Редактор шагов: один такт крупно, кнопки сверху и снизу, клетки без мёртвых щелей.
+// Редактор шагов: один такт в два яруса по 8 шагов (у триолей по 6) - клетки широкие, палец не промахивается;
+// кнопки сверху и снизу, внутри яруса клетки без мёртвых щелей.
 TEST(test_editor_layout)
 {
     static const int N[PL_GED_IDS] = {[PL_GED_BACK] = 1, [PL_GED_SLOT] = 4, [PL_GED_BAR] = 2, [PL_GED_TRIP] = 1,
@@ -150,7 +151,12 @@ TEST(test_editor_layout)
                 int ok = pl_ged_cell(grid, col, part, &x, &y, &w, &h);
                 CHECK(ok == (col < cols));
                 if (ok) {
-                    CHECK(x >= 0 && y >= 76 && x + w <= 480 && y + h <= 432 && w >= 24 && h >= 60);
+                    CHECK(x >= 0 && y >= 76 && x + w <= 480 && y + h <= 432 && w >= 50 && h >= 30);
+                    int per = cols / 2, bx, by, bw, bh, cx, cy, cw, ch;
+                    pl_ged_rect(PL_GED_COPY, 0, &bx, &by, &bw, &bh);
+                    CHECK(y + h + 6 <= by); // под ярусом место для бегущего шага
+                    pl_ged_cell(grid, col % per, part, &cx, &cy, &cw, &ch);
+                    CHECK(x == cx && (col < per ? y == cy : y >= cy + 3 * ch)); // второй ярус под первым
                     CHECK(pl_ged_at(grid, x + w / 2, y + h / 2, &arg) == PL_GED_CELL && arg == part * 16 + col);
                     CHECK(pl_ged_at(grid, x, y, &arg) == PL_GED_CELL && arg == part * 16 + col);
                     CHECK(pl_ged_at(grid, x + w - 1, y + h - 1, &arg) == PL_GED_CELL && arg == part * 16 + col);
