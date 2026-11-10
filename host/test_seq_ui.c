@@ -19,7 +19,7 @@ TEST(test_bars_tile)
     for (int a = 0; a < 16; a++) {
         int x, y, w, h;
         CHECK(pl_seq_rect(PL_SEQ_PATTERN, PL_ST_BAR, a, 0, &x, &y, &w, &h));
-        CHECK(w == 60 && h >= 150 && y >= 40 && y + h <= 480);
+        CHECK(w == 60 && h >= 120 && y >= 76 && y + h <= 432);
         for (int b = 0; b < 16; b++) {
             int x2, y2, w2, h2;
             pl_seq_rect(PL_SEQ_PATTERN, PL_ST_BAR, b, 0, &x2, &y2, &w2, &h2);
@@ -134,14 +134,14 @@ TEST(test_song_cells)
     for (int r = 0; r < 8; r++) {
         int x, y, w, h;
         pl_seq_rect(PL_SEQ_SONG, PL_ST_REP, 0, r, &x, &y, &w, &h);
-        CHECK(y + h <= 480 && w >= 44 && h >= 40);
+        CHECK(y >= 76 && y + h <= 432 && w >= 44 && h >= 34);
     }
     CHECK(pl_seq_at(PL_SEQ_PATTERN, cx, cy, &arg, &row) != PL_ST_REP);
 }
 
 TEST(test_toolbar)
 {
-    static const int IDS[] = {PL_ST_SYNTH, PL_ST_VIEW, PL_ST_BPM, PL_ST_OCT_DN, PL_ST_OCT_UP, PL_ST_SCALE, PL_ST_BRUSH};
+    static const int IDS[] = {PL_ST_VIEW, PL_ST_BPM, PL_ST_OCT_DN, PL_ST_OCT_UP, PL_ST_SCALE, PL_ST_BRUSH};
     for (int view = 0; view < 2; view++) {
         for (size_t i = 0; i < sizeof IDS / sizeof IDS[0]; i++) {
             int x, y, w, h, arg, row;
@@ -149,7 +149,7 @@ TEST(test_toolbar)
                 CHECK(view == PL_SEQ_SONG); // окно и кисть - только у такта
                 continue;
             }
-            CHECK(w >= 44 && h >= 40 && y >= 40);
+            CHECK(w >= 44 && h >= 34 && y >= 76 && y + h <= 432);
             CHECK(pl_seq_at(view, x + w / 2, y + h / 2, &arg, &row) == IDS[i]);
         }
     }
@@ -161,7 +161,10 @@ TEST(test_toolbar)
     int cx, cy, arg, row;
     center(PL_SEQ_PATTERN, PL_ST_BAR, 10, 0, &cx, &cy);
     CHECK(pl_seq_at(PL_SEQ_PATTERN, cx, cy, &arg, &row) == PL_ST_BAR && arg == 10);
-    CHECK(pl_seq_at(PL_SEQ_PATTERN, 240, 20, &arg, &row) == PL_ST_NONE); // шапка не наша
+    CHECK(pl_seq_at(PL_SEQ_PATTERN, 240, 20, &arg, &row) == PL_ST_NONE);  // шапка
+    CHECK(pl_seq_at(PL_SEQ_PATTERN, 240, 60, &arg, &row) == PL_ST_NONE);  // вкладки
+    CHECK(pl_seq_at(PL_SEQ_PATTERN, 240, 450, &arg, &row) == PL_ST_NONE); // док
+    CHECK(!pl_seq_rect(PL_SEQ_PATTERN, PL_ST_SYNTH, 0, 0, &cx, &cy, &arg, &row)); // S1/S2 задаёт группа дока
 }
 
 TEST(test_bpm_drag_horizontal)

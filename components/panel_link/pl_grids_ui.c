@@ -1,18 +1,18 @@
 #include "pl_grids_ui.h"
 
-// Ряды экрана (y), отступ 8 по краям.
-#define ROW1_Y 48 // вкл, сбивка, хэт
-#define ROW1_H 48
-#define ROW2_Y 104 // карта и ползунки
-#define ROW2_H 200
-#define ROW3_Y 312 // время, каждые, длина
-#define ROW3_H 40
+// Ряды экрана (y) между вкладками и доком (76..432), отступ 8 по краям.
+#define ROW1_Y 82 // вкл, сбивка, хэт
+#define ROW1_H 40
+#define ROW2_Y 128 // карта и ползунки
+#define ROW2_H 160
+#define ROW3_Y 294 // время, каждые, длина
+#define ROW3_H 36
 #define GRID_X 32 // сетка шагов: подписи дорожек левее
-#define GRID_Y 362
+#define GRID_Y 338
 #define CELL_DX 14
-#define CELL_DY 38
+#define CELL_DY 28
 #define CELL_W 12
-#define CELL_H 34
+#define CELL_H 24
 
 typedef struct {
     short x, y, w, h, n; // n сегментов поровну по ширине
