@@ -102,8 +102,39 @@ TEST(test_bsp_drums_pass)
     CHECK(s.snare_vel == 1.0f);
 }
 
+// Свинг: нечётный шаг Grids приходит на swing тиков позже; триольный рисунок идёт 12 шагами по 8 тиков.
+TEST(test_swing_and_triplets)
+{
+    acid_synth_init(&s, SR);
+    grids_on();
+    acid_synth_set_knob(&s, ACID_PAGE_GRIDS, DRM_SRC, 1);
+    acid_synth_set_knob(&s, ACID_PAGE_GRIDS, DRM_SWING, 2);
+    CHECK(acid_synth_knob(&s, ACID_PAGE_GRIDS, DRM_SWING) == 2);
+    ev(ACID_MIDI_START, 0, 0, 0);
+    for (int t = 0; t < 96; t++) {
+        ticks(1);
+        int st = t / 6, in = t % 6;
+        int want = (st & 1) && in < 2 ? st - 1 : st; // нечётный шаг ещё не начался
+        CHECK(s.grids_step == want);
+    }
+    acid_synth_init(&s, SR);
+    grids_on();
+    acid_synth_set_knob(&s, ACID_PAGE_GRIDS, DRM_SRC, PL_GRIDS_BANK); // SHUFFLE 12/8
+    acid_synth_set_knob(&s, ACID_PAGE_GRIDS, DRM_SWING, 3);
+    ev(ACID_MIDI_START, 0, 0, 0);
+    uint32_t kicks0 = s.grids_hits;
+    for (int t = 0; t < 192; t++) {
+        ticks(1);
+        CHECK(s.grids_step == (t / 96) * 16 + (t % 96) / 8); // второй такт - слоты с 16
+    }
+    CHECK(s.grids_hits > kicks0 + 8);
+    acid_synth_set_knob(&s, ACID_PAGE_GRIDS, DRM_SRC, PL_GRIDS_SRCS); // вне списка
+    CHECK(acid_synth_knob(&s, ACID_PAGE_GRIDS, DRM_SRC) == PL_GRIDS_BANK);
+}
+
 int main(void)
 {
+    RUN(test_swing_and_triplets);
     RUN(test_pages);
     RUN(test_knob_mirror);
     RUN(test_plays_on_clock);

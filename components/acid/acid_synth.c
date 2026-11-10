@@ -913,15 +913,15 @@ static void apply_page(acid_synth_t *s, int page, int slot, int v)
 }
 
 // Шаг автобарабанов: ноты барабанщика в ударку, как пэды BSP.
-static void grids_play(acid_synth_t *s)
+static void grids_play(acid_synth_t *s, int step)
 {
     acid_hit_t hit[ACID_DRUMMER_MAX];
-    int n = acid_drummer_step(&s->drummer, s->beat.step, s->beat.bar, hit);
+    int n = acid_drummer_step(&s->drummer, step, s->beat.bar, hit);
     for (int i = 0; i < n; i++) {
         drum_on(s, hit[i].note, hit[i].vel);
     }
     s->grids_hits += (uint32_t)n;
-    s->grids_step = s->drummer.knob[DRM_ON] ? (int)(s->beat.bar & 1) * ACID_BEAT_STEPS + s->beat.step : -1;
+    s->grids_step = s->drummer.knob[DRM_ON] ? (int)(s->beat.bar & 1) * ACID_BEAT_STEPS + step : -1;
 }
 
 // Ручка от пользователя (BSP, панель, сцена, демо): поменялось действующее значение - память пора записать.
@@ -1163,7 +1163,11 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
         int beat_step = -1;
         if (acid_beat_tick(&s->beat)) {
             beat_step = s->beat.step;
-            grids_play(s);
+        }
+        // Шаг Grids - свой: свинг задерживает нечётные шестнадцатые, триольный рисунок идёт 12 шагами в такте.
+        int grid_step = acid_beat_grid_due(&s->beat, acid_drummer_grid(&s->drummer), s->drummer.knob[DRM_SWING]);
+        if (grid_step >= 0) {
+            grids_play(s, grid_step);
         }
         if (s->seq) {
             acid_seq_ev_t sev[4];
