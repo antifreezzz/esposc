@@ -1,4 +1,5 @@
 #pragma once
+#include <stddef.h>
 #include <stdint.h>
 
 // Генератор барабанов Grids (Mutable Instruments), порт режима барабанов.
@@ -61,3 +62,12 @@ uint16_t pl_grids_src_step(int src, const pl_grids_pat_t *user, uint8_t x, uint8
 // (обычный или акцент).
 void pl_grids_copy(int src, const pl_grids_pat_t *user, uint8_t x, uint8_t y, const uint8_t density[3],
                    pl_grids_pat_t *out);
+
+// Свои рисунки: правки с проверкой границ (0 - отказ, ничего не тронуто) и blob во flash
+// (магия {'G','P','1',1} и PL_GRIDS_USER рисунков подряд).
+#define PL_GRIDS_BLOB (4 + PL_GRIDS_USER * (1 + PL_GRIDS_PARTS * PL_GRIDS_STEPS))
+void pl_grids_user_init(pl_grids_pat_t user[PL_GRIDS_USER]); // пусто, сетка 16
+int pl_grids_user_cell(pl_grids_pat_t user[PL_GRIDS_USER], int slot, int part, int step, int lv);
+int pl_grids_user_set(pl_grids_pat_t user[PL_GRIDS_USER], int slot, const pl_grids_pat_t *pat);
+size_t pl_grids_user_export(const pl_grids_pat_t user[PL_GRIDS_USER], void *buf, size_t cap); // 0 - не влезло
+int pl_grids_user_import(pl_grids_pat_t user[PL_GRIDS_USER], const void *buf, size_t len);

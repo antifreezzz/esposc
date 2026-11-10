@@ -348,8 +348,52 @@ TEST(test_copy)
     CHECK(hits > 4);
 }
 
+// Свои рисунки: правка клетки и целого рисунка с проверкой границ, blob во flash.
+TEST(test_user_edit_and_blob)
+{
+    static pl_grids_pat_t u[PL_GRIDS_USER], v[PL_GRIDS_USER];
+    pl_grids_user_init(u);
+    for (int k = 0; k < PL_GRIDS_USER; k++) {
+        CHECK(u[k].grid == PL_GRIDS_16);
+        for (int i = 0; i < 96; i++) {
+            CHECK(u[k].lv[i] == 0);
+        }
+    }
+    CHECK(pl_grids_user_cell(u, 1, 2, 31, 200) == 1 && u[1].lv[2 * 32 + 31] == 200);
+    CHECK(pl_grids_user_cell(u, PL_GRIDS_USER, 0, 0, 1) == 0);
+    CHECK(pl_grids_user_cell(u, -1, 0, 0, 1) == 0);
+    CHECK(pl_grids_user_cell(u, 0, 3, 0, 1) == 0);
+    CHECK(pl_grids_user_cell(u, 0, 0, 32, 1) == 0);
+    CHECK(pl_grids_user_cell(u, 0, 0, 0, 256) == 0 && u[0].lv[0] == 0);
+    pl_grids_pat_t p;
+    memset(&p, 0, sizeof p);
+    p.grid = PL_GRIDS_12T;
+    p.lv[5] = 124;
+    CHECK(pl_grids_user_set(u, 3, &p) == 1 && memcmp(&u[3], &p, sizeof p) == 0);
+    CHECK(pl_grids_user_set(u, 4, &p) == 0);
+    p.grid = 2;
+    CHECK(pl_grids_user_set(u, 0, &p) == 0 && u[0].grid == PL_GRIDS_16);
+
+    uint8_t blob[PL_GRIDS_BLOB + 4];
+    CHECK(sizeof(pl_grids_pat_t) == 97);
+    CHECK(pl_grids_user_export(u, blob, PL_GRIDS_BLOB - 1) == 0);
+    CHECK(pl_grids_user_export(u, blob, sizeof blob) == PL_GRIDS_BLOB);
+    pl_grids_user_init(v);
+    CHECK(pl_grids_user_import(v, blob, PL_GRIDS_BLOB) == 1);
+    CHECK(memcmp(u, v, sizeof u) == 0);
+    pl_grids_user_init(v);
+    CHECK(pl_grids_user_import(v, blob, PL_GRIDS_BLOB - 1) == 0);
+    blob[3] ^= 1; // чужая версия
+    CHECK(pl_grids_user_import(v, blob, PL_GRIDS_BLOB) == 0);
+    blob[3] ^= 1;
+    blob[4] = 9; // битая сетка первого рисунка
+    CHECK(pl_grids_user_import(v, blob, PL_GRIDS_BLOB) == 0);
+    CHECK(v[1].lv[2 * 32 + 31] == 0); // при отказе ничего не тронуто
+}
+
 int main(void)
 {
+    RUN(test_user_edit_and_blob);
     RUN(test_corner_nodes);
     RUN(test_original_bytes);
     RUN(test_mix_midpoint);

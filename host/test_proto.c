@@ -264,8 +264,27 @@ TEST(test_seq_frames)
     }
 }
 
+TEST(test_grids_pat_frames)
+{
+    CHECK(sizeof(pl_grids_pat_frame_t) == 98);
+    static uint8_t pl[PL_PAYLOAD_MAX], f[PL_FRAME_MAX];
+    static const struct {
+        uint8_t type;
+        size_t len;
+    } T[] = {{PL_GRIDS_PAT, 98}, {PL_GRIDS_CELL, 4}};
+    for (size_t i = 0; i < sizeof T / sizeof T[0]; i++) {
+        start();
+        feed(f, pl_encode(T[i].type, pl, T[i].len, f));
+        CHECK(frames == 1 && got_type == T[i].type && got_len == T[i].len);
+        start();
+        feed(f, pl_encode(T[i].type, pl, T[i].len + 1, f));
+        CHECK(frames == 0);
+    }
+}
+
 int main(void)
 {
+    RUN(test_grids_pat_frames);
     RUN(test_roundtrip);
     RUN(test_bad_crc_dropped);
     RUN(test_garbage_then_frame);

@@ -74,6 +74,8 @@ static int s_seq_mode;           // режим СЕКВ без BSP: ручки �
 static acid_seq_t s_seq;         // секвенсер: переживает смену режима, во flash (STORE_SEQ)
 static acid_seq_clk_t s_seq_clk; // внутренний клок секвенсера, когда клока BSP нет
 static int s_seq_save;           // правили секвенсер: записать в тишине
+static pl_grids_pat_t s_gpat[PL_GRIDS_USER]; // свои рисунки Grids: переживают смену режима, во flash (STORE_GRIDS)
+static int s_gpat_save;          // правили свой рисунок: записать в тишине
 static acid_link_t s_link;       // панель: подхват BSP, глушение ручек демо
 static acid_custom_t s_custom;   // свои страницы: переживают смену демо <-> live
 static acid_scene_t s_scene;     // сцены: так же
@@ -214,6 +216,21 @@ static void seq_frames(void)
     }
 }
 
+// Свои рисунки Grids с панели: в фазе событий, барабанщик читает их на тике клока в этой же задаче.
+static void grids_frames(void)
+{
+    uint8_t type, p[PANEL_GRIDS_MAX];
+    while (panel_uart_receive_grids(&type, p)) {
+        if (type == PL_GRIDS_CELL) {
+            s_gpat_save |= pl_grids_user_cell(s_gpat, p[0], p[1], p[2], p[3]);
+        } else {
+            pl_grids_pat_frame_t fr;
+            memcpy(&fr, p, sizeof fr);
+            s_gpat_save |= pl_grids_user_set(s_gpat, fr.slot, &fr.pat);
+        }
+    }
+}
+
 static void render_block(float *l, float *r)
 {
     static acid_midi_event_t demo_ev[DEMO_EVENTS];
@@ -262,6 +279,7 @@ static void render_block(float *l, float *r)
         }
         custom_and_scenes();
         seq_frames();
+        grids_frames();
         acid_petri_frame_t pf;
         if (panel_uart_receive_petri(&pf)) {
             acid_synth_petri(&s_synth, &pf); // оба ядра свободны: ящики голосов чашки
@@ -321,6 +339,7 @@ static void enter_mode(int live, const uint8_t *blob, int blob_ok)
         s_demo_on = 1;
     }
     acid_synth_use_seq(&s_synth, live || s_seq_mode ? &s_seq : NULL); // позиция с начала песни
+    acid_synth_use_grids(&s_synth, s_gpat);
     acid_seq_clk_init(&s_seq_clk);
     if (s_seq_mode) {
         acid_midi_event_t st = {.type = ACID_MIDI_START}; // свой клок: общий такт и Grids с начала
@@ -358,6 +377,7 @@ static void keep_user_knobs(uint8_t *blob, int *blob_ok, int *save_pending)
 static uint8_t s_cblob[ACID_CUSTOM_BLOB];
 static uint8_t s_sblob[ACID_SCENE_BLOB];
 static uint8_t s_qblob[ACID_SEQ_BLOB];
+static uint8_t s_gblob[PL_GRIDS_BLOB];
 
 // До старта связи с панелью: она шлёт кадры своих страниц из s_custom.
 static void load_user_data(void)
@@ -376,6 +396,10 @@ static void load_user_data(void)
     size_t qn = store_load(STORE_SEQ, s_qblob, sizeof s_qblob); // версия 1 короче: длину проверяет import
     if (qn > 0 && acid_seq_import(&s_seq, s_qblob, qn)) {
         ESP_LOGI(TAG, "sequencer restored");
+    }
+    pl_grids_user_init(s_gpat);
+    if (pl_grids_user_import(s_gpat, s_gblob, store_load(STORE_GRIDS, s_gblob, sizeof s_gblob))) {
+        ESP_LOGI(TAG, "grids patterns restored");
     }
 }
 
@@ -408,6 +432,7 @@ static void synth_task(void *arg)
         ESP_LOGI(TAG, "knobs restored");
     }
     int custom_pending = 0, scene_pending = 0;
+    int gpat_pending = 0;
     int seq_pending = 0, last_seq_run = s_seq.t[0].run | s_seq.t[1].run << 1;
     uint8_t mode;
     if (!BENCH && store_load(STORE_MODE, &mode, 1) == 1 && mode <= MODE_SEQ) {
@@ -510,6 +535,8 @@ static void synth_task(void *arg)
         int seq_run = s_seq.t[0].run | s_seq.t[1].run << 1;
         seq_pending |= s_seq_save || seq_run != last_seq_run;
         s_seq_save = 0;
+        gpat_pending |= s_gpat_save;
+        s_gpat_save = 0;
         last_seq_run = seq_run;
         scene_pending |= s_scene.save;
         s_custom.save = s_scene.save = 0;
@@ -527,6 +554,10 @@ static void synth_task(void *arg)
             if (seq_pending) {
                 store_save(STORE_SEQ, s_qblob, acid_seq_export(&s_seq, s_qblob, sizeof s_qblob));
                 seq_pending = 0;
+            }
+            if (gpat_pending) {
+                store_save(STORE_GRIDS, s_gblob, pl_grids_user_export(s_gpat, s_gblob, sizeof s_gblob));
+                gpat_pending = 0;
             }
             if (scene_pending) {
                 store_save(STORE_SCENES, s_sblob, acid_scene_export(&s_scene, s_sblob, sizeof s_sblob));
@@ -645,6 +676,7 @@ void app_main(void)
     usb_host_start();
     ESP_ERROR_CHECK(midi_in_start());
     ESP_ERROR_CHECK(audio_out_start());
+    panel_uart_use_grids(s_gpat);
     ESP_ERROR_CHECK(panel_uart_start(&s_synth, &s_link, &s_custom, &s_scene, &s_seq, &s_demo_on, &s_live, &s_demo_song));
     s_stats_q = xQueueCreate(1, sizeof(stats_msg_t));
     xTaskCreatePinnedToCore(stats_task, "stats", 3072, NULL, 1, NULL, 0);

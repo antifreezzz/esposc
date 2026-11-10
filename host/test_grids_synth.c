@@ -132,8 +132,29 @@ TEST(test_swing_and_triplets)
     CHECK(acid_synth_knob(&s, ACID_PAGE_GRIDS, DRM_SRC) == PL_GRIDS_BANK);
 }
 
+// Свои рисунки живут вне синта: синт играет их по указателю.
+TEST(test_user_patterns)
+{
+    static pl_grids_pat_t u[PL_GRIDS_USER];
+    pl_grids_user_init(u);
+    for (int st = 0; st < 32; st += 2) {
+        u[1].lv[st] = PL_GRIDS_LV_HIT;
+    }
+    acid_synth_init(&s, SR);
+    grids_on();
+    acid_synth_set_knob(&s, ACID_PAGE_GRIDS, DRM_SRC, PL_GRIDS_SRC_USER + 1);
+    ev(ACID_MIDI_START, 0, 0, 0);
+    ticks(96);
+    CHECK(s.grids_hits == 0); // рисунков синту не дали
+    acid_synth_use_grids(&s, u);
+    ev(ACID_MIDI_START, 0, 0, 0);
+    ticks(96);
+    CHECK(s.grids_hits == 8);
+}
+
 int main(void)
 {
+    RUN(test_user_patterns);
     RUN(test_swing_and_triplets);
     RUN(test_pages);
     RUN(test_knob_mirror);

@@ -18,6 +18,8 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "pl_grids.h"
 
+#include <string.h>
+
 // U8Mix из avrlib: (a * (255 - w) + b * w) >> 8. Не /255: так в оригинале, потери до 2 единиц у углов.
 static uint8_t u8_mix(uint8_t a, uint8_t b, uint8_t w)
 {
@@ -167,4 +169,56 @@ void pl_grids_copy(int src, const pl_grids_pat_t *user, uint8_t x, uint8_t y, co
         }
     }
     *out = r; // out может быть одним из user
+}
+
+static const uint8_t BLOB_MAGIC[4] = {'G', 'P', '1', 1};
+
+void pl_grids_user_init(pl_grids_pat_t user[PL_GRIDS_USER])
+{
+    memset(user, 0, PL_GRIDS_USER * sizeof user[0]);
+}
+
+int pl_grids_user_cell(pl_grids_pat_t user[PL_GRIDS_USER], int slot, int part, int step, int lv)
+{
+    if (slot < 0 || slot >= PL_GRIDS_USER || part < 0 || part >= PL_GRIDS_PARTS || step < 0 ||
+        step >= PL_GRIDS_STEPS || lv < 0 || lv > 255) {
+        return 0;
+    }
+    user[slot].lv[part * PL_GRIDS_STEPS + step] = (uint8_t)lv;
+    return 1;
+}
+
+int pl_grids_user_set(pl_grids_pat_t user[PL_GRIDS_USER], int slot, const pl_grids_pat_t *pat)
+{
+    if (slot < 0 || slot >= PL_GRIDS_USER || pat->grid > PL_GRIDS_12T) {
+        return 0;
+    }
+    user[slot] = *pat;
+    return 1;
+}
+
+size_t pl_grids_user_export(const pl_grids_pat_t user[PL_GRIDS_USER], void *buf, size_t cap)
+{
+    if (cap < PL_GRIDS_BLOB) {
+        return 0;
+    }
+    uint8_t *b = buf;
+    memcpy(b, BLOB_MAGIC, 4);
+    memcpy(b + 4, user, PL_GRIDS_USER * sizeof user[0]); // рисунок - только байты, без выравнивания
+    return PL_GRIDS_BLOB;
+}
+
+int pl_grids_user_import(pl_grids_pat_t user[PL_GRIDS_USER], const void *buf, size_t len)
+{
+    const uint8_t *b = buf;
+    if (len != PL_GRIDS_BLOB || memcmp(b, BLOB_MAGIC, 4) != 0) {
+        return 0;
+    }
+    for (int k = 0; k < PL_GRIDS_USER; k++) {
+        if (b[4 + k * sizeof user[0]] > PL_GRIDS_12T) {
+            return 0;
+        }
+    }
+    memcpy(user, b + 4, PL_GRIDS_USER * sizeof user[0]);
+    return 1;
 }

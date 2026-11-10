@@ -1107,6 +1107,11 @@ static void seq_notes(acid_synth_t *s, const acid_seq_ev_t *ev, int n)
     }
 }
 
+void acid_synth_use_grids(acid_synth_t *s, const pl_grids_pat_t *user)
+{
+    acid_drummer_use_user(&s->drummer, user);
+}
+
 void acid_synth_use_seq(acid_synth_t *s, acid_seq_t *q)
 {
     s->seq = q;
