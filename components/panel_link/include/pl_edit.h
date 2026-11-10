@@ -33,4 +33,11 @@ void pl_edit_mod_row(pl_edit_t *e, const pl_model_t *m, int idx);  // TARGETS: �
 void pl_edit_mod_page(pl_edit_t *e, const pl_model_t *m, int page);
 // PICK_KNOB: ручка enc, если годится целью -> TARGETS; out - кадр PL_MOD_EDIT, цель уже в модели. 0 - не годится.
 int pl_edit_mod_knob(pl_edit_t *e, pl_model_t *m, int enc, pl_mod_edit_t *out);
-int pl_edit_mod_remove(pl_edit_t *e, pl_model_t *m, int idx, pl_mod_edit_t *out); // TARGETS: убрать цель idx; 0 - пусто                          // шаг назад, из SLOTS - выход
+int pl_edit_mod_remove(pl_edit_t *e, pl_model_t *m, int idx, pl_mod_edit_t *out); // TARGETS: убрать цель idx; 0 - пусто
+
+#define PL_EDIT_MOD_CLEAR_MS 600
+// Отпускание строки: выбрать цель, а занятую после явного удержания удалить. HOLD жеста на 50 мс действия не даёт.
+enum { PL_MOD_ROW_NONE, PL_MOD_ROW_SELECT, PL_MOD_ROW_REMOVE };
+int pl_edit_mod_row_action(int ev, uint32_t held_ms, int occupied);
+
+void pl_edit_back(pl_edit_t *e); // шаг назад, из SLOTS - выход

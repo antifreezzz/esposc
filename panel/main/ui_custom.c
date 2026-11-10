@@ -29,7 +29,7 @@ static struct {
     lv_obj_t *rng_box, *side[2], *side_val[2], *rng_name;
     int drawn_which;
     pl_turn_t turn;
-    int turning, sent, mod_hold;
+    int turning, sent;
     lv_obj_t *xy_box, *xy_field, *xy_vl, *xy_hl, *xy_dot, *xy_hold, *xy_hold_lbl, *xy_lab[2];
     pl_xy_t xy;
     int xy_drawn[2], xy_hold_drawn, xy_page; // xy_page - чья страница под пальцем, -1 нет касания
@@ -201,7 +201,7 @@ void uc_edit_draw(const pl_model_t *m, const pl_edit_t *e)
     }
 }
 
-void uc_edit_input(pl_model_t *m, pl_edit_t *e, int ev, int down, int x, int y, int x0, int y0)
+void uc_edit_input(pl_model_t *m, pl_edit_t *e, int ev, int down, int x, int y, int x0, int y0, uint32_t held_ms)
 {
     int tap = pl_press_tap(ev); // обычное нажатие пальцем дольше 50 мс - это RELEASE, не TAP
     pl_custom_edit_t out;
@@ -212,24 +212,17 @@ void uc_edit_input(pl_model_t *m, pl_edit_t *e, int ev, int down, int x, int y, 
         }
         int row = wy >= ROW_Y0 ? (wy - ROW_Y0) / ROW_DY : -1;
         int inside = row >= 0 && row < PL_MOD_TARGETS && (wy - ROW_Y0) % ROW_DY < ROW_H;
-        if (!down && c.mod_hold) {
-            c.mod_hold = 0;
-            return;
-        }
-        if (!down && !tap) {
-            c.mod_hold = 0;
-            return;
-        }
         if (!inside) {
             return;
         }
-        if (ev == PL_PRESS_HOLD) {
+        int occupied = m->mod_t[e->up][row].page != PL_NONE;
+        int action = pl_edit_mod_row_action(ev, held_ms, occupied);
+        if (action == PL_MOD_ROW_REMOVE) {
             pl_mod_edit_t mout;
-            c.mod_hold = 1;
             if (pl_edit_mod_remove(e, m, row, &mout)) {
                 link_mod_edit(&mout);
             }
-        } else if (tap) {
+        } else if (action == PL_MOD_ROW_SELECT) {
             pl_edit_mod_row(e, m, row);
         }
         return;

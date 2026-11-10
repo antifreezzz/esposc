@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "pl_edit.h"
+#include "pl_gesture.h"
 #include "pl_labels.h"
 #include "pl_mod.h"
 #include "pl_model.h"
@@ -153,6 +154,20 @@ TEST(test_edit_mod_row_replaces_and_removes)
     CHECK(e.state == PL_EDIT_TARGETS); // нет такой строки
 }
 
+TEST(test_edit_mod_row_gesture)
+{
+    // Обычное касание часто длиннее общего HOLD на 50 мс: оно всё равно выбирает строку.
+    CHECK(pl_edit_mod_row_action(PL_PRESS_NONE, 49, 0) == PL_MOD_ROW_NONE);
+    CHECK(pl_edit_mod_row_action(PL_PRESS_HOLD, 50, 1) == PL_MOD_ROW_NONE);
+    CHECK(pl_edit_mod_row_action(PL_PRESS_TAP, 30, 0) == PL_MOD_ROW_SELECT);
+    CHECK(pl_edit_mod_row_action(PL_PRESS_RELEASE, 100, 0) == PL_MOD_ROW_SELECT);
+    CHECK(pl_edit_mod_row_action(PL_PRESS_RELEASE, 599, 1) == PL_MOD_ROW_SELECT);
+    CHECK(pl_edit_mod_row_action(PL_PRESS_RELEASE, 600, 1) == PL_MOD_ROW_REMOVE);
+    CHECK(pl_edit_mod_row_action(PL_PRESS_RELEASE, 1000, 1) == PL_MOD_ROW_REMOVE);
+    CHECK(pl_edit_mod_row_action(PL_PRESS_RELEASE, 1000, 0) == PL_MOD_ROW_SELECT);
+    CHECK(pl_edit_mod_row_action(PL_PRESS_NONE, 1000, 1) == PL_MOD_ROW_NONE);
+}
+
 TEST(test_edit_mod_needs_frame_and_back)
 {
     setup();
@@ -192,6 +207,7 @@ int main(void)
     RUN(test_pickable_pages);
     RUN(test_edit_mod_targets_path);
     RUN(test_edit_mod_row_replaces_and_removes);
+    RUN(test_edit_mod_row_gesture);
     RUN(test_edit_mod_needs_frame_and_back);
     TEST_MAIN_END();
 }

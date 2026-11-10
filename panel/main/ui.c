@@ -1292,7 +1292,7 @@ static void knob_input(pl_model_t *m, int ev, int down, int x, int y, int x0, in
 }
 
 static void edit_input(pl_model_t *m, int ev, int down, int x, int y, int x0, int y0, int x1, int y1, int tap,
-                       int nav)
+                       int nav, uint32_t held_ms)
 {
     pl_custom_edit_t out;
     pl_mod_edit_t mout;
@@ -1332,7 +1332,7 @@ static void edit_input(pl_model_t *m, int ev, int down, int x, int y, int x0, in
         }
         break;
     default:
-        uc_edit_input(m, &u.ed, ev, down, x, y, x0, y0);
+        uc_edit_input(m, &u.ed, ev, down, x, y, x0, y0, held_ms);
         break;
     }
 }
@@ -1404,7 +1404,7 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
     int nav = tap ? pl_nav_tap(bar, x0, y0, x1, y1) : PL_NAV_NONE;
 
     if (editing()) {
-        edit_input(m, ev, down, x, y, x0, y0, x1, y1, tap, nav);
+        edit_input(m, ev, down, x, y, x0, y0, x1, y1, tap, nav, ms - u.press.t0);
     } else if (u.overlay != OVL_NONE) {
         overlay_input(m, tap, x0, y0, x1, y1, nav, ms);
     } else if (us_picking()) {

@@ -1,5 +1,6 @@
 #include "pl_edit.h"
 
+#include "pl_gesture.h"
 #include "pl_labels.h"
 #include "pl_mod.h"
 
@@ -148,6 +149,14 @@ int pl_edit_mod_knob(pl_edit_t *e, pl_model_t *m, int enc, pl_mod_edit_t *out)
     }
     e->state = PL_EDIT_TARGETS;
     return 1;
+}
+
+int pl_edit_mod_row_action(int ev, uint32_t held_ms, int occupied)
+{
+    if (!pl_press_tap(ev)) {
+        return PL_MOD_ROW_NONE;
+    }
+    return occupied && held_ms >= PL_EDIT_MOD_CLEAR_MS ? PL_MOD_ROW_REMOVE : PL_MOD_ROW_SELECT;
 }
 
 int pl_edit_mod_remove(pl_edit_t *e, pl_model_t *m, int idx, pl_mod_edit_t *out)

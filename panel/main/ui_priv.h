@@ -71,7 +71,7 @@ void uc_build(lv_obj_t *scr);
 // Оверлеи редактора: список целей слота и ход lo/hi; прячутся вне своих состояний.
 void uc_edit_draw(const pl_model_t *m, const pl_edit_t *e);
 // Ввод в состояниях TARGETS и RANGE (остальные шаги - сетка в ui.c).
-void uc_edit_input(pl_model_t *m, pl_edit_t *e, int ev, int down, int x, int y, int x0, int y0);
+void uc_edit_input(pl_model_t *m, pl_edit_t *e, int ev, int down, int x, int y, int x0, int y0, uint32_t held_ms);
 // XY-пэд своей страницы page: X - слот E2, Y - слот E3. Ввод - без лока LVGL, каждый опрос тача.
 void uc_xy_show(int on);
 void uc_xy_draw(const pl_model_t *m, int page);
