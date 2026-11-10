@@ -340,6 +340,21 @@ static void enter_mode(int live, const uint8_t *blob, int blob_ok)
     panel_uart_snapshot_due(); // синт с нуля: панели всё заново
 }
 
+// Перед сменой режима (синт начнётся с нуля): ручки пользователя - в blob, несохранённые - во flash.
+// В демо ручки не наши: blob остаётся прежним.
+static void keep_user_knobs(uint8_t *blob, int *blob_ok, int *save_pending)
+{
+    if (s_demo_on) {
+        return;
+    }
+    acid_synth_export(&s_synth, blob, ACID_SYNTH_BLOB);
+    *blob_ok = 1;
+    if (*save_pending || acid_synth_take_save(&s_synth)) {
+        store_save(STORE_KNOBS, blob, ACID_SYNTH_BLOB); // звук ушёл: можно писать
+        *save_pending = 0;
+    }
+}
+
 static uint8_t s_cblob[ACID_CUSTOM_BLOB];
 static uint8_t s_sblob[ACID_SCENE_BLOB];
 static uint8_t s_qblob[ACID_SEQ_BLOB];
@@ -439,6 +454,9 @@ static void synth_task(void *arg)
         render_block(out_l, out_r);
         if (fade > 0) {
             block_fade(out_l, out_r, (float)fade / FADE_BLOCKS, (float)(fade - 1) / FADE_BLOCKS);
+            if (fade == 1) {
+                keep_user_knobs(blob, &blob_ok, &save_pending); // звук ушёл: синт сейчас начнётся с нуля
+            }
             if (--fade == 0 && next_song) {
                 s_demo_song = (s_demo_song + 1) % (MODE_SEQ + 1);
                 uint8_t mode = (uint8_t)s_demo_song;
@@ -448,7 +466,6 @@ static void synth_task(void *arg)
             } else if (fade == 0) {
                 live = !live;
                 enter_mode(live, blob, blob_ok);
-                save_pending = 0;
                 ESP_LOGI(TAG, "%s", live ? "midi controller: live mode" : "no midi controller: playing demo");
             }
         }
@@ -467,7 +484,7 @@ static void synth_task(void *arg)
             ESP_LOGW(TAG, "overload guard step %d (block %lld us)", s_synth.tight, dt);
         }
 
-        // Сменили тип синтеза: память ручек пишем, когда выход помолчит (flash стопорит кэш).
+        // Поменяли ручку или тип: память ручек пишем, когда выход помолчит (flash стопорит кэш) или при смене режима.
         // Ручки демо не сохраняем.
         save_pending |= acid_synth_take_save(&s_synth) && !s_demo_on;
         // Свои страницы и сцены - действия пользователя, пишутся и в демо.
