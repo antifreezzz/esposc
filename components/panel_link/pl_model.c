@@ -233,7 +233,8 @@ const uint8_t *pl_model_raw(const pl_model_t *m, int page)
 
 int pl_model_linked(const pl_model_t *m, uint32_t ms)
 {
-    return m->have && ms - m->last_rx_ms <= PL_LOST_MS;
+    // Знаковая разность: время отрисовки бывает раньше последнего кадра (отстаёт на перерисовку), это не потеря.
+    return m->have && (int32_t)(ms - m->last_rx_ms) <= PL_LOST_MS;
 }
 
 int pl_model_page_resend(const pl_model_t *m, int screen_page, uint32_t ms)

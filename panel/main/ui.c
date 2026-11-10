@@ -447,7 +447,7 @@ static void bar_draw(lv_event_t *e)
     lv_draw_label(layer, &l, &sta);
 
     // Загрузка ядер двумя строками справа.
-    if (m && m->have_load && u.now - m->load_ms <= LOAD_STALE_MS) {
+    if (m && m->have_load && (int32_t)(u.now - m->load_ms) <= LOAD_STALE_MS) {
         const pl_load_t *ld = &m->load;
         int worst = ld->c1_worst > ld->c0_worst ? ld->c1_worst : ld->c0_worst;
         uint32_t lc = (worst >= 100 || ld->underruns) ? C_BAD : worst >= LOAD_WARN ? C_WARN : C_DIM;
@@ -1540,7 +1540,7 @@ static void check_bar_redraw(const pl_model_t *m, uint32_t ms)
         int ext = 0, bpm = current_tempo(m, &ext);
         int linked = pl_model_linked(m, ms);
         const char *st = pl_view_status(m, linked);
-        int ld_ok = m->have_load && ms - m->load_ms <= LOAD_STALE_MS;
+        int ld_ok = m->have_load && (int32_t)(ms - m->load_ms) <= LOAD_STALE_MS;
         snprintf(key, sizeof key, "M:%d:%s:%s:%d:%d:%d:%d:%s:%d:%d:%d:%d:%d", u.group, title, sub, seq_running(m), bpm,
                  ext, u.bpm_drag, st, linked, ld_ok, ld_ok ? m->load.guard : 0, ld_ok ? m->load.c1_worst : 0,
                  ld_ok ? m->load.c0_worst : 0);
