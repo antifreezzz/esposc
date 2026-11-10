@@ -15,6 +15,16 @@ int pl_mod_can_target(const pl_model_t *m, int page, int enc)
     return page_ok(page, enc) && pl_knob_label(page, enc, m->raw[page]) && pl_pick_view(m, page, enc, &tp, &te) == PL_PICK_NONE;
 }
 
+int pl_mod_page_has_target(const pl_model_t *m, int page)
+{
+    for (int e = 1; e < PL_KNOBS; e++) {
+        if (pl_mod_can_target(m, page, e)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 int pl_mod_offset(int out, int amount, int depth)
 {
     float o = (float)out / 127.0f;

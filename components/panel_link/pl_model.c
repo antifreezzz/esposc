@@ -223,6 +223,14 @@ int pl_model_local_set(pl_model_t *m, int page, int enc, int v)
     return 1;
 }
 
+const uint8_t *pl_model_raw(const pl_model_t *m, int page)
+{
+    if (page >= 0 && page < PL_PAGES) {
+        return m->raw[page];
+    }
+    return is_mod(page) ? m->mod_knob[page - PL_PAGE_MOD1] : NULL;
+}
+
 int pl_model_linked(const pl_model_t *m, uint32_t ms)
 {
     return m->have && ms - m->last_rx_ms <= PL_LOST_MS;

@@ -22,6 +22,8 @@ int pl_mod_sum(const pl_model_t *m, int page, int enc, int *n);
 // Вне страниц и энкодеров 0. Выход приходит int8 (~20 Гц), поэтому у точки на дуге погрешность до единицы.
 int pl_mod_effective(const pl_model_t *m, int page, int enc);
 
+// На странице есть хоть одна ручка, которую можно сделать целью (TONAL, чашка и выключенный слой - нет).
+int pl_mod_page_has_target(const pl_model_t *m, int page);
 // Целей у модулятора k (0..3), 0 вне диапазона.
 int pl_mod_count(const pl_model_t *m, int k);
 // Поставить цель idx модулятора k (page PL_NONE - убрать) в модели и собрать кадр PL_MOD_EDIT для синта.

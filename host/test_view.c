@@ -152,7 +152,8 @@ TEST(test_page_names_and_colors)
     CHECK(pl_view_page_color(10) == pl_page_color(6) && pl_view_page_color(11) == pl_page_color(7));
     CHECK(strcmp(pl_view_page_name(PL_USER_FIRST), "USER 1") == 0);
     CHECK(strcmp(pl_view_page_name(PL_USER_FIRST + 5), "USER 6") == 0);
-    CHECK(pl_view_page_name(PL_PAGE_MIX_DRUMS + PL_MIX_PAGES) == NULL); // за вкладками MIX страниц нет
+    CHECK(strcmp(pl_view_page_name(PL_PAGE_MOD1), "MOD 1") == 0); // за вкладками MIX - модуляторы
+    CHECK(pl_view_page_name(PL_PAGE_MOD1 + PL_MOD_PAGES) == NULL); // а за ними страниц нет
     CHECK(pl_view_page_color(3) == pl_page_color(3));
     CHECK(pl_view_page_color(12) != 0);
 }
