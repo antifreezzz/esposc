@@ -4,12 +4,13 @@
 #include "esp_err.h"
 
 // Память в NVS: blob на ключ. Ключи: STORE_KNOBS (ручки синтов), STORE_CUSTOM (свои страницы),
-// STORE_SCENES (сцены), STORE_SEQ (секвенсер), STORE_MODE (режим без BSP: песня демо, дрон или секвенсер),
-// STORE_GRIDS (свои рисунки Grids).
+// STORE_SCENES (сцены), STORE_SEQ (секвенсер), STORE_MOD (модуляторы), STORE_MODE (режим без BSP: песня демо,
+// дрон или секвенсер), STORE_GRIDS (свои рисунки Grids).
 #define STORE_KNOBS "knobs"
 #define STORE_CUSTOM "custom"
 #define STORE_SCENES "scenes"
 #define STORE_SEQ "seq"
+#define STORE_MOD "mod"
 #define STORE_MODE "mode"
 #define STORE_GRIDS "grids"
 

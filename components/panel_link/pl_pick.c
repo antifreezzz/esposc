@@ -39,9 +39,14 @@ static void span(int page, int enc, const uint8_t raw[16], int *lo, int *hi)
     }
 }
 
+static int is_mod(int page)
+{
+    return page >= PL_PAGE_MOD1 && page < PL_PAGE_MOD1 + PL_MOD_PAGES;
+}
+
 int pl_pick_kind(int page, int enc, const uint8_t raw[16])
 {
-    if (page < 0 || page >= PL_PAGES || !pl_knob_label(page, enc, raw)) {
+    if (page < 0 || (page >= PL_PAGES && !is_mod(page)) || !pl_knob_label(page, enc, raw)) {
         return PL_PICK_NONE;
     }
     if (trigger(page, enc)) {
@@ -61,6 +66,12 @@ int pl_pick_kind(int page, int enc, const uint8_t raw[16])
 int pl_pick_view(const pl_model_t *m, int page, int enc, int *tp, int *te)
 {
     *tp = page, *te = enc;
+    if (is_mod(page)) { // ручки модулятора: свои списки (форма, синхронизация, запуск)
+        return pl_pick_kind(page, enc, m->mod_knob[page - PL_PAGE_MOD1]);
+    }
+    if (page >= PL_PAGE_MOD1 + PL_MOD_PAGES) {
+        return PL_PICK_NONE;
+    }
     if (page >= PL_PAGE_MIX_DRUMS) { // вкладка MIX: класс цели, пустой слот - ничего
         return pl_view_mix(m, page, enc, tp, te) ? pl_pick_kind(*tp, *te, m->raw[*tp]) : PL_PICK_NONE;
     }

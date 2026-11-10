@@ -3,6 +3,7 @@
 #include <stdio.h>
 
 #include "pl_mix.h"
+#include "pl_mod.h"
 
 #define USER_COLOR 0xe8dcc0
 
@@ -60,6 +61,39 @@ int pl_view_mix(const pl_model_t *m, int page, int enc, int *tpage, int *tenc)
     return pl_mix_target(page, enc, m->raw[PL_PAGE_SYNTH1 + k][1], m->raw[PL_PAGE_LAYER1 + k][1], tpage, tenc);
 }
 
+// Ячейка страницы модулятора: подписи и значения его ручек, под именем глубины - цель.
+static void mod_cell(const pl_model_t *m, int page, int enc, pl_cell_t *c)
+{
+    int k = page - PL_PAGE_MOD1;
+    const uint8_t *raw = m->mod_knob[k];
+    c->label = pl_knob_label(page, enc, raw);
+    if (!c->label) {
+        return;
+    }
+    c->v = raw[enc];
+    pl_knob_range(page, enc, raw, &c->lo, &c->hi);
+    c->bipolar = pl_knob_bipolar(page, enc, raw);
+    c->color = pl_knob_color(page, enc, raw);
+    c->text = pl_value_text(page, enc, c->v, raw, c->vbuf);
+    c->held = m->mod_held[k][enc];
+    int i = enc - 9; // DEPTH 1..4
+    if (i >= 0 && i < PL_MOD_TARGETS) {
+        int tp = m->mod_t[k][i].page, te = m->mod_t[k][i].enc;
+        if (tp != PL_NONE && pl_mod_can_target(m, tp, te)) {
+            c->src = pl_knob_label(tp, te, m->raw[tp]);
+            c->src_color = pl_page_color(tp);
+        }
+    }
+}
+
+// Действующее значение ручки под модуляцией, -1 - ручка не цель.
+static int eff_of(const pl_model_t *m, int page, int enc)
+{
+    int n = 0;
+    pl_mod_sum(m, page, enc, &n);
+    return n ? pl_mod_effective(m, page, enc) : -1;
+}
+
 void pl_view_cell(const pl_model_t *m, int page, int enc, pl_cell_t *c)
 {
     c->label = NULL;
@@ -69,7 +103,12 @@ void pl_view_cell(const pl_model_t *m, int page, int enc, pl_cell_t *c)
     c->v = c->lo = c->bipolar = c->held = 0;
     c->hi = 127;
     c->skip = -1;
+    c->eff = -1;
     c->color = 0;
+    if (page >= PL_PAGE_MOD1 && page < PL_PAGE_MOD1 + PL_MOD_PAGES) {
+        mod_cell(m, page, enc, c);
+        return;
+    }
     int mp, me;
     if (pl_view_mix(m, page, enc, &mp, &me)) {
         pl_view_cell(m, mp, me, c); // ячейка цели как есть, под именем - её страница
@@ -92,6 +131,7 @@ void pl_view_cell(const pl_model_t *m, int page, int enc, pl_cell_t *c)
         c->color = pl_knob_color(page, enc, raw);
         c->text = pl_value_text(page, enc, c->v, raw, c->vbuf);
         c->held = m->held[page][enc];
+        c->eff = eff_of(m, page, enc);
         return;
     }
     int up = page - PL_USER_FIRST;
@@ -112,6 +152,7 @@ void pl_view_cell(const pl_model_t *m, int page, int enc, pl_cell_t *c)
         c->bipolar = pl_knob_bipolar(tp, te, raw);
         c->color = pl_knob_color(tp, te, raw);
         c->text = pl_value_text(tp, te, c->v, raw, c->vbuf);
+        c->eff = eff_of(m, tp, te);
         return;
     }
     c->v = m->user_val[up][enc];
@@ -122,6 +163,9 @@ void pl_view_cell(const pl_model_t *m, int page, int enc, pl_cell_t *c)
 
 const char *pl_view_page_name(int page)
 {
+    if (page >= PL_PAGE_MOD1 && page < PL_PAGE_MOD1 + PL_MOD_PAGES) {
+        return pl_page_name(page);
+    }
     if (pl_mix_is(page)) {
         static const char *const MIX[PL_MIX_PAGES] = {"DRUMS MIX", "SYNTH 1 MIX", "SYNTH 2 MIX"};
         return MIX[page - PL_PAGE_MIX_DRUMS];
@@ -131,6 +175,9 @@ const char *pl_view_page_name(int page)
 
 uint32_t pl_view_page_color(int page)
 {
+    if (page >= PL_PAGE_MOD1 && page < PL_PAGE_MOD1 + PL_MOD_PAGES) {
+        return pl_page_color(page);
+    }
     if (pl_mix_is(page)) {
         return pl_page_color(page == PL_PAGE_MIX_DRUMS ? 1 : PL_PAGE_SYNTH1 + page - PL_PAGE_MIX_SYN1);
     }

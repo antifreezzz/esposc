@@ -15,11 +15,28 @@ void pl_model_init(pl_model_t *m)
     memset(m->user_t, PL_NONE, sizeof m->user_t);
     m->scene.cur = PL_NONE;
     m->grids_step = -1;
+    memset(m->mod_t, PL_NONE, sizeof m->mod_t);
 }
 
 static int is_user(int page)
 {
     return page >= PL_USER_FIRST && page < PL_USER_FIRST + PL_USER_PAGES;
+}
+
+static int is_mod(int page)
+{
+    return page >= PL_PAGE_MOD1 && page < PL_PAGE_MOD1 + PL_MOD_PAGES;
+}
+
+static void apply_mod(pl_model_t *m, const pl_mod_t *f)
+{
+    int k = f->mod;
+    memcpy(m->mod_knob[k], f->knob, PL_KNOBS);
+    memcpy(m->mod_t[k], f->t, sizeof f->t);
+    for (int e = 0; e < PL_KNOBS; e++) {
+        m->mod_held[k][e] = e > 0 ? (f->held[(e - 1) / 8] >> ((e - 1) % 8)) & 1 : 0;
+    }
+    m->mod_have |= 1 << k;
 }
 
 static void apply_custom(pl_model_t *m, const pl_custom_t *c)
@@ -73,7 +90,7 @@ static void apply_knob(pl_model_t *m, const pl_knob_t *k, uint32_t ms)
 {
     if (k->enc == 0) {
         m->bsp_page = k->value;
-        if (k->src == SRC_BSP && (k->value < PL_PAGES || is_user(k->value))) {
+        if (k->src == SRC_BSP && (k->value < PL_PAGES || is_user(k->value) || is_mod(k->value))) {
             m->goto_page = k->value; // листают на BSP - экран за ним; демо и своё эхо - нет
         }
         return;
@@ -84,6 +101,18 @@ static void apply_knob(pl_model_t *m, const pl_knob_t *k, uint32_t ms)
         m->bsp_pos[k->enc] = k->bsp_pos;
         m->user_held[up][k->enc] = k->held;
         if (k->src == SRC_BSP && m->user_t[up][k->enc][0].pe != PL_NONE) { // пустой слот не всплывает
+            m->toast_page = k->page;
+            m->toast_enc = k->enc;
+            m->toast_until_ms = ms + PL_TOAST_MS;
+        }
+        return;
+    }
+    if (is_mod(k->page) && k->enc < PL_KNOBS) {
+        int mk = k->page - PL_PAGE_MOD1;
+        m->mod_knob[mk][k->enc] = k->value;
+        m->bsp_pos[k->enc] = k->bsp_pos;
+        m->mod_held[mk][k->enc] = k->held;
+        if (k->src == SRC_BSP && pl_knob_label(k->page, k->enc, m->mod_knob[mk])) { // пустой энкодер не всплывает
             m->toast_page = k->page;
             m->toast_enc = k->enc;
             m->toast_until_ms = ms + PL_TOAST_MS;
@@ -121,6 +150,13 @@ void pl_model_apply(pl_model_t *m, uint8_t type, const uint8_t *payload, size_t 
         pl_custom_t c;
         memcpy(&c, payload, sizeof c);
         apply_custom(m, &c);
+    } else if (type == PL_MOD && len == sizeof(pl_mod_t) && payload[0] < PL_MOD_PAGES) {
+        pl_mod_t f;
+        memcpy(&f, payload, sizeof f);
+        apply_mod(m, &f);
+    } else if (type == PL_MOD_POS && len == PL_MOD_PAGES) {
+        memcpy(m->mod_out, payload, PL_MOD_PAGES);
+        m->mod_pos_ms = ms;
     } else if (type == PL_SCENE_STATE && len == sizeof(pl_scene_state_t)) {
         memcpy(&m->scene, payload, sizeof m->scene);
     } else if (type == PL_LOAD && len == sizeof(pl_load_t)) {
@@ -174,6 +210,11 @@ int pl_model_local_set(pl_model_t *m, int page, int enc, int v)
         }
         return 1;
     }
+    if (m->have && is_mod(page) && enc > 0 && enc < PL_KNOBS && (m->mod_have >> (page - PL_PAGE_MOD1) & 1)) {
+        m->mod_knob[page - PL_PAGE_MOD1][enc] = (uint8_t)v;
+        m->mod_held[page - PL_PAGE_MOD1][enc] = 1;
+        return 1;
+    }
     if (!m->have || page < 0 || page >= PL_PAGES || enc <= 0 || enc >= PL_KNOBS) {
         return 0;
     }
@@ -182,9 +223,18 @@ int pl_model_local_set(pl_model_t *m, int page, int enc, int v)
     return 1;
 }
 
+const uint8_t *pl_model_raw(const pl_model_t *m, int page)
+{
+    if (page >= 0 && page < PL_PAGES) {
+        return m->raw[page];
+    }
+    return is_mod(page) ? m->mod_knob[page - PL_PAGE_MOD1] : NULL;
+}
+
 int pl_model_linked(const pl_model_t *m, uint32_t ms)
 {
-    return m->have && ms - m->last_rx_ms <= PL_LOST_MS;
+    // Знаковая разность: время отрисовки бывает раньше последнего кадра (отстаёт на перерисовку), это не потеря.
+    return m->have && (int32_t)(ms - m->last_rx_ms) <= PL_LOST_MS;
 }
 
 int pl_model_page_resend(const pl_model_t *m, int screen_page, uint32_t ms)

@@ -100,7 +100,7 @@ TEST(test_dock_tap)
     CHECK(pl_nav_dock_tap(200, 450, 200, 420) == PL_GRP_SYN1); // палец чуть ушёл вверх
     CHECK(pl_nav_dock_tap(200, 450, 200, 380) == -1);
     CHECK(pl_nav_dock_tap(200, 450, 300, 450) == -1); // съехал на соседнюю
-    CHECK(pl_nav_dock_tap(440, 450, 440, 450) == -1); // MOD не нажимается
+    CHECK(pl_nav_dock_tap(440, 450, 440, 450) == PL_GRP_MOD);
     CHECK(pl_nav_dock_tap(200, 300, 200, 450) == -1); // начали не в доке
 }
 

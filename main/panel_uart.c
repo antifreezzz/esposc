@@ -6,6 +6,7 @@
 #include "driver/uart.h"
 #include "esp_check.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -33,6 +34,9 @@ _Static_assert(ACID_SEQ_REST == PL_SEQ_REST && ACID_SEQ_DEG == PL_SEQ_DEG && ACI
                    ACID_SEQ_CELLS == PL_SEQ_CELLS && PANEL_SEQ_MAX == 3 + PL_SEQ_CELLS && ACID_SEQ_UP == PL_SEQ_UP &&
                    ACID_SEQ_SCALES == PL_SEQ_SCALES,
                "step sequencer byte format shared by synth and panel");
+_Static_assert(ACID_PAGE_MOD1 == PL_PAGE_MOD1 && ACID_BSP_MOD_FIRST == PL_BSP_MOD_FIRST &&
+                   ACID_MODS == PL_MOD_PAGES && ACID_MOD_TARGETS == PL_MOD_TARGETS && ACID_MOD_NONE == PL_NONE,
+               "modulator numbers shared by synth and panel");
 
 _Static_assert(sizeof(pl_grids_pat_frame_t) == 2 + PL_GRIDS_PARTS * PL_GRIDS_STEPS && ACID_BEAT_STEPS * 2 == PL_GRIDS_STEPS,
                "grids pattern frame is bytes only, two bars of sixteenths");
@@ -45,9 +49,10 @@ typedef struct {
     uint8_t type, p[PANEL_GRIDS_MAX];
 } grids_frame_t;
 
-static QueueHandle_t s_set_q, s_knob_q, s_page_q, s_edit_q, s_scene_q, s_petri_q, s_seq_q, s_grids_q;
+static QueueHandle_t s_set_q, s_knob_q, s_page_q, s_edit_q, s_mod_edit_q, s_scene_q, s_petri_q, s_seq_q, s_grids_q;
 static const pl_grids_pat_t *s_gpat;
 static const acid_seq_t *s_seq;
+static const acid_mod_t *s_mod;
 static volatile int s_bsp_bpm;
 static volatile int s_seq_pos_due;
 static const volatile int *s_live;
@@ -62,11 +67,17 @@ static volatile int s_demo_due; // панель попросила следую�
 static volatile int s_mode_due = -1; // панель выбрала режим (PL_MODE), -1 - нет
 static volatile int s_snapshot_due;
 static unsigned s_custom_due; // бит своей страницы; ставит ядро 1, забирает задача связи (атомарно)
+static unsigned s_mod_due;    // бит модулятора; так же
 static volatile int s_scene_due;
 
 int panel_uart_receive_edit(pl_custom_edit_t *out)
 {
     return s_edit_q && xQueueReceive(s_edit_q, out, 0) == pdTRUE;
+}
+
+int panel_uart_receive_mod_edit(pl_mod_edit_t *out)
+{
+    return s_mod_edit_q && xQueueReceive(s_mod_edit_q, out, 0) == pdTRUE;
 }
 
 int panel_uart_receive_scene(pl_scene_t *out)
@@ -77,6 +88,11 @@ int panel_uart_receive_scene(pl_scene_t *out)
 void panel_uart_custom_due(unsigned mask)
 {
     __atomic_fetch_or(&s_custom_due, mask, __ATOMIC_RELAXED);
+}
+
+void panel_uart_mod_due(unsigned mask)
+{
+    __atomic_fetch_or(&s_mod_due, mask, __ATOMIC_RELAXED);
 }
 
 void panel_uart_scene_due(void)
@@ -226,6 +242,38 @@ static void send_custom(int up)
     send(PL_CUSTOM, &f, sizeof f);
 }
 
+static void send_mod(int k)
+{
+    pl_mod_t f = {.mod = (uint8_t)k};
+    memcpy(f.knob, s_mod->m[k].knob, PL_KNOBS);
+    for (int i = 0; i < PL_MOD_TARGETS; i++) {
+        f.t[i].page = s_mod->m[k].t[i].page;
+        f.t[i].enc = s_mod->m[k].t[i].enc;
+    }
+    for (int e = 1; e < PL_KNOBS; e++) {
+        f.held[(e - 1) / 8] |= (uint8_t)((s_link->held[ACID_PAGE_MOD1 + k][e] ? 1 : 0) << ((e - 1) % 8));
+    }
+    send(PL_MOD, &f, sizeof f);
+}
+
+static int mod_pos_active(void)
+{
+    if (*s_demo_on) {
+        return 0;
+    }
+    if (s_link->mod_page >= 0) {
+        return 1;
+    }
+    for (int k = 0; k < ACID_MODS; k++) {
+        for (int i = 0; i < ACID_MOD_TARGETS; i++) {
+            if (s_mod->m[k].t[i].page != ACID_MOD_NONE) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 static void send_scene_state(void)
 {
     pl_scene_state_t st = {s_scene->used, s_scene->cur < 0 ? PL_NONE : (uint8_t)s_scene->cur, (uint8_t)s_scene->state};
@@ -267,8 +315,15 @@ static void link_task(void *arg)
     static acid_petri_frame_t pf;
     pl_rx_init(&rx);
     uint8_t buf[64];
+    int mod_div = 0;
+    uint32_t last_ms = 0;
     for (;;) {
         int n = uart_read_bytes(PORT, buf, sizeof buf, POLL_TICKS);
+        uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
+        if (last_ms && now_ms - last_ms > 1000) {
+            ESP_LOGW(TAG, "link task gap %lu ms", (unsigned long)(now_ms - last_ms));
+        }
+        last_ms = now_ms;
         for (int i = 0; i < n; i++) {
             uint8_t type;
             const uint8_t *p;
@@ -283,6 +338,8 @@ static void link_task(void *arg)
                     xQueueSend(s_page_q, p, 0);
                 } else if (type == PL_CUSTOM_EDIT && len == sizeof(pl_custom_edit_t)) {
                     xQueueSend(s_edit_q, p, 0);
+                } else if (type == PL_MOD_EDIT && len == sizeof(pl_mod_edit_t)) {
+                    xQueueSend(s_mod_edit_q, p, 0);
                 } else if (type == PL_SCENE && len == sizeof(pl_scene_t)) {
                     xQueueSend(s_scene_q, p, 0);
                 } else if (type >= PL_PETRI_0 && type <= PL_PETRI_3) {
@@ -312,10 +369,12 @@ static void link_task(void *arg)
             }
         }
         unsigned due = __atomic_exchange_n(&s_custom_due, 0, __ATOMIC_RELAXED);
+        unsigned mdue = __atomic_exchange_n(&s_mod_due, 0, __ATOMIC_RELAXED);
         if (s_snapshot_due) {
             s_snapshot_due = 0;
             send_snapshot();
-            due = (1u << ACID_USER_PAGES) - 1; // за снимком - свои страницы и сцены
+            due = (1u << ACID_USER_PAGES) - 1; // за снимком - свои страницы, модуляторы и сцены
+            mdue = (1u << ACID_MODS) - 1;
             s_scene_due = 1;
             for (int k = 0; k < ACID_SEQ_SYNTHS; k++) {
                 send_seq_dump(k);
@@ -328,6 +387,23 @@ static void link_task(void *arg)
         for (int up = 0; up < ACID_USER_PAGES; up++) {
             if (due & (1u << up)) {
                 send_custom(up);
+            }
+        }
+        for (int k = 0; k < ACID_MODS; k++) {
+            if (mdue & (1u << k)) {
+                send_mod(k);
+            }
+        }
+        if (++mod_div >= 5) { // ~20 Гц при POLL_TICKS = 10 мс
+            mod_div = 0;
+            if (mod_pos_active()) {
+                int8_t mpos[PL_MOD_PAGES];
+                for (int k = 0; k < PL_MOD_PAGES; k++) {
+                    float o = acid_mod_out(s_mod, k) * 127.0f;
+                    int v = (int)(o + (o < 0.0f ? -0.5f : 0.5f));
+                    mpos[k] = (int8_t)(v < -127 ? -127 : v > 127 ? 127 : v);
+                }
+                send(PL_MOD_POS, mpos, sizeof mpos);
             }
         }
         if (s_scene_due) {
@@ -370,12 +446,13 @@ static void link_task(void *arg)
 }
 
 esp_err_t panel_uart_start(const acid_synth_t *s, const acid_link_t *l, const acid_custom_t *c, const acid_scene_t *sc,
-                           const acid_seq_t *q, const volatile int *demo_on, const volatile int *live,
-                           const volatile int *demo_song)
+                           const acid_seq_t *q, const acid_mod_t *m, const volatile int *demo_on,
+                           const volatile int *live, const volatile int *demo_song)
 {
     s_live = live;
     s_synth = s;
     s_seq = q;
+    s_mod = m;
     s_link = l;
     s_custom = c;
     s_scene = sc;
@@ -397,11 +474,13 @@ esp_err_t panel_uart_start(const acid_synth_t *s, const acid_link_t *l, const ac
     s_knob_q = xQueueCreate(KNOB_QUEUE, sizeof(acid_link_ev_t));
     s_page_q = xQueueCreate(4, 1);
     s_edit_q = xQueueCreate(8, sizeof(pl_custom_edit_t));
+    s_mod_edit_q = xQueueCreate(8, sizeof(pl_mod_edit_t));
     s_scene_q = xQueueCreate(4, sizeof(pl_scene_t));
     s_petri_q = xQueueCreate(1, sizeof(acid_petri_frame_t));
     s_seq_q = xQueueCreate(32, sizeof(seq_frame_t)); // рисование пальцем: шаг за шагом, кадр на шаг
     s_grids_q = xQueueCreate(8, sizeof(grids_frame_t)); // тапы по клеткам редактора и целые рисунки
-    if (!s_set_q || !s_knob_q || !s_page_q || !s_edit_q || !s_scene_q || !s_petri_q || !s_seq_q || !s_grids_q) {
+    if (!s_set_q || !s_knob_q || !s_page_q || !s_edit_q || !s_mod_edit_q || !s_scene_q || !s_petri_q || !s_seq_q ||
+        !s_grids_q) {
         return ESP_ERR_NO_MEM;
     }
     // Ниже slot1 и USB: связь с экраном подождёт, звук нет.

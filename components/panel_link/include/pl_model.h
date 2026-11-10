@@ -39,6 +39,12 @@ typedef struct {
     int seq_have; // бит синта: дамп пришёл
     pl_grids_pat_t gpat[PL_GRIDS_USER]; // свои рисунки Grids: копия с синта и свои правки
     int gpat_have;                      // бит слота: рисунок пришёл
+    // Модуляторы 0..3 (страницы 23..26): ручки с энкодера 0, цели, подхват BSP, последний выход out (int8, -127..127).
+    uint8_t mod_knob[PL_MOD_PAGES][PL_KNOBS], mod_held[PL_MOD_PAGES][PL_KNOBS];
+    pl_mod_target_t mod_t[PL_MOD_PAGES][PL_MOD_TARGETS];
+    int8_t mod_out[PL_MOD_PAGES];
+    int mod_have;         // бит модулятора: кадр PL_MOD пришёл
+    uint32_t mod_pos_ms;  // когда пришёл последний PL_MOD_POS
 } pl_model_t;
 
 void pl_model_init(pl_model_t *m);
@@ -52,9 +58,11 @@ int pl_model_linked(const pl_model_t *m, uint32_t ms);
 int pl_model_page_resend(const pl_model_t *m, int screen_page, uint32_t ms);
 // Экран сам выбрал страницу и отправил её синту; отменяет ждущее листание с BSP.
 void pl_model_page_sent(pl_model_t *m, uint32_t ms);
+// Сырые значения страницы 0..13 или модулятора 23..26 (ручки с энкодера 0), NULL - у страницы такого массива нет.
+const uint8_t *pl_model_raw(const pl_model_t *m, int page);
 // Своя правка: показать сразу, не дожидаясь эха; синт пометит её «ждёт BSP».
 // 1 - правка принята и её надо слать синту; 0 - снимка ещё нет (значения не настоящие) или не ручка.
-// page 10..15 - своя страница (нужен её кадр определений).
+// page 10..15 - своя страница (нужен её кадр определений); 23..26 - ручка модулятора (нужен его кадр PL_MOD).
 int pl_model_local_set(pl_model_t *m, int page, int enc, int v);
 
 // Правки секвенсера с панели: сразу в модели. 1 - принято, слать синту; 0 - дампа синта ещё нет или вне диапазона.

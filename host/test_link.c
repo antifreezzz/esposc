@@ -17,6 +17,7 @@ static void reset(void)
     acid_synth_init(&s, SR);
     acid_link_init(&l);
     acid_link_use_custom(&l, NULL);
+    acid_link_use_mod(&l, NULL);
 }
 
 static int midi(int src, int type, int d1, int d2)
@@ -352,8 +353,9 @@ TEST(test_macro_targets_limited_per_step)
     two_macros();
     panel(ACID_USER_FIRST, 2, 100);
     panel(ACID_USER_FIRST, 3, 100);
-    CHECK(drain() == ACID_LINK_PER_CHUNK);
-    CHECK(drain() == 8 - ACID_LINK_PER_CHUNK);
+    for (int i = 0; i < 4; i++) {
+        CHECK(drain() == 2);
+    }
     CHECK(drain() == 0);
     for (int i = 0; i < 4; i++) {
         CHECK(knob(0, 2 + i) == 100 && knob(8, 3 + i) == 100);
@@ -366,7 +368,8 @@ TEST(test_macro_latest_value_wins)
     panel(ACID_USER_FIRST, 2, 10);
     panel(ACID_USER_FIRST, 2, 20);
     panel(ACID_USER_FIRST, 2, 30);
-    CHECK(drain() == 4); // одна запись на ручку, не три
+    CHECK(drain() == 2); // одна запись на ручку, не три
+    CHECK(drain() == 2);
     CHECK(knob(0, 2) == 30 && knob(0, 5) == 30);
     CHECK(drain() == 0);
 }
@@ -388,7 +391,8 @@ TEST(test_requeue_after_cancel)
     panel(ACID_USER_FIRST, 2, 100);
     panel(0, 2, 7);
     panel(ACID_USER_FIRST, 2, 50); // снова макро: запись живая, без дублей в очереди
-    CHECK(drain() == 4);
+    CHECK(drain() == 2);
+    CHECK(drain() == 2);
     CHECK(knob(0, 2) == 50);
     CHECK(drain() == 0);
 }
@@ -471,6 +475,85 @@ TEST(test_link_layer_type_report)
     CHECK(acid_synth_knob(&s, ACID_PAGE_LAYER1, 1) == 0);
 }
 
+static acid_mod_t m;
+
+static void reset_mod(void)
+{
+    reset_custom();
+    acid_mod_init(&m, 32.0f / SR);
+    acid_link_use_mod(&l, &m);
+}
+
+TEST(test_mod_page_from_bsp_and_panel)
+{
+    reset();
+    CHECK(bsp(1, 19) == 0); // без модуляторов страницы 19..22 игнорируются
+    reset_mod();
+    CHECK(acid_page_from_bsp(19) == ACID_PAGE_MOD1 && acid_page_from_bsp(22) == ACID_PAGE_MOD1 + 3);
+    CHECK(acid_page_to_bsp(ACID_PAGE_MOD1) == 19 && acid_page_to_bsp(ACID_PAGE_MOD1 + 3) == 22);
+    CHECK(bsp(1, 19) == 1);
+    CHECK(ev.page == ACID_PAGE_MOD1 && ev.enc == 0 && ev.value == ACID_PAGE_MOD1);
+    CHECK(acid_link_page(&l, &s) == ACID_PAGE_MOD1);
+    CHECK(bsp(1, 23) == 0 && acid_link_page(&l, &s) == ACID_PAGE_MOD1);
+
+    // Ручка модулятора с BSP; значение вне списка оставляет прежнее.
+    CHECK(bsp(2, ACID_SHAPE_ENV) == 1 && ev.page == ACID_PAGE_MOD1 && ev.enc == 1 && ev.value == ACID_SHAPE_ENV);
+    CHECK(acid_mod_knob(&m, 0, ACID_MOD_SHAPE) == ACID_SHAPE_ENV);
+    CHECK(bsp(2, 99) == 1 && ev.value == ACID_SHAPE_ENV && acid_mod_knob(&m, 0, ACID_MOD_SHAPE) == ACID_SHAPE_ENV);
+
+    // Правка с панели и подхват BSP на странице модулятора.
+    bsp(3, 90);
+    CHECK(panel(ACID_PAGE_MOD1, 3, 20) == 1);
+    CHECK(ev.page == ACID_PAGE_MOD1 && ev.enc == 2 && ev.value == 20 && ev.held == 1);
+    CHECK(bsp(3, 80) == 1 && ev.value == 20 && ev.held == 1);
+    CHECK(bsp(3, 15) == 1 && ev.value == 15 && ev.held == 0 && acid_mod_knob(&m, 0, ACID_MOD_RATE) == 15);
+    CHECK(panel(ACID_PAGE_MOD1, 2, 99) == 0); // вне списка
+
+    // Переключение между страницами модуляторов, своими, MIX и штатными.
+    CHECK(acid_link_panel_page(&l, &s, ACID_PAGE_MOD1 + 2, &ev) == 1 && l.mod_page == 2);
+    CHECK(acid_link_page(&l, &s) == ACID_PAGE_MOD1 + 2);
+    CHECK(acid_link_panel_page(&l, &s, ACID_USER_FIRST + 1, &ev) == 1 && l.mod_page == -1 && l.user == 1);
+    CHECK(acid_link_panel_page(&l, &s, ACID_PAGE_MOD1 + 1, &ev) == 1 && l.user == -1 && l.mod_page == 1);
+    CHECK(acid_link_panel_page(&l, &s, PL_PAGE_MIX_SYN1, &ev) == 1 && l.mod_page == -1 && l.mix == PL_PAGE_MIX_SYN1);
+    CHECK(bsp(1, 20) == 1 && l.mix == -1 && l.mod_page == 1);
+    CHECK(bsp(1, 6) == 1 && l.mod_page == -1 && s.page == 6);
+    acid_link_init(&l);
+    CHECK(l.mod == &m && l.mod_page == -1);
+}
+
+TEST(test_mod_edit_and_shared_budget)
+{
+    reset_mod();
+    CHECK(acid_link_mod_edit(&l, &s, 0, 0, 6, 2) == 1 && l.mod_due == 1); // CUTOFF (плавная)
+    l.mod_due = 0;
+    CHECK(acid_link_mod_edit(&l, &s, 0, 1, 6, 1) == 0 && l.mod_due == 1); // TYPE (список): отказ, но кадр шлём
+    CHECK(acid_link_mod_edit(&l, &s, 0, 1, 6, 7) == 0);                   // WAVE у 303 (переключатель)
+    acid_synth_set_knob(&s, 6, 1, 1);                                     // Plaits: enc 7 теперь GLIDE (плавная)
+    CHECK(acid_link_mod_edit(&l, &s, 0, 1, 6, 7) == 1);
+    CHECK(acid_link_mod_edit(&l, &s, 0, 1, ACID_MOD_NONE, 0) == 1 && m.m[0].t[1].page == ACID_MOD_NONE);
+    l.mod_due = 0;
+    CHECK(acid_link_mod_edit(&l, &s, 4, 0, 0, 1) == 0 && l.mod_due == 0);
+
+    // Общий бюджет куска: цели макро и модулятор вместе применяют не больше 2 ручек.
+    for (int i = 0; i < 3; i++) {
+        acid_custom_edit(&c, 0, 1, i, 0, 1 + i, 0, 127);
+    }
+    acid_mod_set(&m, 0, ACID_MOD_SHAPE, ACID_SHAPE_SQR);
+    acid_link_mod_edit(&l, &s, 0, 0, 8, 3);
+    acid_link_mod_edit(&l, &s, 0, 1, 8, 4);
+    acid_mod_set(&m, 0, ACID_MOD_DEPTH1, 100);
+    acid_mod_set(&m, 0, ACID_MOD_DEPTH1 + 1, 100);
+    panel(ACID_USER_FIRST, 2, 90);
+    CHECK(step() == 1 && l.step_n == 2);
+    while (take()) {
+    }
+    CHECK(acid_mod_step(&m, &s, ACID_LINK_PER_CHUNK - l.step_n) == 0);
+    CHECK(step() == 1 && l.step_n == 1);
+    CHECK(acid_mod_step(&m, &s, ACID_LINK_PER_CHUNK - l.step_n) == 1);
+    CHECK(step() == 0 && l.step_n == 0);
+    CHECK(acid_mod_step(&m, &s, ACID_LINK_PER_CHUNK - l.step_n) == 1);
+}
+
 int main(void)
 {
     RUN(test_link_layer_type_report);
@@ -505,5 +588,7 @@ int main(void)
     RUN(test_direct_set_cancels_deferred);
     RUN(test_requeue_after_cancel);
     RUN(test_init_drops_deferred);
+    RUN(test_mod_page_from_bsp_and_panel);
+    RUN(test_mod_edit_and_shared_budget);
     TEST_MAIN_END();
 }

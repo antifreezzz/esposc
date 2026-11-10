@@ -31,7 +31,7 @@ typedef struct {
 
 // Ключ без слота store_save молча не пишет: каждый ключ store.h - здесь.
 static slot_t s_slots[] = {{.key = STORE_KNOBS}, {.key = STORE_CUSTOM}, {.key = STORE_SCENES}, {.key = STORE_SEQ},
-                           {.key = STORE_MODE}, {.key = STORE_GRIDS}};
+                           {.key = STORE_MOD},   {.key = STORE_MODE},   {.key = STORE_GRIDS}};
 #define NSLOTS ((int)(sizeof s_slots / sizeof s_slots[0]))
 
 static TaskHandle_t s_task;

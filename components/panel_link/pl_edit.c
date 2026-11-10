@@ -1,6 +1,8 @@
 #include "pl_edit.h"
 
+#include "pl_gesture.h"
 #include "pl_labels.h"
+#include "pl_mod.h"
 
 static int count(const pl_model_t *m, int up, int enc)
 {
@@ -113,7 +115,55 @@ void pl_edit_back(pl_edit_t *e)
     case PL_EDIT_RANGE:
     case PL_EDIT_PICK_PAGE: e->state = PL_EDIT_TARGETS; break;
     case PL_EDIT_PICK_KNOB: e->state = PL_EDIT_PICK_PAGE; break;
-    case PL_EDIT_TARGETS: e->state = PL_EDIT_SLOTS; break;
+    case PL_EDIT_TARGETS: e->state = e->mod ? PL_EDIT_OFF : PL_EDIT_SLOTS; break;
     default: e->state = PL_EDIT_OFF; break;
     }
+}
+
+void pl_edit_mod_start(pl_edit_t *e, int k)
+{
+    *e = (pl_edit_t){.state = PL_EDIT_TARGETS, .mod = 1, .up = k};
+}
+
+void pl_edit_mod_row(pl_edit_t *e, const pl_model_t *m, int idx)
+{
+    (void)m;
+    if (e->mod && e->state == PL_EDIT_TARGETS && idx >= 0 && idx < PL_MOD_TARGETS) {
+        e->idx = idx;
+        e->state = PL_EDIT_PICK_PAGE;
+    }
+}
+
+void pl_edit_mod_page(pl_edit_t *e, const pl_model_t *m, int page)
+{
+    if (e->mod && e->state == PL_EDIT_PICK_PAGE && page >= 0 && page < PL_PAGES && pl_mod_page_has_target(m, page)) {
+        e->page = page;
+        e->state = PL_EDIT_PICK_KNOB;
+    }
+}
+
+int pl_edit_mod_knob(pl_edit_t *e, pl_model_t *m, int enc, pl_mod_edit_t *out)
+{
+    if (!e->mod || e->state != PL_EDIT_PICK_KNOB || !pl_mod_edit(m, e->up, e->idx, e->page, enc, out)) {
+        return 0;
+    }
+    e->state = PL_EDIT_TARGETS;
+    return 1;
+}
+
+int pl_edit_mod_row_action(int ev, uint32_t held_ms, int occupied)
+{
+    if (!pl_press_tap(ev)) {
+        return PL_MOD_ROW_NONE;
+    }
+    return occupied && held_ms >= PL_EDIT_MOD_CLEAR_MS ? PL_MOD_ROW_REMOVE : PL_MOD_ROW_SELECT;
+}
+
+int pl_edit_mod_remove(pl_edit_t *e, pl_model_t *m, int idx, pl_mod_edit_t *out)
+{
+    if (!e->mod || e->state != PL_EDIT_TARGETS || idx < 0 || idx >= PL_MOD_TARGETS ||
+        m->mod_t[e->up][idx].page == PL_NONE) {
+        return 0;
+    }
+    return pl_mod_edit(m, e->up, idx, PL_NONE, 0, out);
 }

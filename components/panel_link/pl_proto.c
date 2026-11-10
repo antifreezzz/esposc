@@ -63,6 +63,9 @@ static int payload_len(uint8_t type)
     case PL_MODE: return 1;
     case PL_GRIDS_PAT: return (int)sizeof(pl_grids_pat_frame_t);
     case PL_GRIDS_CELL: return 4;
+    case PL_MOD: return (int)sizeof(pl_mod_t);
+    case PL_MOD_EDIT: return (int)sizeof(pl_mod_edit_t);
+    case PL_MOD_POS: return PL_MOD_PAGES;
     default: return -1;
     }
 }
@@ -134,6 +137,9 @@ int pl_page_bsp(int page)
     }
     if (page == PL_PAGE_PETRI) {
         return 18;
+    }
+    if (page >= PL_PAGE_MOD1 && page < PL_PAGE_MOD1 + PL_MOD_PAGES) {
+        return PL_BSP_MOD_FIRST + page - PL_PAGE_MOD1;
     }
     if (page >= PL_PAGE_MIX_DRUMS) {
         return -1; // встроенные псевдонимы

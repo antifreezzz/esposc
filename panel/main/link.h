@@ -13,6 +13,8 @@ void link_set(int page, int enc, int v);
 void link_page(int page);
 // Правка цели слота своей страницы.
 void link_custom_edit(const pl_custom_edit_t *e);
+// Правка цели модулятора (PL_MOD_EDIT, page PL_NONE - убрать).
+void link_mod_edit(const pl_mod_edit_t *e);
 // Сцена: op PL_SCENE_RECALL или PL_SCENE_STORE, слот n, переход bars тактов.
 void link_scene(int op, int n, int bars);
 // Поставить режим: PL_DEMO_* без BSP, с BSP - PL_MODE_LIVE или PL_DEMO_DRONE.

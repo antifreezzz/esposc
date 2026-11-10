@@ -50,11 +50,19 @@ void link_poll(pl_model_t *m, uint32_t ms)
             }
         }
     }
-    static int up;
-    if (m->have && !up) {
-        ESP_LOGI(TAG, "synth link up");
+    static int linked, seen;
+    int now_linked = pl_model_linked(m, ms);
+    if (m->have && (!seen || now_linked != linked)) {
+        uint32_t age = ms - m->last_rx_ms;
+        if (now_linked) {
+            ESP_LOGI(TAG, "synth link up, rx age %lu ms", (unsigned long)age);
+        } else {
+            ESP_LOGW(TAG, "synth link lost: no valid frame for %lu ms (now %lu, last %lu)", (unsigned long)age,
+                     (unsigned long)ms, (unsigned long)m->last_rx_ms);
+        }
+        linked = now_linked;
+        seen = 1;
     }
-    up = m->have;
     if (pl_model_need_hello(m, ms)) {
         send(PL_HELLO, NULL, 0);
         pl_model_hello_sent(m, ms);
@@ -76,6 +84,11 @@ void link_page(int page)
 void link_custom_edit(const pl_custom_edit_t *e)
 {
     send(PL_CUSTOM_EDIT, e, sizeof *e);
+}
+
+void link_mod_edit(const pl_mod_edit_t *e)
+{
+    send(PL_MOD_EDIT, e, sizeof *e);
 }
 
 void link_scene(int op, int n, int bars)

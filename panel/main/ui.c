@@ -12,6 +12,7 @@
 #include "pl_ia.h"
 #include "pl_labels.h"
 #include "pl_mix.h"
+#include "pl_mod.h"
 #include "pl_nav.h"
 #include "pl_pick.h"
 #include "pl_seq_ui.h"
@@ -41,6 +42,7 @@ enum { OVL_NONE, OVL_VAL, OVL_USER, OVL_MODE, OVL_MORPH };
 typedef struct {
     lv_obj_t *card, *arc, *val, *name, *sub, *pdot, *empty_dot;
     int v, held, grabbed, kind, lit; // нарисовано
+    int eff, eff_x, eff_y;           // действующее значение и его точка на дуге, -1 - ручка не цель
     char pill[12]; // подпись кнопки переключателя или триггера (рисует card_draw, без объектов LVGL)
     int lo, hi, bipolar;
     uint32_t color, src_color;
@@ -134,6 +136,11 @@ void ui_text(lv_obj_t *l, const char *s)
 static int is_user(int page)
 {
     return page >= PL_USER_FIRST && page < PL_USER_FIRST + PL_USER_PAGES;
+}
+
+static int is_mod(int page)
+{
+    return page >= PL_PAGE_MOD1 && page < PL_PAGE_MOD1 + PL_MOD_PAGES;
 }
 
 static int editing(void)
@@ -249,7 +256,12 @@ static void main_title(const pl_model_t *m, const char **title, char sub[24])
     if (!m || !t) {
         return;
     }
-    if (t->kind == PL_TAB_USER) {
+    if (t->kind == PL_TAB_PAGE && is_mod(u.page) && (m->mod_have >> (u.page - PL_PAGE_MOD1) & 1)) {
+        const uint8_t *raw = pl_model_raw(m, u.page);
+        char a[12], b[12];
+        snprintf(sub, 24, "%s %s", pl_value_text(u.page, 1, raw[1], raw, a),
+                 pl_value_text(u.page, 4, raw[4], raw, b));
+    } else if (t->kind == PL_TAB_USER) {
         snprintf(sub, 24, "%s", pl_user_name(u.user));
     } else if (m->have) {
         int sp = t->page < PL_PAGES ? t->page : 1;
@@ -266,7 +278,11 @@ static void overlay_title(const pl_model_t *m, char nav[40], uint32_t *nc, const
     if (editing()) {
         snprintf(nav, 40, "%s", STEP[u.ed.state]);
         if (u.ed.state == PL_EDIT_TARGETS) {
-            snprintf(nav, 40, "E%d TARGETS", u.ed.enc + 1);
+            if (u.ed.mod) {
+                snprintf(nav, 40, "M%d TARGETS", u.ed.up + 1);
+            } else {
+                snprintf(nav, 40, "E%d TARGETS", u.ed.enc + 1);
+            }
         } else if (u.ed.state == PL_EDIT_PICK_KNOB) {
             snprintf(nav, 40, "PICK: %s", pl_page_name(u.ed.page));
         }
@@ -431,7 +447,7 @@ static void bar_draw(lv_event_t *e)
     lv_draw_label(layer, &l, &sta);
 
     // Загрузка ядер двумя строками справа.
-    if (m && m->have_load && u.now - m->load_ms <= LOAD_STALE_MS) {
+    if (m && m->have_load && (int32_t)(u.now - m->load_ms) <= LOAD_STALE_MS) {
         const pl_load_t *ld = &m->load;
         int worst = ld->c1_worst > ld->c0_worst ? ld->c1_worst : ld->c0_worst;
         uint32_t lc = (worst >= 100 || ld->underruns) ? C_BAD : worst >= LOAD_WARN ? C_WARN : C_DIM;
@@ -625,7 +641,8 @@ static void pick_draw(lv_event_t *e)
             b.color = lv_color_hex(C_TILE_BRD);
             lv_draw_border(layer, &b, &a);
             l.font = &bc_17;
-            l.color = lv_color_hex(pl_page_color(p));
+            int can = !u.ed.mod || pl_mod_page_has_target(pick_m, p);
+            l.color = lv_color_hex(can ? pl_page_color(p) : C_MUTED);
             l.text = pl_page_name(p);
             lv_area_t ta = {a.x1 + 2, a.y1 + (h - 16) / 2, a.x2 - 2, a.y2};
             lv_draw_label(layer, &l, &ta);
@@ -718,7 +735,7 @@ static void pick_draw(lv_event_t *e)
         return;
     }
     int page = u.pick_tp, enc = u.pick_te;
-    const uint8_t *raw = pick_m->raw[page];
+    const uint8_t *raw = pl_model_raw(pick_m, page);
     int cur = raw[enc], n = pl_pick_count(page, enc, raw);
     uint32_t pc = pl_view_page_color(u.pick_page);
     f.radius = 10;
@@ -740,11 +757,11 @@ static void pick_draw(lv_event_t *e)
     }
 }
 
-// Поверх карточки: у переключателя и триггера - плашка-кнопка на месте дуги, у списка - черта внизу справа.
+// Поверх карточки: кнопка или признак списка, у цели модулятора - точка действующего значения на дуге базы.
 static void card_draw(lv_event_t *e)
 {
     const knob_t *k = lv_event_get_user_data(e);
-    if (!k->lab[0] || k->kind == PL_PICK_NONE) {
+    if (!k->lab[0]) {
         return;
     }
     lv_layer_t *layer = lv_event_get_layer(e);
@@ -757,22 +774,28 @@ static void card_draw(lv_event_t *e)
         f.color = lv_color_hex(C_MUTED);
         lv_area_t a = {c.x1 + 118, c.y1 + 54, c.x1 + 137, c.y1 + 56};
         lv_draw_fill(layer, &f, &a);
-        return;
+    } else if (k->kind != PL_PICK_NONE) {
+        int lit = k->lit > 0;
+        f.radius = 10;
+        f.color = lv_color_hex(lit ? k->color : C_TRACK);
+        lv_area_t a = {c.x1 + 8, c.y1 + 16, c.x1 + 59, c.y1 + 49};
+        lv_draw_fill(layer, &f, &a);
+        lv_draw_label_dsc_t l;
+        lv_draw_label_dsc_init(&l);
+        l.font = &bc_17;
+        l.align = LV_TEXT_ALIGN_CENTER;
+        l.color = lv_color_hex(lit ? C_BG : C_TEXT);
+        l.text = k->pill;
+        l.text_local = 1;
+        lv_area_t ta = {a.x1, a.y1 + 8, a.x2, a.y2};
+        lv_draw_label(layer, &l, &ta);
     }
-    int lit = k->lit > 0;
-    f.radius = 10;
-    f.color = lv_color_hex(lit ? k->color : C_TRACK);
-    lv_area_t a = {c.x1 + 8, c.y1 + 16, c.x1 + 59, c.y1 + 49};
-    lv_draw_fill(layer, &f, &a);
-    lv_draw_label_dsc_t l;
-    lv_draw_label_dsc_init(&l);
-    l.font = &bc_17;
-    l.align = LV_TEXT_ALIGN_CENTER;
-    l.color = lv_color_hex(lit ? C_BG : C_TEXT);
-    l.text = k->pill;
-    l.text_local = 1;
-    lv_area_t ta = {a.x1, a.y1 + 8, a.x2, a.y2};
-    lv_draw_label(layer, &l, &ta);
+    if (k->eff >= 0) {
+        f.radius = 5;
+        f.color = lv_color_hex(C_MOD);
+        lv_area_t a = {c.x1 + k->eff_x - 5, c.y1 + k->eff_y - 5, c.x1 + k->eff_x + 4, c.y1 + k->eff_y + 4};
+        lv_draw_fill(layer, &f, &a);
+    }
 }
 
 static void build(void)
@@ -825,10 +848,12 @@ static void build(void)
         lv_obj_add_event_cb(k->card, card_draw, LV_EVENT_DRAW_POST, k);
         k->pill[0] = k->srcs[0] = 0;
         k->v = k->held = k->grabbed = k->kind = k->lit = -1;
+        k->eff = -1;
         k->color = k->src_color = 0;
         k->lo = k->hi = -1;
         strcpy(k->lab, "?");
     }
+    um_build(u.grid);
 
     // Захват: круглый медальон с большой дугой в центре рабочей области поверх сетки.
     u.big_box = ui_box(u.grid, PL_CENTER - BIG_BOX / 2, (WORK_H - BIG_BOX) / 2, BIG_BOX, BIG_BOX, C_FIELD);
@@ -938,6 +963,7 @@ static void card_setup(knob_t *k, int idx, const pl_cell_t *c, int kind)
     k->color = c->color;
     k->lo = c->lo, k->hi = c->hi, k->bipolar = c->bipolar;
     k->v = k->held = -1;
+    k->eff = -1;
     k->grabbed = -1;
     style_knob_grab(k, 0);
     u.drawn_grab = -1;
@@ -979,8 +1005,19 @@ static void draw_page(const pl_model_t *m)
             }
             k->v = cell.v;
         }
+        if (cell.eff != k->eff) {
+            k->eff = cell.eff;
+            if (k->eff >= 0) {
+                float f = cell.hi > cell.lo ? (float)(cell.eff - cell.lo) / (float)(cell.hi - cell.lo) : 0.0f;
+                f = f < 0.0f ? 0.0f : f > 1.0f ? 1.0f : f;
+                float a = (135.0f + 270.0f * f) * (float)M_PI / 180.0f;
+                k->eff_x = 32 + (int)lroundf(21.0f * cosf(a));
+                k->eff_y = 33 + (int)lroundf(21.0f * sinf(a));
+            }
+            lv_obj_invalidate(k->card);
+        }
         int lit = kind == PL_PICK_TRIGGER  ? (u.flash_cell == i && (int32_t)(u.flash_until - u.now) > 0)
-                  : kind == PL_PICK_TOGGLE ? pl_pick_next(tp, te, m->raw[tp], cell.v) < cell.v
+                  : kind == PL_PICK_TOGGLE ? pl_pick_next(tp, te, pl_model_raw(m, tp), cell.v) < cell.v
                                            : 0;
         if (lit != k->lit) {
             k->lit = lit;
@@ -1209,11 +1246,11 @@ static void card_tap(pl_model_t *m, int cell, uint32_t ms)
         u.overlay = OVL_VAL;
         break;
     case PL_PICK_TOGGLE:
-        set_knob(m, u.page, enc, pl_pick_next(tp, te, m->raw[tp], m->raw[tp][te]));
+        set_knob(m, u.page, enc, pl_pick_next(tp, te, pl_model_raw(m, tp), pl_model_raw(m, tp)[te]));
         break;
     case PL_PICK_TRIGGER: {
         int lo, hi;
-        pl_knob_range(tp, te, m->raw[tp], &lo, &hi);
+        pl_knob_range(tp, te, pl_model_raw(m, tp), &lo, &hi);
         set_knob(m, u.page, enc, hi);
         set_knob(m, u.page, enc, lo);
         u.flash_cell = cell;
@@ -1234,7 +1271,7 @@ static void knob_input(pl_model_t *m, int ev, int down, int x, int y, int x0, in
         pl_cell_t cell;
         pl_view_cell(m, u.page, i + 1, &cell);
         int kind = pl_pick_view(m, u.page, i + 1, &tp, &te);
-        int can = kind == PL_PICK_NONE || pl_pick_grab(tp, te, m->raw[tp], !drag);
+        int can = kind == PL_PICK_NONE || pl_pick_grab(tp, te, pl_model_raw(m, tp), !drag);
         if (i >= 0 && i < KNOBS && cell.label && m->have && can) {
             pl_turn_begin(&u.turn, x, y - RING_DY, cell.v, cell.lo, cell.hi);
             pl_turn_skip(&u.turn, cell.skip);
@@ -1255,9 +1292,10 @@ static void knob_input(pl_model_t *m, int ev, int down, int x, int y, int x0, in
 }
 
 static void edit_input(pl_model_t *m, int ev, int down, int x, int y, int x0, int y0, int x1, int y1, int tap,
-                       int nav)
+                       int nav, uint32_t held_ms)
 {
     pl_custom_edit_t out;
+    pl_mod_edit_t mout;
     if (y0 < TOP_H) {
         if (nav == PL_NAV_CLOSE) {
             u.ed.state = PL_EDIT_OFF;
@@ -1276,17 +1314,25 @@ static void edit_input(pl_model_t *m, int ev, int down, int x, int y, int x0, in
     case PL_EDIT_PICK_PAGE: {
         int p = pl_pick_at(PL_PAGES, x0, y0);
         if (tap && p >= 0 && p == pl_pick_at(PL_PAGES, x1, y1)) {
-            pl_edit_page(&u.ed, p);
+            if (u.ed.mod) {
+                pl_edit_mod_page(&u.ed, m, p);
+            } else {
+                pl_edit_page(&u.ed, p);
+            }
         }
         break;
     }
     case PL_EDIT_PICK_KNOB:
-        if (tap && cell >= 0 && cell == pl_grid_cell(x1, y1) && pl_edit_knob(&u.ed, m, cell + 1, &out)) {
-            link_custom_edit(&out);
+        if (tap && cell >= 0 && cell == pl_grid_cell(x1, y1)) {
+            if (u.ed.mod && pl_edit_mod_knob(&u.ed, m, cell + 1, &mout)) {
+                link_mod_edit(&mout);
+            } else if (!u.ed.mod && pl_edit_knob(&u.ed, m, cell + 1, &out)) {
+                link_custom_edit(&out);
+            }
         }
         break;
     default:
-        uc_edit_input(m, &u.ed, ev, down, x, y, x0, y0);
+        uc_edit_input(m, &u.ed, ev, down, x, y, x0, y0, held_ms);
         break;
     }
 }
@@ -1303,7 +1349,7 @@ static void overlay_input(pl_model_t *m, int tap, int x0, int y0, int x1, int y1
         return;
     }
     if (u.overlay == OVL_VAL) {
-        const uint8_t *raw = m->raw[u.pick_tp];
+        const uint8_t *raw = pl_model_raw(m, u.pick_tp);
         int n = pl_pick_count(u.pick_tp, u.pick_te, raw);
         int s = pl_pick_at(n, x0, y0);
         int t = s == pl_pick_at(n, x1, y1) ? pl_pick_value(u.pick_tp, u.pick_te, raw, s) : -1;
@@ -1358,7 +1404,7 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
     int nav = tap ? pl_nav_tap(bar, x0, y0, x1, y1) : PL_NAV_NONE;
 
     if (editing()) {
-        edit_input(m, ev, down, x, y, x0, y0, x1, y1, tap, nav);
+        edit_input(m, ev, down, x, y, x0, y0, x1, y1, tap, nav, ms - u.press.t0);
     } else if (u.overlay != OVL_NONE) {
         overlay_input(m, tap, x0, y0, x1, y1, nav, ms);
     } else if (us_picking()) {
@@ -1452,6 +1498,10 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
                 us_input(m, down, x, y, x0, y0, ms);
             } else if (xy_on()) {
                 uc_xy_input(m, u.page, ev, down, x, y, x0, y0, ms);
+            } else if (is_mod(u.page) && tap && um_targets_at(x0, y0) && um_targets_at(x1, y1)) {
+                if (m->mod_have >> (u.page - PL_PAGE_MOD1) & 1) {
+                    pl_edit_mod_start(&u.ed, u.page - PL_PAGE_MOD1);
+                }
             } else {
                 int cell = pl_grid_cell(x0, y0);
                 if (tap && m->have && cell >= 0 && cell == pl_grid_cell(x1, y1)) {
@@ -1490,7 +1540,7 @@ static void check_bar_redraw(const pl_model_t *m, uint32_t ms)
         int ext = 0, bpm = current_tempo(m, &ext);
         int linked = pl_model_linked(m, ms);
         const char *st = pl_view_status(m, linked);
-        int ld_ok = m->have_load && ms - m->load_ms <= LOAD_STALE_MS;
+        int ld_ok = m->have_load && (int32_t)(ms - m->load_ms) <= LOAD_STALE_MS;
         snprintf(key, sizeof key, "M:%d:%s:%s:%d:%d:%d:%d:%s:%d:%d:%d:%d:%d", u.group, title, sub, seq_running(m), bpm,
                  ext, u.bpm_drag, st, linked, ld_ok, ld_ok ? m->load.guard : 0, ld_ok ? m->load.c1_worst : 0,
                  ld_ok ? m->load.c0_worst : 0);
@@ -1545,7 +1595,7 @@ static int pick_state_key(const pl_model_t *m)
         return 0x500000 | upf_morph();
     }
     if (u.overlay == OVL_VAL) {
-        return 0x400000 | ((u.pick_tp * 16 + u.pick_te) * 128 + m->raw[u.pick_tp][u.pick_te]);
+        return 0x400000 | ((u.pick_tp * 16 + u.pick_te) * 128 + pl_model_raw(m, u.pick_tp)[u.pick_te]);
     }
     return -1;
 }
@@ -1586,6 +1636,7 @@ void ui_step(pl_model_t *m, int down, int x, int y, uint32_t ms)
     int show_seq = !ovl && !u.dish && t && t->kind == PL_TAB_SEQ;
     int show_xy = !ovl && !u.dish && xy_on();
     int show_grid = edit_grid || (!ovl && !u.dish && t && (t->kind == PL_TAB_PAGE || (t->kind == PL_TAB_USER && !show_xy)));
+    int show_mod = show_grid && !ovl && is_mod(u.page);
 
     ui_show(u.tabs, show_tabs);
     ui_show(u.dock, !ovl);
@@ -1596,6 +1647,7 @@ void ui_step(pl_model_t *m, int down, int x, int y, uint32_t ms)
     ug_show(show_grids);
     us_show(show_seq || us_picking());
     up_show(show_dish);
+    um_show(show_mod);
     uc_edit_draw(m, &u.ed);
 
     if (pick_vis) {
@@ -1610,6 +1662,9 @@ void ui_step(pl_model_t *m, int down, int x, int y, uint32_t ms)
         uc_xy_draw(m, u.page);
     } else if (show_grid) {
         draw_page(m);
+        if (show_mod) {
+            um_draw(m, u.page, ms);
+        }
     } else if (show_grids) {
         ug_draw(m);
     } else if (show_seq || us_picking()) {

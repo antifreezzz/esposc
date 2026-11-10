@@ -17,8 +17,11 @@ void acid_link_init(acid_link_t *l)
     l->snapshot_due = 0;
     l->user = -1;
     l->mix = -1;
+    l->mod_page = -1;
     l->npend = l->pend_at = 0;
     l->custom_due = 0;
+    l->mod_due = 0;
+    l->step_n = 0;
     memset(l->defer_st, 0, sizeof l->defer_st);
     l->dq_head = l->dq_n = 0;
 }
@@ -27,6 +30,12 @@ void acid_link_use_custom(acid_link_t *l, acid_custom_t *c)
 {
     l->custom = c;
     l->user = -1;
+}
+
+void acid_link_use_mod(acid_link_t *l, acid_mod_t *m)
+{
+    l->mod = m;
+    l->mod_page = -1;
 }
 
 int acid_link_take(acid_link_t *l, acid_link_ev_t *out)
@@ -40,6 +49,9 @@ int acid_link_take(acid_link_t *l, acid_link_ev_t *out)
 
 int acid_link_page(const acid_link_t *l, const acid_synth_t *s)
 {
+    if (l->mod_page >= 0) {
+        return ACID_PAGE_MOD1 + l->mod_page;
+    }
     return l->mix >= 0 ? l->mix : l->user >= 0 ? ACID_USER_FIRST + l->user : s->page;
 }
 
@@ -53,9 +65,26 @@ int acid_link_custom_edit(acid_link_t *l, int up, int enc, int idx, int page, in
     return ok;
 }
 
+int acid_link_mod_edit(acid_link_t *l, const acid_synth_t *s, int k, int idx, int page, int enc)
+{
+    if (!l->mod || k < 0 || k >= ACID_MODS) {
+        return 0;
+    }
+    l->mod_due |= (uint8_t)(1 << k); // и при отказе: панели нужна правда
+    if (page != ACID_MOD_NONE && !acid_synth_knob_smooth(s, page, enc)) {
+        return 0;
+    }
+    return acid_mod_target(l->mod, k, idx, page, enc);
+}
+
 static int is_user(const acid_link_t *l, int page)
 {
     return l->custom && page >= ACID_USER_FIRST && page < ACID_USER_FIRST + ACID_USER_PAGES;
+}
+
+static int is_mod(const acid_link_t *l, int page)
+{
+    return l->mod && page >= ACID_PAGE_MOD1 && page < ACID_PAGE_MOD1 + ACID_MODS;
 }
 
 static int enc_of(int cc)
@@ -76,9 +105,12 @@ static void type_check(acid_link_t *l, int page, int enc)
     }
 }
 
-// Значение ручки как на экране: у своей страницы - значение слота.
+// Значение ручки как на экране: у модулятора - его ручка, у своей страницы - значение слота.
 static int knob_of(const acid_link_t *l, const acid_synth_t *s, int page, int enc)
 {
+    if (page >= ACID_PAGE_MOD1) {
+        return acid_mod_knob(l->mod, page - ACID_PAGE_MOD1, enc);
+    }
     if (page >= ACID_USER_FIRST) {
         return acid_custom_value(l->custom, s, page - ACID_USER_FIRST, enc);
     }
@@ -158,6 +190,7 @@ int acid_link_step(acid_link_t *l, acid_synth_t *s, acid_link_ev_t *out)
         report(l, s, page, enc, ACID_SRC_PANEL, got ? &l->pend[l->npend++] : out);
         got++;
     }
+    l->step_n = got;
     return got > 0;
 }
 
@@ -207,8 +240,14 @@ int acid_link_midi(acid_link_t *l, acid_synth_t *s, const acid_midi_event_t *ev,
     if (enc == 0) {
         acid_synth_midi(s, ev);
         int p = acid_page_from_bsp(ev->d2); // на экране BSP свои номера страниц
+        if (is_mod(l, p)) {
+            l->user = l->mix = -1;
+            l->mod_page = p - ACID_PAGE_MOD1;
+            *out = (acid_link_ev_t){.page = (uint8_t)p, .enc = 0, .value = (uint8_t)p, .src = (uint8_t)src};
+            return 1;
+        }
         if (is_user(l, p)) {
-            l->mix = -1;
+            l->mix = l->mod_page = -1;
             l->user = p - ACID_USER_FIRST; // синт её проигнорировал, штатная s->page прежняя
             *out = (acid_link_ev_t){.page = (uint8_t)p, .enc = 0, .value = (uint8_t)p, .src = (uint8_t)src};
             return 1;
@@ -216,8 +255,7 @@ int acid_link_midi(acid_link_t *l, acid_synth_t *s, const acid_midi_event_t *ev,
         if (p < 0 || p >= ACID_PAGES) {
             return 0; // не страница: синт её проигнорировал, экран не дёргаем
         }
-        l->user = -1;
-        l->mix = -1;
+        l->user = l->mix = l->mod_page = -1;
         *out = (acid_link_ev_t){.page = (uint8_t)s->page, .enc = 0, .value = (uint8_t)s->page, .src = (uint8_t)src};
         return 1;
     }
@@ -236,6 +274,10 @@ int acid_link_midi(acid_link_t *l, acid_synth_t *s, const acid_midi_event_t *ev,
             l->held[page][enc] = 0;
         }
     }
+    if (l->mod_page >= 0) {
+        acid_mod_set(l->mod, l->mod_page, enc, ev->d2);
+        return report(l, s, page, enc, src, out);
+    }
     if (l->user >= 0) {
         user_apply(l, s, l->user, enc, ev->d2);
         return report(l, s, page, enc, src, out);
@@ -248,11 +290,16 @@ int acid_link_midi(acid_link_t *l, acid_synth_t *s, const acid_midi_event_t *ev,
 
 int acid_link_panel_set(acid_link_t *l, acid_synth_t *s, int page, int enc, int v, acid_link_ev_t *out)
 {
-    if (page < 0 || (page >= ACID_PAGES && !is_user(l, page)) || enc <= 0 || enc >= ACID_KNOBS || v < 0 ||
-        v > 127) {
+    if (page < 0 || (page >= ACID_PAGES && !is_user(l, page) && !is_mod(l, page)) || enc <= 0 || enc >= ACID_KNOBS ||
+        v < 0 || v > 127) {
         return 0;
     }
-    if (page >= ACID_USER_FIRST) {
+    if (is_mod(l, page)) {
+        l->npend = l->pend_at = 0;
+        if (!acid_mod_set(l->mod, page - ACID_PAGE_MOD1, enc, v)) {
+            return 0;
+        }
+    } else if (page >= ACID_USER_FIRST) {
         user_apply(l, s, page - ACID_USER_FIRST, enc, v);
     } else {
         l->npend = l->pend_at = 0;
@@ -267,23 +314,28 @@ int acid_link_panel_set(acid_link_t *l, acid_synth_t *s, int page, int enc, int 
 
 int acid_link_panel_page(acid_link_t *l, acid_synth_t *s, int page, acid_link_ev_t *out)
 {
+    if (is_mod(l, page)) {
+        l->mod_page = page - ACID_PAGE_MOD1;
+        l->user = l->mix = -1;
+        *out = (acid_link_ev_t){.page = (uint8_t)page, .enc = 0, .value = (uint8_t)page, .src = ACID_SRC_PANEL};
+        return 1;
+    }
     if (pl_mix_is(page)) {
         l->mix = page;
-        l->user = -1;
+        l->user = l->mod_page = -1;
         *out = (acid_link_ev_t){.page = (uint8_t)page, .enc = 0, .value = (uint8_t)page, .src = ACID_SRC_PANEL};
         return 1;
     }
     if (is_user(l, page)) {
         l->user = page - ACID_USER_FIRST;
-        l->mix = -1;
+        l->mix = l->mod_page = -1;
         *out = (acid_link_ev_t){.page = (uint8_t)page, .enc = 0, .value = (uint8_t)page, .src = ACID_SRC_PANEL};
         return 1;
     }
     if (page < 0 || page >= ACID_PAGES) {
         return 0;
     }
-    l->user = -1;
-    l->mix = -1;
+    l->user = l->mix = l->mod_page = -1;
     s->page = page;
     *out = (acid_link_ev_t){.page = (uint8_t)page, .enc = 0, .value = (uint8_t)page, .src = ACID_SRC_PANEL};
     return 1;
