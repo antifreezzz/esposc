@@ -1193,6 +1193,13 @@ static void set_knob(pl_model_t *m, int page, int enc, int v)
     }
 }
 
+void ui_open_pick(int page, int enc)
+{
+    u.pick_page = u.pick_tp = page;
+    u.pick_enc = u.pick_te = enc;
+    u.overlay = OVL_VAL;
+}
+
 static void card_tap(pl_model_t *m, int cell, uint32_t ms)
 {
     int enc = cell + 1, tp, te;

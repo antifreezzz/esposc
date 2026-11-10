@@ -214,7 +214,7 @@ TEST(test_bank_shape)
     for (int b = 0; b < PL_GRIDS_BANK; b++) {
         const pl_grids_bank_t *k = &pl_grids_bank[b];
         int per_bar = k->grid == PL_GRIDS_12T ? 12 : 16;
-        CHECK(k->name && strlen(k->name) > 0 && strlen(k->name) <= 13);
+        CHECK(k->name && strlen(k->name) > 0 && strlen(k->name) <= 10);
         CHECK(k->grid == PL_GRIDS_16 || k->grid == PL_GRIDS_12T);
         CHECK(pl_grids_src_grid(1 + b, NULL) == k->grid);
         for (int c = 0; c < b; c++) {
@@ -391,8 +391,37 @@ TEST(test_user_edit_and_blob)
     CHECK(v[1].lv[2 * 32 + 31] == 0); // при отказе ничего не тронуто
 }
 
+// Превью панели по ручкам страницы: источник (enc 13), свои рисунки, госты; без хаоса.
+TEST(test_preview_src)
+{
+    static pl_grids_pat_t u[PL_GRIDS_USER];
+    memset(u, 0, sizeof u);
+    u[0].lv[32 + 3] = PL_GRIDS_LV_GHOST;
+    uint8_t knob[16] = {0};
+    knob[2] = 30, knob[3] = 90, knob[4] = 80, knob[5] = 70, knob[6] = 90;
+    const uint8_t d[3] = {pl_grids_u8(80), pl_grids_u8(70), pl_grids_u8(90)}, z[3] = {0, 0, 0};
+    uint16_t out[PL_GRIDS_STEPS];
+    uint8_t old[PL_GRIDS_STEPS];
+    pl_grids_preview(knob, old);
+    pl_grids_preview_src(knob, u, out);
+    for (int s = 0; s < PL_GRIDS_STEPS; s++) {
+        CHECK(out[s] == old[s]);
+    }
+    for (int src = 1; src < PL_GRIDS_SRCS; src++) {
+        knob[13] = (uint8_t)src;
+        pl_grids_preview_src(knob, u, out);
+        for (int s = 0; s < PL_GRIDS_STEPS; s++) {
+            CHECK(out[s] == pl_grids_src_step(src, u, 0, 0, d, z, s));
+        }
+    }
+    knob[13] = PL_GRIDS_SRC_USER;
+    pl_grids_preview_src(knob, u, out);
+    CHECK(out[3] == ((1 << 1) | (64 << 1)));
+}
+
 int main(void)
 {
+    RUN(test_preview_src);
     RUN(test_user_edit_and_blob);
     RUN(test_corner_nodes);
     RUN(test_original_bytes);

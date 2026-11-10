@@ -40,9 +40,9 @@ static const char *const GRIDS[16] = {NULL, "ON", "X", "Y", "KICK", "SNARE", "HA
                                       "TIME", "EVERY", "FILL LEN", "FILL", "PATTERN", "SWING", NULL};
 // Источник рисунка: имена банка - те же, что в pl_grids_bank (сверяет test_labels).
 static const char *const GRIDS_SRC[PL_GRIDS_SRCS] = {
-    "MAP",        "FOUR FLOOR", "OFFBEAT HOUSE", "ELECTRO 808", "BREAK HOUSE", "HALF TECHNO", "TWO STEP", "AMEN",
-    "FUNK BREAK", "JUNGLE",     "HALF TIME",     "ROCK 8",      "ROCK 16",     "DOUBLE KICK", "GALLOP",   "BLAST",
-    "BOMB BLAST", "D-BEAT",     "SHUFFLE 12/8",  "U1",          "U2",          "U3",          "U4"};
+    "MAP",        "FOUR FLOOR", "HOUSE", "ELECTRO", "BRK HOUSE", "DUB TECHNO", "TWO STEP", "AMEN",
+    "FUNK BREAK", "JUNGLE",     "HALF TIME",     "ROCK 8",      "ROCK 16",     "DBL KICK", "GALLOP",   "BLAST",
+    "BOMB BLAST", "D-BEAT",     "SHUFFLE",  "U1",          "U2",          "U3",          "U4"};
 static const char *const SWING[4] = {"50%", "58%", "67%", "75%"};
 static const char *const TONAL[16] = {NULL, "STEP LEN", "STEPS", "ORDER", "TARGET", "HELD", "SCALE", "ROOT",
                                       "STEP 1", "STEP 2", "STEP 3", "STEP 4", "STEP 5", "STEP 6", "STEP 7", "STEP 8"};

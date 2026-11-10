@@ -58,6 +58,8 @@ uint8_t pl_grids_src_level(int src, const pl_grids_pat_t *user, uint8_t x, uint8
 // Как pl_grids_step, плюс биты 6-8 - гост дорожки (у карты всегда 0).
 uint16_t pl_grids_src_step(int src, const pl_grids_pat_t *user, uint8_t x, uint8_t y, const uint8_t density[3],
                            const uint8_t perturb[3], int step);
+// Превью по ручкам страницы Grids с источником (enc 13) и гостами, без хаоса.
+void pl_grids_preview_src(const uint8_t knob[16], const pl_grids_pat_t *user, uint16_t out[PL_GRIDS_STEPS]);
 // Копия источника в свой рисунок: банк и свои - как есть, карта - то, что звучит в точке x, y при этих плотностях
 // (обычный или акцент).
 void pl_grids_copy(int src, const pl_grids_pat_t *user, uint8_t x, uint8_t y, const uint8_t density[3],

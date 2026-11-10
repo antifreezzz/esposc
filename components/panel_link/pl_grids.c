@@ -152,6 +152,15 @@ uint16_t pl_grids_src_step(int src, const pl_grids_pat_t *user, uint8_t x, uint8
     return state;
 }
 
+void pl_grids_preview_src(const uint8_t knob[16], const pl_grids_pat_t *user, uint16_t out[PL_GRIDS_STEPS])
+{
+    const uint8_t density[3] = {pl_grids_u8(knob[4]), pl_grids_u8(knob[5]), pl_grids_u8(knob[6])};
+    const uint8_t none[3] = {0, 0, 0};
+    for (int s = 0; s < PL_GRIDS_STEPS; s++) {
+        out[s] = pl_grids_src_step(knob[13], user, pl_grids_u8(knob[2]), pl_grids_u8(knob[3]), density, none, s);
+    }
+}
+
 void pl_grids_copy(int src, const pl_grids_pat_t *user, uint8_t x, uint8_t y, const uint8_t density[3],
                    pl_grids_pat_t *out)
 {

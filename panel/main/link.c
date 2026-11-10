@@ -136,3 +136,15 @@ void link_seq_bpm(int bpm)
     uint8_t b = (uint8_t)bpm;
     send(PL_SEQ_BPM, &b, 1);
 }
+
+void link_grids_cell(int slot, int part, int step, int lv)
+{
+    uint8_t p[4] = {(uint8_t)slot, (uint8_t)part, (uint8_t)step, (uint8_t)lv};
+    send(PL_GRIDS_CELL, p, sizeof p);
+}
+
+void link_grids_pat(int slot, const pl_grids_pat_t *pat)
+{
+    pl_grids_pat_frame_t fr = {.slot = (uint8_t)slot, .pat = *pat};
+    send(PL_GRIDS_PAT, &fr, sizeof fr);
+}

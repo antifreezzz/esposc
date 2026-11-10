@@ -26,3 +26,6 @@ void link_seq_scale(int synth, int pat, int scale); // 0 - лад страниц
 void link_seq_row(int synth, int row, const uint8_t cells[PL_SEQ_CELLS], int rep);
 void link_seq_ctrl(int synth, int run, int edit);
 void link_seq_bpm(int bpm);
+// Свои рисунки Grids: клетка и рисунок целиком.
+void link_grids_cell(int slot, int part, int step, int lv);
+void link_grids_pat(int slot, const pl_grids_pat_t *pat);

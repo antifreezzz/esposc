@@ -456,8 +456,8 @@ TEST(test_user_ghosts)
 TEST(test_triplet_grid)
 {
     setup(64, 64, 80, 70, 90);
-    acid_drummer_set(&d, DRM_SRC, PL_GRIDS_BANK); // последний в банке
-    CHECK(strcmp(pl_grids_bank[PL_GRIDS_BANK - 1].name, "SHUFFLE 12/8") == 0);
+    acid_drummer_set(&d, DRM_SRC, PL_GRIDS_BANK); // последний в банке: триольный
+    CHECK(strcmp(pl_grids_bank[PL_GRIDS_BANK - 1].name, "SHUFFLE") == 0);
     CHECK(acid_drummer_grid(&d) == PL_GRIDS_12T);
     acid_drummer_set(&d, DRM_TIME, DRM_TIME_RIDE);
     acid_drummer_set(&d, DRM_FILL_EVERY, 1); // каждые 4 такта
