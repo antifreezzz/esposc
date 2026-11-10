@@ -29,7 +29,8 @@ TEST(bsp_18_is_petri)
 {
     CHECK(acid_page_from_bsp(18) == ACID_PAGE_PETRI);
     CHECK(acid_page_to_bsp(ACID_PAGE_PETRI) == 18);
-    CHECK(acid_page_from_bsp(19) == -1);
+    CHECK(acid_page_from_bsp(19) == ACID_PAGE_MOD1);
+    CHECK(acid_page_from_bsp(23) == -1);
     CHECK(pl_page_bsp(PL_PAGE_PETRI) == 18);
     CHECK(acid_page_from_bsp(10) == ACID_USER_FIRST); // свои страницы следом
 }

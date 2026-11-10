@@ -135,17 +135,18 @@ TEST(test_pcm_gain)
 
 TEST(test_bsp_page_mapping)
 {
-    // На BSP: 0-9 штатные, 10-15 свои, 16-17 слои, 18 чашка. Внутри: 0-9, слои 10-11, Grids 12, чашка 13, свои 14-19.
-    static const int bsp[] = {0, 9, 10, 15, 16, 17, 18};
-    static const int page[] = {0, 9, 14, 19, 10, 11, 13};
-    for (int i = 0; i < 7; i++) {
+    // На BSP: 0-9 штатные, 10-15 свои, 16-17 слои, 18 чашка, 19-22 модуляторы.
+    static const int bsp[] = {0, 9, 10, 15, 16, 17, 18, 19, 22};
+    static const int page[] = {0, 9, 14, 19, 10, 11, 13, 23, 26};
+    for (int i = 0; i < 9; i++) {
         CHECK(acid_page_from_bsp(bsp[i]) == page[i]);
         CHECK(acid_page_to_bsp(page[i]) == bsp[i]);
     }
-    CHECK(acid_page_from_bsp(19) == -1);
+    CHECK(acid_page_from_bsp(23) == -1);
     CHECK(acid_page_from_bsp(127) == -1);
     CHECK(acid_page_from_bsp(-1) == -1);
     CHECK(acid_page_to_bsp(20) == -1);
+    CHECK(acid_page_to_bsp(27) == -1);
     CHECK(acid_page_to_bsp(ACID_PAGE_GRIDS) == -1);
 }
 
