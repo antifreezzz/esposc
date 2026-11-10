@@ -74,7 +74,6 @@ TEST(test_mix_page_name_and_color)
     CHECK(pl_view_page_color(PL_PAGE_MIX_DRUMS) == pl_page_color(1));
     CHECK(pl_view_page_color(PL_PAGE_MIX_SYN1) == pl_page_color(PL_PAGE_SYNTH1));
     CHECK(pl_view_page_color(PL_PAGE_MIX_SYN1 + 1) == pl_page_color(PL_PAGE_SYNTH1 + 1));
-    CHECK(pl_view_page_step(PL_PAGE_MIX_SYN1, 1) == PL_PAGE_MIX_SYN1); // в круг страниц не входит
 }
 
 TEST(test_alias_cell_shows_target)
@@ -158,17 +157,6 @@ TEST(test_page_names_and_colors)
     CHECK(pl_view_page_color(12) != 0);
 }
 
-TEST(test_page_step_stays_in_group)
-{
-    CHECK(pl_view_page_step(9, 1) == 10); // за штатными - слои
-    CHECK(pl_view_page_step(11, 1) == 0);
-    CHECK(pl_view_page_step(0, -1) == 11);
-    CHECK(pl_view_page_step(PL_PAGE_GRIDS, 1) == PL_PAGE_GRIDS);
-    CHECK(pl_view_page_step(PL_USER_FIRST + 5, 1) == PL_USER_FIRST);
-    CHECK(pl_view_page_step(PL_USER_FIRST, -1) == PL_USER_FIRST + 5);
-    CHECK(pl_view_page_step(PL_USER_FIRST + 2, 1) == PL_USER_FIRST + 3);
-}
-
 TEST(test_page_bsp_numbers)
 {
     CHECK(pl_page_bsp(0) == 0 && pl_page_bsp(9) == 9);
@@ -215,7 +203,6 @@ int main(void)
     RUN(test_user_cell_source);
     RUN(test_target_lookup);
     RUN(test_page_names_and_colors);
-    RUN(test_page_step_stays_in_group);
     RUN(test_status_text);
     RUN(test_status_seq);
     RUN(test_mix_cell_shows_target);

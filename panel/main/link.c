@@ -84,11 +84,6 @@ void link_scene(int op, int n, int bars)
     send(PL_SCENE, &s, sizeof s);
 }
 
-void link_demo(void)
-{
-    send(PL_DEMO, NULL, 0);
-}
-
 void link_mode(int mode)
 {
     uint8_t m = (uint8_t)mode;

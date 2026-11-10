@@ -15,8 +15,6 @@ void link_page(int page);
 void link_custom_edit(const pl_custom_edit_t *e);
 // Сцена: op PL_SCENE_RECALL или PL_SCENE_STORE, слот n, переход bars тактов.
 void link_scene(int op, int n, int bars);
-// Тап по статусу в демо: синту - следующая песня демо.
-void link_demo(void);
 // Поставить режим: PL_DEMO_* без BSP, с BSP - PL_MODE_LIVE или PL_DEMO_DRONE.
 void link_mode(int mode);
 // Таблица чашки Петри синту: 4 кадра (из задачи чашки, ядро 1).
