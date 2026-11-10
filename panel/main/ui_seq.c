@@ -105,9 +105,6 @@ static void tool_draw(lv_event_t *e)
     lv_area_t a;
     char buf[16];
     uint32_t sc = synth_color();
-    snprintf(buf, sizeof buf, "S%d", g.synth + 1);
-    rect_area(PL_ST_SYNTH, 0, 0, &a);
-    button(layer, &a, buf, 1, sc);
     rect_area(PL_ST_VIEW, 0, 0, &a);
     button(layer, &a, g.view == PL_SEQ_PATTERN ? "PATTERN" : "SONG", 0, 0);
     snprintf(buf, sizeof buf, d ? "%d BPM" : "-", shown_bpm(m));
@@ -270,61 +267,58 @@ static void pick_draw(lv_event_t *e)
 
 void us_build(lv_obj_t *scr)
 {
-    g.box = ui_box(scr, 0, UI_TOP_H, UI_W, UI_W - UI_TOP_H, C_BG);
-    g.tool = ui_box(g.box, 0, 0, UI_W, 92 + 40 + 4 - UI_TOP_H, C_BG); // тулбар и такты A-H
+    g.box = ui_box(scr, 0, UI_WORK_Y, UI_W, UI_WORK_H, C_BG);
+    g.tool = ui_box(g.box, 0, 0, UI_W, 154 - UI_WORK_Y, C_BG); // тулбар и такты A-H
     lv_obj_add_event_cb(g.tool, tool_draw, LV_EVENT_DRAW_MAIN, NULL);
     for (int t = 0; t < 2; t++) {
         int x, y, w, h;
         pl_seq_rect(PL_SEQ_PATTERN, PL_ST_BAR, t * 8, 0, &x, &y, &w, &h);
-        g.tier[t] = ui_box(g.box, 0, y - UI_TOP_H, UI_W, h, C_BG);
+        g.tier[t] = ui_box(g.box, 0, y - UI_WORK_Y, UI_W, h, C_BG);
         lv_obj_add_event_cb(g.tier[t], tier_draw, LV_EVENT_DRAW_MAIN, (void *)(intptr_t)t);
     }
     g.mark = ui_box(g.box, 0, 0, 44, 4, C_ACCENT); // бегущий шаг над ярусом
     lv_obj_set_style_radius(g.mark, 2, 0);
-    g.song = ui_box(g.box, 0, 92 - UI_TOP_H, UI_W, UI_W - 92, C_BG);
+    g.song = ui_box(g.box, 0, 118 - UI_WORK_Y, UI_W, UI_WORK_Y + UI_WORK_H - 118, C_BG);
     lv_obj_add_event_cb(g.song, song_draw, LV_EVENT_DRAW_MAIN, NULL);
     g.cell_mark = ui_box(g.box, 0, 0, 10, 10, C_BG); // играющая ячейка: рамка поверх
     lv_obj_set_style_bg_opa(g.cell_mark, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(g.cell_mark, 3, 0);
     lv_obj_set_style_border_color(g.cell_mark, lv_color_hex(C_ACCENT), 0);
     lv_obj_set_style_radius(g.cell_mark, 10, 0);
-    g.pick = ui_box(g.box, 0, 0, UI_W, UI_W - UI_TOP_H, C_BG);
+    g.pick = ui_box(scr, 0, UI_TOP_H, UI_W, UI_W - UI_TOP_H, C_BG);
     lv_obj_add_event_cb(g.pick, pick_draw, LV_EVENT_DRAW_MAIN, NULL);
     g.drawn_tool = g.drawn_mark = g.drawn_cell_mark = g.drawn_pick = -1;
     g.drawn_tier_ok = g.drawn_song_ok = 0;
     ui_show(g.box, 0);
+    ui_show(g.pick, 0);
 }
 
 void us_show(int on)
 {
     ui_show(g.box, on);
-}
-
-void us_title(const pl_model_t *m, char *buf, size_t n)
-{
-    const pl_seq_dump_t *d = seq(m);
-    if (!d) {
-        snprintf(buf, n, "SEQ S%d", g.synth + 1);
-    } else if (g.view == PL_SEQ_SONG) {
-        snprintf(buf, n, "SEQ S%d SONG", g.synth + 1);
-    } else {
-        int oct = d->oct[d->edit] - 2;
-        snprintf(buf, n, oct ? "SEQ S%d %c OCT%+d" : "SEQ S%d %c", g.synth + 1, 'A' + d->edit, oct);
+    if (!on) {
+        g.picking = PICK_NONE;
+        ui_show(g.pick, 0);
     }
 }
 
-const char *us_action(const pl_model_t *m)
+void us_set_synth(int synth)
 {
-    const pl_seq_dump_t *d = seq(m);
-    return !d ? "" : d->run ? "STOP" : "PLAY";
+    int s = synth ? 1 : 0;
+    if (s != g.synth) {
+        g.synth = s;
+        g.drawn_tier_ok = g.drawn_song_ok = 0;
+    }
 }
 
-void us_play(pl_model_t *m)
+int us_picking(void)
 {
-    const pl_seq_dump_t *d = seq(m);
-    if (d && pl_model_seq_ctrl(m, g.synth, !d->run, d->edit)) {
-        link_seq_ctrl(g.synth, m->seq[g.synth].run, d->edit);
-    }
+    return g.picking != PICK_NONE;
+}
+
+void us_close_pick(void)
+{
+    g.picking = PICK_NONE;
 }
 
 void us_draw(const pl_model_t *m)
@@ -384,7 +378,7 @@ void us_draw(const pl_model_t *m)
         if (mark >= 0) {
             int x, y, w, h;
             pl_seq_rect(PL_SEQ_PATTERN, PL_ST_BAR, mark, 0, &x, &y, &w, &h);
-            lv_obj_set_pos(g.mark, x + 8, y - UI_TOP_H - 5);
+            lv_obj_set_pos(g.mark, x + 8, y - UI_WORK_Y - 5);
         }
         g.drawn_mark = mark;
     }
@@ -397,7 +391,7 @@ void us_draw(const pl_model_t *m)
         if (cm >= 0) {
             int x, y, w, h;
             pl_seq_rect(PL_SEQ_SONG, PL_ST_CELL, cm % PL_SEQ_CELLS, cm / PL_SEQ_CELLS, &x, &y, &w, &h);
-            lv_obj_set_pos(g.cell_mark, x, y - UI_TOP_H);
+            lv_obj_set_pos(g.cell_mark, x, y - UI_WORK_Y);
             lv_obj_set_size(g.cell_mark, w, h);
         }
         g.drawn_cell_mark = cm;
@@ -470,10 +464,7 @@ void us_input(pl_model_t *m, int down, int x, int y, int x0, int y0, uint32_t ms
             return;
         }
         g.id = pl_seq_at(g.view, x0, y0, &g.arg, &g.row);
-        if (g.id == PL_ST_SYNTH) {
-            g.synth ^= 1;
-            g.drawn_tier_ok = g.drawn_song_ok = 0;
-        } else if (g.id == PL_ST_VIEW) {
+        if (g.id == PL_ST_VIEW) {
             g.view = g.view == PL_SEQ_PATTERN ? PL_SEQ_SONG : PL_SEQ_PATTERN;
             g.drawn_tier_ok = g.drawn_song_ok = 0;
         } else if (!d) {

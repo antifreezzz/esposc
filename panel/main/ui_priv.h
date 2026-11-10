@@ -4,12 +4,15 @@
 
 #include "esp_lvgl_port.h"
 #include "pl_edit.h"
+#include "pl_ia.h"
 #include "pl_model.h"
 
-// Общее для ui.c и ui_custom.c: размеры, цвета, помощники LVGL.
+// Общее для ui.c и соседних файлов: размеры, цвета, помощники LVGL.
 
 #define UI_W 480
-#define UI_TOP_H 40
+#define UI_TOP_H PL_IA_TOP_H
+#define UI_WORK_Y (PL_IA_TOP_H + PL_IA_TABS_H)
+#define UI_WORK_H (UI_W - UI_WORK_Y - PL_IA_DOCK_H)
 #define UI_RING_DY 18 // центр вращения пальцем ниже центра экрана: посередине рабочей области
 
 // Стиль «Б. Тёплый аналог» (docs/design/panel-mockups.html): тёплый графит, кремовый текст, акценты-лампы.
@@ -30,6 +33,7 @@
 #define C_OK 0xa8d672
 #define C_WARN 0xffb648
 #define C_BAD 0xff6b4a
+#define C_MOD 0xc4a6e0
 #define UI_R 14 // радиус карточек и плиток
 
 // Сплошной цвет между a и b (k256=0 - a, 256 - b): заранее, без прозрачности при отрисовке, как mix() в макете.
@@ -58,21 +62,12 @@ lv_obj_t *ui_label(lv_obj_t *parent, const lv_font_t *font, uint32_t color);
 lv_obj_t *ui_box(lv_obj_t *parent, int x, int y, int w, int h, uint32_t bg);
 void ui_show(lv_obj_t *o, int on);
 void ui_text(lv_obj_t *l, const char *s);
-// Плитка p 0..9 раскладки меню 2x5 (координаты внутри рабочей области под шапкой).
-void ui_tile_xy(int p, int *x, int *y);
-int ui_tile_at(int x, int y); // по точке экрана, -1 мимо
-#define UI_TILE_W 222
-#define UI_TILE_H 74
 
 // ui_custom.c: под локом LVGL, кроме *_input.
 void uc_build(lv_obj_t *scr);
-void uc_scenes_show(int on);
-void uc_scenes_draw(const pl_model_t *m);
-// Касание на экране сцен: ev из pl_press_step, (x0, y0) начало, (x1, y1) конец, held_ms - длина касания.
-void uc_scenes_input(const pl_model_t *m, int ev, int x0, int y0, int x1, int y1, uint32_t held_ms);
 // Оверлеи редактора: список целей слота и ход lo/hi; прячутся вне своих состояний.
 void uc_edit_draw(const pl_model_t *m, const pl_edit_t *e);
-// Ввод в состояниях TARGETS и RANGE (остальные шаги - сетка и меню в ui.c).
+// Ввод в состояниях TARGETS и RANGE (остальные шаги - сетка в ui.c).
 void uc_edit_input(pl_model_t *m, pl_edit_t *e, int ev, int down, int x, int y, int x0, int y0);
 // XY-пэд своей страницы page: X - слот E2, Y - слот E3. Ввод - без лока LVGL, каждый опрос тача.
 void uc_xy_show(int on);
@@ -98,9 +93,9 @@ void ug_release(pl_model_t *m);
 // ui_seq.c: экран секвенсера (такт полосами, песня строками). Ввод - без лока LVGL, каждый опрос тача.
 void us_build(lv_obj_t *scr);
 void us_show(int on);
+void us_set_synth(int synth);
+int us_picking(void);
+void us_close_pick(void);
 void us_draw(const pl_model_t *m);
 void us_input(pl_model_t *m, int down, int x, int y, int x0, int y0, uint32_t ms);
 void us_release(void); // палец ушёл с экрана не отпусканием (смена вида)
-void us_title(const pl_model_t *m, char *buf, size_t n); // заголовок шапки
-const char *us_action(const pl_model_t *m);              // кнопка действия шапки: PLAY / STOP
-void us_play(pl_model_t *m);                             // тап по ней

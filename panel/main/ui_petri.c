@@ -1,4 +1,4 @@
-// Экран чашки Петри: сетка 96x96 крупно x4 одной картинкой в PSRAM (объект LVGL на клетку дорог), поверх орбита
+// Экран чашки Петри: сетка 96x96 крупно x3 одной картинкой в PSRAM (объект LVGL на клетку дорог), поверх орбита
 #include <stdlib.h>
 // и жители. Тап и ведение пальцем - капля. Картинка перерисовывается не чаще кадра чашки и не чаще 10 раз в секунду.
 #include <math.h>
@@ -11,10 +11,10 @@
 #include "pl_labels.h"
 #include "ui_priv.h"
 
-#define SCALE 4
-#define SIDE (PETRI_N * SCALE) // 384
+#define SCALE 3
+#define SIDE (PETRI_N * SCALE) // 288
 #define IMG_X ((UI_W - SIDE) / 2)
-#define IMG_Y 6                // внутри рабочей области под шапкой
+#define IMG_Y 12               // внутри рабочей области между вкладками и доком
 #define REDRAW_MS 100
 #define DROP_PX 6 // ведение пальцем: капля не чаще, чем через столько пикселей
 
@@ -29,7 +29,7 @@ static struct {
 
 void up_build(lv_obj_t *scr)
 {
-    p.box = ui_box(scr, 0, UI_TOP_H, UI_W, UI_W - UI_TOP_H, C_BG);
+    p.box = ui_box(scr, 0, UI_WORK_Y, UI_W, UI_WORK_H, C_BG);
     p.px = heap_caps_calloc(SIDE * SIDE, 2, MALLOC_CAP_SPIRAM);
     petri_palette(p.lut);
     if (p.px) {
@@ -45,7 +45,7 @@ void up_build(lv_obj_t *scr)
         lv_obj_set_pos(p.img, IMG_X, IMG_Y);
     }
     p.info = ui_label(p.box, &bc_17, C_DIM);
-    lv_obj_align(p.info, LV_ALIGN_TOP_MID, 0, IMG_Y + SIDE + 10);
+    lv_obj_align(p.info, LV_ALIGN_TOP_MID, 0, IMG_Y + SIDE + 12);
     p.drawn_frame = UINT32_MAX;
 }
 
@@ -132,11 +132,11 @@ void up_draw(const pl_model_t *m, uint32_t ms)
 void up_input(int down, int x, int y, int x0, int y0)
 {
     (void)x0;
-    if (!down || y0 < UI_TOP_H) {
+    if (!down || y0 < UI_WORK_Y || y0 >= UI_WORK_Y + UI_WORK_H) {
         p.lx = p.ly = -1000;
         return;
     }
-    int ix = x - IMG_X, iy = y - UI_TOP_H - IMG_Y;
+    int ix = x - IMG_X, iy = y - UI_WORK_Y - IMG_Y;
     if (ix < 0 || iy < 0 || ix >= SIDE || iy >= SIDE) {
         return;
     }
