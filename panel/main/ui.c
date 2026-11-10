@@ -240,7 +240,8 @@ static void main_title(const pl_model_t *m, const char **title, char sub[24])
         *title = k ? "SYNTH 2" : "SYNTH 1";
         int sp = t && t->page == PL_PAGE_LAYER1 + k ? t->page : PL_PAGE_SYNTH1 + k;
         if (m && m->have) {
-            snprintf(sub, 24, "%s", pl_page_summary(sp, m->raw[sp], sub));
+            char tmp[24]; // сводка пишет в свой буфер: источник и приёмник snprintf не пересекаются
+            snprintf(sub, 24, "%s", pl_page_summary(sp, m->raw[sp], tmp));
         }
         return;
     }
@@ -252,7 +253,8 @@ static void main_title(const pl_model_t *m, const char **title, char sub[24])
         snprintf(sub, 24, "%s", pl_user_name(u.user));
     } else if (m->have) {
         int sp = t->page < PL_PAGES ? t->page : 1;
-        snprintf(sub, 24, "%s", pl_page_summary(sp, m->raw[sp], sub));
+        char tmp[24];
+        snprintf(sub, 24, "%s", pl_page_summary(sp, m->raw[sp], tmp));
     }
 }
 
