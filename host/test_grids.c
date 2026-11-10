@@ -184,8 +184,245 @@ TEST(test_preview_matches_step)
     }
 }
 
+// Источники рисунка: 0 карта, 1..BANK банк, следом свои.
+static int level_of_char(char c)
+{
+    return c == 'X' ? PL_GRIDS_LV_ACC : c == 'x' ? PL_GRIDS_LV_HIT : c == 'g' ? PL_GRIDS_LV_GHOST
+         : c == ',' ? PL_GRIDS_LV_EXTRA : 0;
+}
+
+TEST(test_src_map_is_old_map)
+{
+    const uint8_t dens[3] = {100, 150, 200}, per[3] = {0, 30, 60};
+    for (int k = 0; k < 5; k++) {
+        CHECK(pl_grids_src_grid(PL_GRIDS_SRC_MAP, NULL) == PL_GRIDS_16);
+        for (int s = 0; s < PL_GRIDS_STEPS; s++) {
+            for (int p = 0; p < 3; p++) {
+                CHECK(pl_grids_src_level(PL_GRIDS_SRC_MAP, NULL, PTS[k][0], PTS[k][1], p, s) ==
+                      pl_grids_level(PTS[k][0], PTS[k][1], p, s));
+            }
+            // У карты гостов нет: маска та же, что у старого pl_grids_step.
+            CHECK(pl_grids_src_step(PL_GRIDS_SRC_MAP, NULL, PTS[k][0], PTS[k][1], dens, per, s) ==
+                  pl_grids_step(PTS[k][0], PTS[k][1], dens, per, s));
+        }
+    }
+}
+
+TEST(test_bank_shape)
+{
+    CHECK(PL_GRIDS_SRCS <= 26); // сетка выбора панели
+    for (int b = 0; b < PL_GRIDS_BANK; b++) {
+        const pl_grids_bank_t *k = &pl_grids_bank[b];
+        int per_bar = k->grid == PL_GRIDS_12T ? 12 : 16;
+        CHECK(k->name && strlen(k->name) > 0 && strlen(k->name) <= 10);
+        CHECK(k->grid == PL_GRIDS_16 || k->grid == PL_GRIDS_12T);
+        CHECK(pl_grids_src_grid(1 + b, NULL) == k->grid);
+        for (int c = 0; c < b; c++) {
+            CHECK(strcmp(k->name, pl_grids_bank[c].name) != 0);
+        }
+        int hits[3] = {0, 0, 0};
+        for (int p = 0; p < 3; p++) {
+            CHECK(strlen(k->part[p]) == (size_t)(2 * per_bar));
+            for (int s = 0; s < PL_GRIDS_STEPS; s++) {
+                int bar = s / 16, in = s % 16;
+                int want = in < per_bar ? level_of_char(k->part[p][bar * per_bar + in]) : 0;
+                if (in < per_bar) {
+                    CHECK(strchr(".,gxX", k->part[p][bar * per_bar + in]) != NULL);
+                }
+                // Точка карты рисунку безразлична.
+                CHECK(pl_grids_src_level(1 + b, NULL, 0, 0, p, s) == want);
+                CHECK(pl_grids_src_level(1 + b, NULL, 200, 77, p, s) == want);
+                hits[p] += want >= PL_GRIDS_LV_GHOST;
+            }
+        }
+        CHECK(pl_grids_src_level(1 + b, NULL, 0, 0, 0, 0) >= PL_GRIDS_LV_HIT); // бочка на первую долю
+        CHECK(hits[0] >= 2 && hits[1] >= 2 && hits[2] >= 4);
+    }
+}
+
+// При умолчаниях плотности (бочка 80, малый 70, хэт 90) звучит весь канон рисунка и ни одного украшения;
+// сила удара - по уровню: акцент, обычный, гост.
+TEST(test_bank_default_density)
+{
+    const uint8_t dens[3] = {pl_grids_u8(80), pl_grids_u8(70), pl_grids_u8(90)}, z[3] = {0, 0, 0};
+    const uint8_t full[3] = {255, 255, 255};
+    int extras = 0, ghosts = 0;
+    for (int b = 0; b < PL_GRIDS_BANK; b++) {
+        for (int s = 0; s < PL_GRIDS_STEPS; s++) {
+            uint16_t m = pl_grids_src_step(1 + b, NULL, 0, 0, dens, z, s);
+            uint16_t f = pl_grids_src_step(1 + b, NULL, 0, 0, full, z, s);
+            for (int p = 0; p < 3; p++) {
+                int lv = pl_grids_src_level(1 + b, NULL, 0, 0, p, s);
+                CHECK(((m >> p) & 1) == (lv >= PL_GRIDS_LV_GHOST));
+                CHECK(((m >> (3 + p)) & 1) == (lv > PL_GRIDS_ACCENT));
+                CHECK(((m >> (6 + p)) & 1) == (lv == PL_GRIDS_LV_GHOST));
+                CHECK(((f >> p) & 1) == (lv > 0));
+                CHECK(((f >> (6 + p)) & 1) == (lv > 0 && lv < PL_GRIDS_GHOST));
+                extras += lv == PL_GRIDS_LV_EXTRA;
+                ghosts += lv == PL_GRIDS_LV_GHOST;
+            }
+        }
+    }
+    CHECK(extras > 0 && ghosts > 0);
+}
+
+// Убавляешь плотность - первыми уходят госты, потом обычные, акценты последними.
+TEST(test_density_order)
+{
+    pl_grids_pat_t u[PL_GRIDS_USER];
+    memset(u, 0, sizeof u);
+    u[1].lv[0] = PL_GRIDS_LV_ACC;
+    u[1].lv[1] = PL_GRIDS_LV_HIT;
+    u[1].lv[2] = PL_GRIDS_LV_GHOST;
+    int src = PL_GRIDS_SRC_USER + 1;
+    const uint8_t z[3] = {0, 0, 0};
+    int first[3] = {-1, -1, -1}; // ручка, с которой шаг начинает звучать
+    for (int knob = 0; knob < 128; knob++) {
+        const uint8_t dens[3] = {pl_grids_u8(knob), 0, 0};
+        for (int s = 0; s < 3; s++) {
+            if (first[s] < 0 && (pl_grids_src_step(src, u, 0, 0, dens, z, s) & 1)) {
+                first[s] = knob;
+            }
+        }
+    }
+    CHECK(first[0] == 1);
+    CHECK(first[0] < first[1] && first[1] < first[2]);
+    CHECK(first[2] <= 70); // гост слышен при умолчании малого
+}
+
+TEST(test_user_source)
+{
+    pl_grids_pat_t u[PL_GRIDS_USER];
+    memset(u, 0, sizeof u);
+    u[2].grid = PL_GRIDS_12T;
+    u[2].lv[1 * 32 + 7] = 200;
+    int src = PL_GRIDS_SRC_USER + 2;
+    CHECK(pl_grids_src_grid(src, u) == PL_GRIDS_12T);
+    CHECK(pl_grids_src_grid(PL_GRIDS_SRC_USER, u) == PL_GRIDS_16);
+    CHECK(pl_grids_src_level(src, u, 9, 9, 1, 7) == 200);
+    CHECK(pl_grids_src_level(src, u, 9, 9, 1, 8) == 0);
+    CHECK(pl_grids_src_level(src, u, 9, 9, 0, 7) == 0);
+    // Триольная сетка: слоты 12-15 такта не играют, что бы в них ни лежало.
+    u[2].lv[13] = 255;
+    u[2].lv[16 + 12] = 255;
+    CHECK(pl_grids_src_level(src, u, 0, 0, 0, 13) == 0);
+    CHECK(pl_grids_src_level(src, u, 0, 0, 0, 28) == 0);
+    // Своих рисунков нет или источник вне списка: тишина, сетка 16.
+    CHECK(pl_grids_src_level(src, NULL, 0, 0, 1, 7) == 0);
+    CHECK(pl_grids_src_grid(src, NULL) == PL_GRIDS_16);
+    CHECK(pl_grids_src_level(PL_GRIDS_SRCS, u, 0, 0, 1, 7) == 0);
+    CHECK(pl_grids_src_level(-1, u, 0, 0, 1, 7) == 0);
+}
+
+// Копия источника в свой рисунок: банк и свои - как есть, карта - то, что звучит при этих плотностях.
+TEST(test_copy)
+{
+    pl_grids_pat_t u[PL_GRIDS_USER], out;
+    memset(u, 0, sizeof u);
+    u[0].grid = PL_GRIDS_12T;
+    u[0].lv[5] = 77;
+    const uint8_t dens[3] = {pl_grids_u8(80), pl_grids_u8(70), pl_grids_u8(90)}, z[3] = {0, 0, 0};
+    pl_grids_copy(PL_GRIDS_SRC_USER, u, 0, 0, dens, &out);
+    CHECK(memcmp(&out, &u[0], sizeof out) == 0);
+    for (int b = 0; b < PL_GRIDS_BANK; b++) {
+        pl_grids_copy(1 + b, u, 0, 0, dens, &out);
+        CHECK(out.grid == pl_grids_bank[b].grid);
+        for (int i = 0; i < 96; i++) {
+            CHECK(out.lv[i] == pl_grids_src_level(1 + b, u, 0, 0, i / 32, i % 32));
+        }
+    }
+    int hits = 0;
+    pl_grids_copy(PL_GRIDS_SRC_MAP, u, 128, 192, dens, &out);
+    CHECK(out.grid == PL_GRIDS_16);
+    u[3] = out;
+    for (int s = 0; s < PL_GRIDS_STEPS; s++) {
+        uint8_t m = pl_grids_step(128, 192, dens, z, s);
+        uint16_t c = pl_grids_src_step(PL_GRIDS_SRC_USER + 3, u, 0, 0, dens, z, s);
+        CHECK(c == m); // те же удары и акценты, гостов нет
+        hits += m != 0;
+        for (int p = 0; p < 3; p++) {
+            int lv = out.lv[p * 32 + s];
+            CHECK(lv == 0 || lv == PL_GRIDS_LV_HIT || lv == PL_GRIDS_LV_ACC);
+        }
+    }
+    CHECK(hits > 4);
+}
+
+// Свои рисунки: правка клетки и целого рисунка с проверкой границ, blob во flash.
+TEST(test_user_edit_and_blob)
+{
+    static pl_grids_pat_t u[PL_GRIDS_USER], v[PL_GRIDS_USER];
+    pl_grids_user_init(u);
+    for (int k = 0; k < PL_GRIDS_USER; k++) {
+        CHECK(u[k].grid == PL_GRIDS_16);
+        for (int i = 0; i < 96; i++) {
+            CHECK(u[k].lv[i] == 0);
+        }
+    }
+    CHECK(pl_grids_user_cell(u, 1, 2, 31, 200) == 1 && u[1].lv[2 * 32 + 31] == 200);
+    CHECK(pl_grids_user_cell(u, PL_GRIDS_USER, 0, 0, 1) == 0);
+    CHECK(pl_grids_user_cell(u, -1, 0, 0, 1) == 0);
+    CHECK(pl_grids_user_cell(u, 0, 3, 0, 1) == 0);
+    CHECK(pl_grids_user_cell(u, 0, 0, 32, 1) == 0);
+    CHECK(pl_grids_user_cell(u, 0, 0, 0, 256) == 0 && u[0].lv[0] == 0);
+    pl_grids_pat_t p;
+    memset(&p, 0, sizeof p);
+    p.grid = PL_GRIDS_12T;
+    p.lv[5] = 124;
+    CHECK(pl_grids_user_set(u, 3, &p) == 1 && memcmp(&u[3], &p, sizeof p) == 0);
+    CHECK(pl_grids_user_set(u, 4, &p) == 0);
+    p.grid = 2;
+    CHECK(pl_grids_user_set(u, 0, &p) == 0 && u[0].grid == PL_GRIDS_16);
+
+    uint8_t blob[PL_GRIDS_BLOB + 4];
+    CHECK(sizeof(pl_grids_pat_t) == 97);
+    CHECK(pl_grids_user_export(u, blob, PL_GRIDS_BLOB - 1) == 0);
+    CHECK(pl_grids_user_export(u, blob, sizeof blob) == PL_GRIDS_BLOB);
+    pl_grids_user_init(v);
+    CHECK(pl_grids_user_import(v, blob, PL_GRIDS_BLOB) == 1);
+    CHECK(memcmp(u, v, sizeof u) == 0);
+    pl_grids_user_init(v);
+    CHECK(pl_grids_user_import(v, blob, PL_GRIDS_BLOB - 1) == 0);
+    blob[3] ^= 1; // чужая версия
+    CHECK(pl_grids_user_import(v, blob, PL_GRIDS_BLOB) == 0);
+    blob[3] ^= 1;
+    blob[4] = 9; // битая сетка первого рисунка
+    CHECK(pl_grids_user_import(v, blob, PL_GRIDS_BLOB) == 0);
+    CHECK(v[1].lv[2 * 32 + 31] == 0); // при отказе ничего не тронуто
+}
+
+// Превью панели по ручкам страницы: источник (enc 13), свои рисунки, госты; без хаоса.
+TEST(test_preview_src)
+{
+    static pl_grids_pat_t u[PL_GRIDS_USER];
+    memset(u, 0, sizeof u);
+    u[0].lv[32 + 3] = PL_GRIDS_LV_GHOST;
+    uint8_t knob[16] = {0};
+    knob[2] = 30, knob[3] = 90, knob[4] = 80, knob[5] = 70, knob[6] = 90;
+    const uint8_t d[3] = {pl_grids_u8(80), pl_grids_u8(70), pl_grids_u8(90)}, z[3] = {0, 0, 0};
+    uint16_t out[PL_GRIDS_STEPS];
+    uint8_t old[PL_GRIDS_STEPS];
+    pl_grids_preview(knob, old);
+    pl_grids_preview_src(knob, u, out);
+    for (int s = 0; s < PL_GRIDS_STEPS; s++) {
+        CHECK(out[s] == old[s]);
+    }
+    for (int src = 1; src < PL_GRIDS_SRCS; src++) {
+        knob[13] = (uint8_t)src;
+        pl_grids_preview_src(knob, u, out);
+        for (int s = 0; s < PL_GRIDS_STEPS; s++) {
+            CHECK(out[s] == pl_grids_src_step(src, u, 0, 0, d, z, s));
+        }
+    }
+    knob[13] = PL_GRIDS_SRC_USER;
+    pl_grids_preview_src(knob, u, out);
+    CHECK(out[3] == ((1 << 1) | (64 << 1)));
+}
+
 int main(void)
 {
+    RUN(test_preview_src);
+    RUN(test_user_edit_and_blob);
     RUN(test_corner_nodes);
     RUN(test_original_bytes);
     RUN(test_mix_midpoint);
@@ -195,5 +432,11 @@ int main(void)
     RUN(test_perturb_clamps);
     RUN(test_u8);
     RUN(test_preview_matches_step);
+    RUN(test_src_map_is_old_map);
+    RUN(test_bank_shape);
+    RUN(test_bank_default_density);
+    RUN(test_density_order);
+    RUN(test_user_source);
+    RUN(test_copy);
     TEST_MAIN_END();
 }

@@ -5,6 +5,10 @@
 
 #include <string.h>
 
+#define GOLD_A 0x681deb03u
+#define GOLD_B 0x2a02f97du // плотный набор: очереди бочки двумя ногами (до них было 0xc3807805)
+#define GOLD_C 0x006aab7bu
+
 static acid_drummer_t d;
 static acid_hit_t h[ACID_DRUMMER_MAX];
 
@@ -311,7 +315,11 @@ TEST(test_list_ignore)
     CHECK(acid_drummer_set(&d, DRM_FILL_LEN, 2) == 1);
     CHECK(acid_drummer_set(&d, DRM_FILL_LEN, 3) == 0 && d.knob[DRM_FILL_LEN] == 2);
     CHECK(acid_drummer_set(&d, 0, 5) == 0);
-    CHECK(acid_drummer_set(&d, 13, 5) == 0);
+    CHECK(acid_drummer_set(&d, DRM_SRC, PL_GRIDS_SRCS - 1) == 1);
+    CHECK(acid_drummer_set(&d, DRM_SRC, PL_GRIDS_SRCS) == 0 && d.knob[DRM_SRC] == PL_GRIDS_SRCS - 1);
+    CHECK(acid_drummer_set(&d, DRM_SWING, 3) == 1);
+    CHECK(acid_drummer_set(&d, DRM_SWING, 4) == 0 && d.knob[DRM_SWING] == 3);
+    CHECK(acid_drummer_set(&d, 15, 1) == 0);
 }
 
 TEST(test_defaults)
@@ -321,6 +329,7 @@ TEST(test_defaults)
     CHECK(d.knob[DRM_KICK] == 80 && d.knob[DRM_SNARE] == 70 && d.knob[DRM_HAT] == 90);
     CHECK(d.knob[DRM_CHAOS] == 0 && d.knob[DRM_HAT_MODE] == 0 && d.knob[DRM_TIME] == 0);
     CHECK(d.knob[DRM_FILL_EVERY] == 2 && d.knob[DRM_FILL_LEN] == 0 && d.knob[DRM_FILL_NOW] == 0);
+    CHECK(d.knob[DRM_SRC] == PL_GRIDS_SRC_MAP && d.knob[DRM_SWING] == 0 && acid_drummer_grid(&d) == PL_GRIDS_16);
 }
 
 TEST(test_deterministic)
@@ -344,8 +353,184 @@ TEST(test_deterministic)
     }
 }
 
+// Источник MAP играет как до банка: контрольная сумма нот и силы по трём наборам ручек (снята до правки;
+// набор B пересчитан после двух ног - там бочка идёт очередями).
+static uint32_t run_sum(void)
+{
+    uint32_t sum = 2166136261u;
+    for (int i = 0; i < 16 * 16; i++) {
+        if (i == 37) {
+            acid_drummer_set(&d, DRM_FILL_NOW, 1);
+        }
+        int n = acid_drummer_step(&d, i % 16, (uint32_t)(i / 16), h);
+        sum = (sum ^ (uint32_t)n) * 16777619u;
+        for (int k = 0; k < n; k++) {
+            sum = (sum ^ h[k].note) * 16777619u;
+            sum = (sum ^ h[k].vel) * 16777619u;
+        }
+    }
+    return sum;
+}
+
+TEST(test_map_golden)
+{
+    setup(40, 90, 100, 90, 110);
+    acid_drummer_set(&d, DRM_CHAOS, 100);
+    acid_drummer_set(&d, DRM_FILL_EVERY, 1);
+    acid_drummer_set(&d, DRM_FILL_LEN, 2);
+    acid_drummer_set(&d, DRM_HAT_MODE, DRM_HAT_MIX);
+    uint32_t a = run_sum();
+    setup(100, 20, 127, 127, 127);
+    acid_drummer_set(&d, DRM_TIME, DRM_TIME_RIDE);
+    acid_drummer_set(&d, DRM_FILL_EVERY, 2);
+    uint32_t b = run_sum();
+    setup(64, 64, 80, 70, 90);
+    uint32_t c = run_sum();
+    if (a != GOLD_A || b != GOLD_B || c != GOLD_C) {
+        printf("  golden: 0x%08xu 0x%08xu 0x%08xu\n", (unsigned)a, (unsigned)b, (unsigned)c);
+    }
+    CHECK(a == GOLD_A && b == GOLD_B && c == GOLD_C);
+}
+
+static int vel_of_note(const acid_hit_t *x, int n, int note)
+{
+    for (int i = 0; i < n; i++) {
+        if (x[i].note == note) {
+            return x[i].vel;
+        }
+    }
+    return -1;
+}
+
+// Банк: FOUR FLOOR при умолчаниях плотности - бочка на каждую долю, малый на 2 и 4, точка карты не важна.
+TEST(test_bank_source)
+{
+    for (int pt = 0; pt < 2; pt++) {
+        setup(pt ? 3 : 120, pt ? 99 : 7, 80, 70, 90);
+        acid_drummer_set(&d, DRM_SRC, 1);
+        CHECK(strcmp(pl_grids_bank[0].name, "FOUR FLOOR") == 0);
+        for (int i = 0; i < 32; i++) {
+            int n = acid_drummer_step(&d, i % 16, (uint32_t)(i / 16), h);
+            CHECK(has(h, n, 36) == (i % 4 == 0));
+            CHECK(has(h, n, 38) == (i % 16 == 4 || i % 16 == 12));
+            CHECK(has(h, n, 42) == (i % 4 == 2)); // украшения хэта при плотности 90 молчат
+            if (i % 4 == 0) {
+                CHECK(vel_of_note(h, n, 36) >= 112);
+            }
+        }
+    }
+}
+
+// Свой рисунок: три силы удара, плотность убирает госты первыми.
+TEST(test_user_ghosts)
+{
+    static pl_grids_pat_t u[PL_GRIDS_USER];
+    memset(u, 0, sizeof u);
+    u[0].lv[32 + 0] = PL_GRIDS_LV_ACC;
+    u[0].lv[32 + 1] = PL_GRIDS_LV_HIT;
+    u[0].lv[32 + 2] = PL_GRIDS_LV_GHOST;
+    setup(64, 64, 80, 70, 90);
+    acid_drummer_use_user(&d, u);
+    acid_drummer_set(&d, DRM_SRC, PL_GRIDS_SRC_USER);
+    for (int rep = 0; rep < 8; rep++) {
+        int n = acid_drummer_step(&d, 0, 0, h);
+        int v = vel_of_note(h, n, 38);
+        CHECK(n == 1 && v >= 112 && v <= 128);
+        n = acid_drummer_step(&d, 1, 0, h);
+        v = vel_of_note(h, n, 38);
+        CHECK(n == 1 && v >= 82 && v <= 98);
+        n = acid_drummer_step(&d, 2, 0, h);
+        v = vel_of_note(h, n, 38);
+        CHECK(n == 1 && v >= 37 && v <= 53);
+        CHECK(acid_drummer_step(&d, 3, 0, h) == 0);
+    }
+    acid_drummer_set(&d, DRM_SNARE, 50);
+    CHECK(acid_drummer_step(&d, 1, 0, h) == 1);
+    CHECK(acid_drummer_step(&d, 2, 0, h) == 0); // гост ушёл
+    // Без своих рисунков источник молчит.
+    acid_drummer_use_user(&d, NULL);
+    acid_drummer_set(&d, DRM_SNARE, 127);
+    CHECK(acid_drummer_step(&d, 0, 0, h) == 0);
+}
+
+// Триольная сетка: 12 шагов в такте, доля - 3 шага; сбивка, педаль и крэш считаются от неё.
+TEST(test_triplet_grid)
+{
+    setup(64, 64, 80, 70, 90);
+    acid_drummer_set(&d, DRM_SRC, PL_GRIDS_BANK); // последний в банке: триольный
+    CHECK(strcmp(pl_grids_bank[PL_GRIDS_BANK - 1].name, "SHUFFLE") == 0);
+    CHECK(acid_drummer_grid(&d) == PL_GRIDS_12T);
+    acid_drummer_set(&d, DRM_TIME, DRM_TIME_RIDE);
+    acid_drummer_set(&d, DRM_FILL_EVERY, 1); // каждые 4 такта
+    acid_drummer_set(&d, DRM_FILL_LEN, 0);   // 1 доля
+    for (int bar = 0; bar < 5; bar++) {
+        for (int st = 0; st < 12; st++) {
+            int n = acid_drummer_step(&d, st, (uint32_t)bar, h);
+            CHECK(has(h, n, 44) == (st == 3 || st == 9));
+            int in_fill = bar == 3 && st >= 9;
+            CHECK((d.fill_from < d.fill_to && st >= d.fill_from && st < d.fill_to) == in_fill);
+            if (in_fill) {
+                CHECK(!has(h, n, 51) && !has(h, n, 53)); // рука времени в сбивке молчит
+            }
+            CHECK(has(h, n, 49) == (bar == 4 && st == 0)); // крэш после сбивки
+        }
+    }
+    // «Сейчас» - с ближайшей доли триольной сетки.
+    acid_drummer_set(&d, DRM_FILL_EVERY, 0);
+    acid_drummer_step(&d, 0, 8, h);
+    acid_drummer_set(&d, DRM_FILL_NOW, 1);
+    acid_drummer_step(&d, 4, 8, h);
+    CHECK(d.fill_from == d.fill_to);
+    acid_drummer_step(&d, 5, 8, h);
+    CHECK(d.fill_from == d.fill_to);
+    acid_drummer_step(&d, 6, 8, h);
+    CHECK(d.fill_from == 6 && d.fill_to == 12);
+}
+
+// Две ноги: бочка на соседних шагах чередует правую и левую (левая слабее), в очереди удары вне доли легче,
+// первая доля группы - в полную силу. Одиночные удары не трогаем.
+TEST(test_two_feet)
+{
+    setup(64, 64, 80, 70, 90);
+    acid_drummer_set(&d, DRM_SRC, 16); // BOMB BLAST: бочка XxxxXxxx
+    CHECK(strcmp(pl_grids_bank[15].name, "BOMB BLAST") == 0);
+    int sum[4] = {0, 0, 0, 0}, n_sum = 0;
+    for (int i = 0; i < 64; i++) {
+        int n = acid_drummer_step(&d, i % 16, (uint32_t)(i / 16), h);
+        int v = vel_of_note(h, n, 36);
+        CHECK(v > 0);
+        if (i >= 4) { // первая доля - ещё не очередь
+            sum[i % 4] += v;
+            n_sum += i % 4 == 0;
+        }
+    }
+    int beat = sum[0] / n_sum, l1 = sum[1] / n_sum, r = sum[2] / n_sum, l2 = sum[3] / n_sum;
+    CHECK(beat > 112);              // доля: акцент в полную силу
+    CHECK(r < 90 && r > 76);        // правая вне доли: чуть легче обычного
+    CHECK(l1 < r - 6 && l2 < r - 6); // левая слабее правой
+    CHECK(l1 > 60 && l2 > 60);
+
+    // Одиночные удары (FOUR FLOOR) - как раньше.
+    setup(64, 64, 80, 70, 90);
+    acid_drummer_set(&d, DRM_SRC, 1);
+    for (int i = 0; i < 32; i++) {
+        int n = acid_drummer_step(&d, i % 16, (uint32_t)(i / 16), h);
+        if (i % 4 == 0) {
+            CHECK(vel_of_note(h, n, 36) >= 112);
+        }
+    }
+    // Стоп сбрасывает очередь: первый удар после него - правая в полную силу.
+    setup(64, 64, 80, 70, 90);
+    acid_drummer_set(&d, DRM_SRC, 16);
+    acid_drummer_step(&d, 0, 0, h);
+    acid_drummer_reset(&d);
+    int n = acid_drummer_step(&d, 1, 0, h);
+    CHECK(vel_of_note(h, n, 36) >= 82);
+}
+
 int main(void)
 {
+    RUN(test_two_feet);
     RUN(test_off_silent);
     RUN(test_limbs);
     RUN(test_hat_modes);
@@ -356,5 +541,9 @@ int main(void)
     RUN(test_list_ignore);
     RUN(test_defaults);
     RUN(test_deterministic);
+    RUN(test_map_golden);
+    RUN(test_bank_source);
+    RUN(test_user_ghosts);
+    RUN(test_triplet_grid);
     TEST_MAIN_END();
 }

@@ -63,6 +63,8 @@ lv_obj_t *ui_label(lv_obj_t *parent, const lv_font_t *font, uint32_t color);
 lv_obj_t *ui_box(lv_obj_t *parent, int x, int y, int w, int h, uint32_t bg);
 void ui_show(lv_obj_t *o, int on);
 void ui_text(lv_obj_t *l, const char *s);
+// Открыть сетку выбора значения ручки штатной страницы (список). Без LVGL: можно из ввода.
+void ui_open_pick(int page, int enc);
 
 // ui_custom.c: под локом LVGL, кроме *_input.
 void uc_build(lv_obj_t *scr);

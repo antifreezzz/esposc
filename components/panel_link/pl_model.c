@@ -129,6 +129,12 @@ void pl_model_apply(pl_model_t *m, uint8_t type, const uint8_t *payload, size_t 
         m->have_load = 1;
     } else if (type == PL_GRIDS_STEP && len == 1) {
         m->grids_step = payload[0] < 32 ? payload[0] : -1;
+    } else if (type == PL_GRIDS_PAT && len == sizeof(pl_grids_pat_frame_t)) {
+        pl_grids_pat_frame_t fr;
+        memcpy(&fr, payload, sizeof fr);
+        if (pl_grids_user_set(m->gpat, fr.slot, &fr.pat)) {
+            m->gpat_have |= 1 << fr.slot;
+        }
     } else if (type == PL_SEQ_DUMP && len == sizeof(pl_seq_dump_t) && payload[0] < PL_SEQ_SYNTHS) {
         memcpy(&m->seq[payload[0]], payload, len);
         m->seq_have |= 1 << payload[0];
@@ -257,4 +263,19 @@ int pl_model_seq_bpm(pl_model_t *m, int bpm)
         m->seq[k].bpm = (uint8_t)bpm;
     }
     return 1;
+}
+
+static int gpat_ok(const pl_model_t *m, int slot)
+{
+    return slot >= 0 && slot < PL_GRIDS_USER && (m->gpat_have >> slot & 1);
+}
+
+int pl_model_grids_cell(pl_model_t *m, int slot, int part, int step, int lv)
+{
+    return gpat_ok(m, slot) && pl_grids_user_cell(m->gpat, slot, part, step, lv);
+}
+
+int pl_model_grids_pat(pl_model_t *m, int slot, const pl_grids_pat_t *pat)
+{
+    return gpat_ok(m, slot) && pl_grids_user_set(m->gpat, slot, pat);
 }

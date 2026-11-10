@@ -345,8 +345,38 @@ TEST(test_seq_dump_pos_and_local_edits)
     CHECK(m.seq[1].pat[2][3] == (5 | PL_SEQ_ACC));
 }
 
+// Свои рисунки Grids: кадр с синта кладётся в модель, правки панели - сразу в свою копию.
+TEST(test_grids_patterns)
+{
+    static pl_model_t g;
+    pl_model_init(&g);
+    CHECK(g.gpat_have == 0);
+    CHECK(pl_model_grids_cell(&g, 0, 0, 0, 255) == 0); // рисунок ещё не пришёл
+    pl_grids_pat_frame_t fr;
+    memset(&fr, 0, sizeof fr);
+    fr.slot = 2;
+    fr.pat.grid = PL_GRIDS_12T;
+    fr.pat.lv[40] = 176;
+    pl_model_apply(&g, PL_GRIDS_PAT, (const uint8_t *)&fr, sizeof fr, 0);
+    CHECK(g.gpat_have == 4 && g.gpat[2].grid == PL_GRIDS_12T && g.gpat[2].lv[40] == 176);
+    CHECK(pl_model_grids_cell(&g, 2, 1, 9, 124) == 1 && g.gpat[2].lv[41] == 124);
+    CHECK(pl_model_grids_cell(&g, 1, 1, 9, 124) == 0);
+    fr.slot = PL_GRIDS_USER; // вне списка
+    pl_model_apply(&g, PL_GRIDS_PAT, (const uint8_t *)&fr, sizeof fr, 0);
+    CHECK(g.gpat_have == 4);
+    fr.slot = 0;
+    fr.pat.grid = 7; // битая сетка
+    pl_model_apply(&g, PL_GRIDS_PAT, (const uint8_t *)&fr, sizeof fr, 0);
+    CHECK(g.gpat_have == 4);
+    pl_grids_pat_t p = g.gpat[2];
+    p.lv[0] = 255;
+    CHECK(pl_model_grids_pat(&g, 2, &p) == 1 && g.gpat[2].lv[0] == 255);
+    CHECK(pl_model_grids_pat(&g, 3, &p) == 0);
+}
+
 int main(void)
 {
+    RUN(test_grids_patterns);
     RUN(test_load_frame_stored);
     RUN(test_grids_step_frame);
     RUN(test_load_wrong_len_ignored);

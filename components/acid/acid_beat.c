@@ -34,3 +34,15 @@ int acid_beat_tick(acid_beat_t *b)
     }
     return b->tick++ == 0;
 }
+
+int acid_beat_grid_due(const acid_beat_t *b, int grid, int swing)
+{
+    if (b->stopped || b->tick == 0) {
+        return -1;
+    }
+    int t = b->step * ACID_BEAT_TICKS + b->tick - 1; // тик в такте: acid_beat_tick уже шагнул дальше
+    if (grid) {
+        return t % 8 == 0 ? t / 8 : -1;
+    }
+    return b->tick - 1 == ((b->step & 1) ? swing : 0) ? b->step : -1;
+}

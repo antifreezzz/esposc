@@ -125,8 +125,43 @@ TEST(test_synth_kick_level)
     CHECK(peak <= 0.42f);
 }
 
+// Удар с силой: тихий - меньше щелчка (высота стартует ниже), полный - как старый триггер, плюс малый разброс
+// тона и глубины от удара к удару, чтобы очередь не звучала пулемётом.
+TEST(test_kick_velocity_timbre)
+{
+    acid_kick_t k;
+    acid_kick_init(&k, SR);
+    acid_kick_trigger_vel(&k, 1.0f);
+    CHECK(k.pitch_env == 1.0f && k.amp_env == 1.0f && k.phase == 0.0f);
+    int loud = rising_crossings(&k, 960); // первые 20 мс
+    acid_kick_init(&k, SR);
+    acid_kick_trigger_vel(&k, 0.3f);
+    CHECK(k.pitch_env > 0.4f && k.pitch_env < 0.8f);
+    int soft = rising_crossings(&k, 960);
+    CHECK(soft < loud);
+
+    acid_kick_init(&k, SR);
+    float lo_min = 1e9f, lo_max = 0.0f, sw_min = 1e9f, sw_max = 0.0f;
+    for (int i = 0; i < 200; i++) {
+        acid_kick_trigger_vel(&k, 1.0f);
+        lo_min = fminf(lo_min, k.hit_low), lo_max = fmaxf(lo_max, k.hit_low);
+        sw_min = fminf(sw_min, k.hit_sweep), sw_max = fmaxf(sw_max, k.hit_sweep);
+    }
+    // Тон гуляет в пределах +-0.5 % (саб не плывёт), глубина щелчка - +-5 %.
+    CHECK(lo_min >= k.low_hz * 0.995f && lo_max <= k.low_hz * 1.005f && lo_max - lo_min > k.low_hz * 0.004f);
+    CHECK(sw_min >= k.sweep_hz * 0.95f && sw_max <= k.sweep_hz * 1.05f && sw_max - sw_min > k.sweep_hz * 0.04f);
+    CHECK(k.low_hz == ACID_KICK_LOW_HZ && k.sweep_hz == ACID_KICK_SWEEP_HZ); // ручки не дрейфуют
+    // Старый триггер и смена ручек - без разброса.
+    acid_kick_trigger(&k);
+    CHECK(k.hit_low == k.low_hz && k.hit_sweep == k.sweep_hz);
+    acid_kick_trigger_vel(&k, 0.8f);
+    acid_kick_set(&k, 60.0f, 200.0f, 0.03f, 0.08f);
+    CHECK(k.hit_low == 60.0f && k.hit_sweep == 200.0f);
+}
+
 int main(void)
 {
+    RUN(test_kick_velocity_timbre);
     RUN(test_kick_matches_reference);
     RUN(test_kick_silent_until_trigger);
     RUN(test_kick_decays);

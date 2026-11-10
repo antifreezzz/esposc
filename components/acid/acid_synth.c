@@ -476,7 +476,7 @@ static void drum_on(acid_synth_t *s, int note, int vel)
     // Пэды BSP при мягкой игре дают velocity 3-30: без пола такие удары не слышны.
     float v = DRUM_VEL_FLOOR + (1.0f - DRUM_VEL_FLOOR) * (float)vel / 127.0f;
     if (note == 36) {
-        acid_kick_trigger(&s->kick);
+        acid_kick_trigger_vel(&s->kick, v);
         s->kick_vel = v;
         acid_pump_hit(&s->pump, v); // от ноты: при бочке в нуле тоже качает
     } else if (note == 38 || note == 40) {
@@ -913,15 +913,15 @@ static void apply_page(acid_synth_t *s, int page, int slot, int v)
 }
 
 // Шаг автобарабанов: ноты барабанщика в ударку, как пэды BSP.
-static void grids_play(acid_synth_t *s)
+static void grids_play(acid_synth_t *s, int step)
 {
     acid_hit_t hit[ACID_DRUMMER_MAX];
-    int n = acid_drummer_step(&s->drummer, s->beat.step, s->beat.bar, hit);
+    int n = acid_drummer_step(&s->drummer, step, s->beat.bar, hit);
     for (int i = 0; i < n; i++) {
         drum_on(s, hit[i].note, hit[i].vel);
     }
     s->grids_hits += (uint32_t)n;
-    s->grids_step = s->drummer.knob[DRM_ON] ? (int)(s->beat.bar & 1) * ACID_BEAT_STEPS + s->beat.step : -1;
+    s->grids_step = s->drummer.knob[DRM_ON] ? (int)(s->beat.bar & 1) * ACID_BEAT_STEPS + step : -1;
 }
 
 // Ручка от пользователя (BSP, панель, сцена, демо): поменялось действующее значение - память пора записать.
@@ -1107,6 +1107,11 @@ static void seq_notes(acid_synth_t *s, const acid_seq_ev_t *ev, int n)
     }
 }
 
+void acid_synth_use_grids(acid_synth_t *s, const pl_grids_pat_t *user)
+{
+    acid_drummer_use_user(&s->drummer, user);
+}
+
 void acid_synth_use_seq(acid_synth_t *s, acid_seq_t *q)
 {
     s->seq = q;
@@ -1163,7 +1168,11 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
         int beat_step = -1;
         if (acid_beat_tick(&s->beat)) {
             beat_step = s->beat.step;
-            grids_play(s);
+        }
+        // Шаг Grids - свой: свинг задерживает нечётные шестнадцатые, триольный рисунок идёт 12 шагами в такте.
+        int grid_step = acid_beat_grid_due(&s->beat, acid_drummer_grid(&s->drummer), s->drummer.knob[DRM_SWING]);
+        if (grid_step >= 0) {
+            grids_play(s, grid_step);
         }
         if (s->seq) {
             acid_seq_ev_t sev[4];

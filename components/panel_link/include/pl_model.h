@@ -37,6 +37,8 @@ typedef struct {
     pl_seq_dump_t seq[PL_SEQ_SYNTHS]; // секвенсеры синтов: копия с синта и свои правки
     pl_seq_pos_t seq_pos[PL_SEQ_SYNTHS];
     int seq_have; // бит синта: дамп пришёл
+    pl_grids_pat_t gpat[PL_GRIDS_USER]; // свои рисунки Grids: копия с синта и свои правки
+    int gpat_have;                      // бит слота: рисунок пришёл
 } pl_model_t;
 
 void pl_model_init(pl_model_t *m);
@@ -62,3 +64,6 @@ int pl_model_seq_scale(pl_model_t *m, int synth, int pat, int scale); // 0..PL_S
 int pl_model_seq_row(pl_model_t *m, int synth, int row, const uint8_t cell[PL_SEQ_CELLS], int rep);
 int pl_model_seq_ctrl(pl_model_t *m, int synth, int run, int edit); // run PL_SEQ_KEEP - как есть
 int pl_model_seq_bpm(pl_model_t *m, int bpm); // общий у обоих синтов, 60..200
+// Свои рисунки Grids: правка своей копии сразу, не дожидаясь синта. 0 - рисунок ещё не пришёл или вне границ.
+int pl_model_grids_cell(pl_model_t *m, int slot, int part, int step, int lv);
+int pl_model_grids_pat(pl_model_t *m, int slot, const pl_grids_pat_t *pat);
