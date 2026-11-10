@@ -17,6 +17,10 @@
 #define PL_FRAME_MAX (PL_PAYLOAD_MAX + 4)
 #define PL_USER_PAGES 6 // свои страницы 14..19 (на BSP 10..15)
 #define PL_USER_FIRST 14
+// Встроенные страницы псевдонимов (вкладки MIX инструментов): следом за своими, номера BSP нет.
+#define PL_MIX_PAGES 3
+#define PL_PAGE_MIX_DRUMS (PL_USER_FIRST + PL_USER_PAGES) // 20
+#define PL_PAGE_MIX_SYN1 (PL_PAGE_MIX_DRUMS + 1)          // 21, синт 2 - следом
 #define PL_TARGETS 4
 #define PL_NONE 0xFF
 #define PL_TYPE_PETRI 25 // тип синта (энкодер 2 страниц 6-7): чашка Петри, у слоя не бывает

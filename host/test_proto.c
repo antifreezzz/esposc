@@ -227,6 +227,7 @@ TEST(test_page_bsp)
     CHECK(pl_page_bsp(PL_PAGE_LAYER1) == 16 && pl_page_bsp(PL_PAGE_LAYER1 + 1) == 17);
     CHECK(pl_page_bsp(PL_PAGE_GRIDS) == -1);
     CHECK(pl_page_bsp(PL_USER_FIRST) == 10 && pl_page_bsp(PL_USER_FIRST + 5) == 15);
+    CHECK(pl_page_bsp(PL_PAGE_MIX_DRUMS) == -1 && pl_page_bsp(PL_PAGE_MIX_SYN1 + 1) == -1);
 }
 
 // Шаг Grids: 1 байт; заголовок с другой длиной - не кадр.

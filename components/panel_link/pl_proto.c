@@ -133,6 +133,9 @@ int pl_page_bsp(int page)
     if (page == PL_PAGE_PETRI) {
         return 18;
     }
+    if (page >= PL_PAGE_MIX_DRUMS) {
+        return -1; // встроенные псевдонимы
+    }
     if (page >= PL_USER_FIRST) {
         return 10 + page - PL_USER_FIRST;
     }
