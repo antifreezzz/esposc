@@ -72,7 +72,7 @@ typedef struct {
 } acid_mod_t;
 
 #define ACID_MOD_BLOB (4 + ACID_MODS * (ACID_MOD_KNOBS + 2 * ACID_MOD_TARGETS))
-#define ACID_MOD_PER_CHUNK 2
+#define ACID_MOD_PER_CHUNK 1
 
 struct acid_synth;
 
@@ -95,5 +95,5 @@ int acid_mod_sum(const acid_mod_t *m, int page, int enc, int *n);
 int acid_mod_take_save(acid_mod_t *m);
 void acid_mod_export(const acid_mod_t *m, void *buf);
 int acid_mod_import(acid_mod_t *m, const void *buf, size_t len); // 0 - чужой blob, ничего не тронуто
-// Шаг модуляторов и применение изменившихся целей (не больше budget и ACID_MOD_PER_CHUNK, на защите >= 2 - 1).
+// Шаг модуляторов и применение изменившихся целей (не больше budget и ACID_MOD_PER_CHUNK, на защите >= 1 - стоп).
 int acid_mod_step(acid_mod_t *m, struct acid_synth *s, int budget);

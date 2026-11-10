@@ -394,20 +394,31 @@ TEST(test_mod_step_and_type_change)
         acid_mod_set(&m, 0, ACID_MOD_DEPTH1 + i, 100);
     }
     acid_mod_take_save(&m);
-    // За кусок не больше 2 ручек, по кругу.
-    CHECK(acid_mod_step(&m, &syn, 4) == 2);
-    CHECK(syn.mod_base[0][2] != 0xFF && syn.mod_base[0][3] != 0xFF && syn.mod_base[0][4] == 0xFF);
-    CHECK(acid_mod_step(&m, &syn, 4) == 2);
-    CHECK(syn.mod_base[0][4] != 0xFF && syn.mod_base[0][5] != 0xFF);
-    CHECK(acid_mod_step(&m, &syn, 4) == 0); // все 4 уже на своих значениях
+    // За кусок не больше 1 ручки, по кругу. Общий бюджет с макро ограничивает её ещё сильнее.
+    CHECK(acid_mod_step(&m, &syn, 2) == 1);
+    CHECK(syn.mod_base[0][2] != 0xFF && syn.mod_base[0][3] == 0xFF);
+    CHECK(acid_mod_step(&m, &syn, 1) == 1);
+    CHECK(syn.mod_base[0][3] != 0xFF && syn.mod_base[0][4] == 0xFF);
+    CHECK(acid_mod_step(&m, &syn, 2) == 1);
+    CHECK(syn.mod_base[0][4] != 0xFF && syn.mod_base[0][5] == 0xFF);
+    CHECK(acid_mod_step(&m, &syn, 2) == 1);
+    CHECK(syn.mod_base[0][5] != 0xFF);
+    CHECK(acid_mod_step(&m, &syn, 0) == 0); // обе ручки общего бюджета заняты макро
+    CHECK(acid_mod_step(&m, &syn, 2) == 0); // все 4 уже на своих значениях
 
-    // На ступени защиты 2 - не больше 1 ручки за кусок.
-    syn.tight = 2;
-    acid_mod_set(&m, 0, ACID_MOD_DEPTH1, 40);
-    acid_mod_set(&m, 0, ACID_MOD_DEPTH1 + 1, 40);
-    CHECK(acid_mod_step(&m, &syn, 4) == 1);
-    CHECK(acid_mod_step(&m, &syn, 4) == 1);
+    // На любой ступени защиты модуляция и действующие значения замирают, база остаётся под оверлеем.
+    for (int tight = 1; tight <= 3; tight++) {
+        syn.tight = tight;
+        float out = acid_mod_out(&m, 0);
+        int effective = syn.raw[0][2];
+        int base = acid_synth_knob(&syn, 0, 2);
+        acid_mod_set(&m, 0, ACID_MOD_DEPTH1, tight == 1 ? 40 : 30);
+        CHECK(acid_mod_step(&m, &syn, 2) == 0);
+        CHECK(acid_mod_out(&m, 0) == out && syn.raw[0][2] == effective);
+        CHECK(acid_synth_knob(&syn, 0, 2) == base && syn.mod_base[0][2] != 0xFF);
+    }
     syn.tight = 0;
+    CHECK(acid_mod_step(&m, &syn, 2) == 1); // после защиты движение продолжается с новой глубиной
 
     // Глубина 64 (ноль) и удаление цели возвращают базу и снимают оверлей.
     acid_mod_set(&m, 0, ACID_MOD_DEPTH1, 64);
@@ -423,6 +434,7 @@ TEST(test_mod_step_and_type_change)
     acid_mod_target(&m, 0, 1, 6, 10); // M ENV -> у 303 пусто
     acid_mod_set(&m, 0, ACID_MOD_DEPTH1, 100);
     acid_mod_set(&m, 0, ACID_MOD_DEPTH1 + 1, 100);
+    acid_mod_step(&m, &syn, 4);
     acid_mod_step(&m, &syn, 4);
     CHECK(syn.mod_base[6][2] == 64 && syn.mod_base[6][10] == 64);
     acid_synth_set_knob(&syn, 6, 1, 0); // 303: оверлей снят сразу

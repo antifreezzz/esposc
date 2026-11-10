@@ -295,6 +295,9 @@ int acid_mod_import(acid_mod_t *m, const void *buf, size_t len)
 
 int acid_mod_step(acid_mod_t *m, acid_synth_t *s, int budget)
 {
+    if (s->tight >= 1) {
+        return 0; // защита: фазы и последние действующие значения замирают, базу не снимаем
+    }
     acid_mod_run(m, acid_synth_take_trig(s), acid_synth_clock_pos(s));
     uint16_t want[ACID_PAGES] = {0};
     for (int k = 0; k < ACID_MODS; k++) {
@@ -316,10 +319,7 @@ int acid_mod_step(acid_mod_t *m, acid_synth_t *s, int budget)
             }
         }
     }
-    int lim = s->tight >= 2 ? 1 : ACID_MOD_PER_CHUNK;
-    if (budget < lim) {
-        lim = budget;
-    }
+    int lim = budget < ACID_MOD_PER_CHUNK ? budget : ACID_MOD_PER_CHUNK;
     if (lim <= 0) {
         return 0;
     }

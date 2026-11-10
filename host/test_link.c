@@ -353,8 +353,9 @@ TEST(test_macro_targets_limited_per_step)
     two_macros();
     panel(ACID_USER_FIRST, 2, 100);
     panel(ACID_USER_FIRST, 3, 100);
-    CHECK(drain() == ACID_LINK_PER_CHUNK);
-    CHECK(drain() == 8 - ACID_LINK_PER_CHUNK);
+    for (int i = 0; i < 4; i++) {
+        CHECK(drain() == 2);
+    }
     CHECK(drain() == 0);
     for (int i = 0; i < 4; i++) {
         CHECK(knob(0, 2 + i) == 100 && knob(8, 3 + i) == 100);
@@ -367,7 +368,8 @@ TEST(test_macro_latest_value_wins)
     panel(ACID_USER_FIRST, 2, 10);
     panel(ACID_USER_FIRST, 2, 20);
     panel(ACID_USER_FIRST, 2, 30);
-    CHECK(drain() == 4); // одна запись на ручку, не три
+    CHECK(drain() == 2); // одна запись на ручку, не три
+    CHECK(drain() == 2);
     CHECK(knob(0, 2) == 30 && knob(0, 5) == 30);
     CHECK(drain() == 0);
 }
@@ -389,7 +391,8 @@ TEST(test_requeue_after_cancel)
     panel(ACID_USER_FIRST, 2, 100);
     panel(0, 2, 7);
     panel(ACID_USER_FIRST, 2, 50); // снова макро: запись живая, без дублей в очереди
-    CHECK(drain() == 4);
+    CHECK(drain() == 2);
+    CHECK(drain() == 2);
     CHECK(knob(0, 2) == 50);
     CHECK(drain() == 0);
 }
@@ -531,7 +534,7 @@ TEST(test_mod_edit_and_shared_budget)
     l.mod_due = 0;
     CHECK(acid_link_mod_edit(&l, &s, 4, 0, 0, 1) == 0 && l.mod_due == 0);
 
-    // Общий бюджет куска: 3 цели макро + модулятор = не больше 4 ручек за кусок.
+    // Общий бюджет куска: цели макро и модулятор вместе применяют не больше 2 ручек.
     for (int i = 0; i < 3; i++) {
         acid_custom_edit(&c, 0, 1, i, 0, 1 + i, 0, 127);
     }
@@ -541,9 +544,11 @@ TEST(test_mod_edit_and_shared_budget)
     acid_mod_set(&m, 0, ACID_MOD_DEPTH1, 100);
     acid_mod_set(&m, 0, ACID_MOD_DEPTH1 + 1, 100);
     panel(ACID_USER_FIRST, 2, 90);
-    CHECK(step() == 1 && l.step_n == 3);
+    CHECK(step() == 1 && l.step_n == 2);
     while (take()) {
     }
+    CHECK(acid_mod_step(&m, &s, ACID_LINK_PER_CHUNK - l.step_n) == 0);
+    CHECK(step() == 1 && l.step_n == 1);
     CHECK(acid_mod_step(&m, &s, ACID_LINK_PER_CHUNK - l.step_n) == 1);
     CHECK(step() == 0 && l.step_n == 0);
     CHECK(acid_mod_step(&m, &s, ACID_LINK_PER_CHUNK - l.step_n) == 1);

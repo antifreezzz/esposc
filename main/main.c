@@ -297,7 +297,7 @@ static void render_block(float *l, float *r)
         if (panel_uart_receive_petri(&pf)) {
             acid_synth_petri(&s_synth, &pf); // оба ядра свободны: ящики голосов чашки
         }
-        to_panel(acid_link_step(&s_link, &s_synth, &lev), &lev); // цели макро: не больше 4 ручек за кусок
+        to_panel(acid_link_step(&s_link, &s_synth, &lev), &lev); // макро и модуляторы: не больше 2 ручек за кусок
         if (!s_demo_on || MOD_BENCH) {
             acid_mod_step(&s_mod, &s_synth, ACID_LINK_PER_CHUNK - s_link.step_n);
         }

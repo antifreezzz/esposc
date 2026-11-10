@@ -19,7 +19,7 @@ typedef struct {
 
 #define ACID_LINK_PEND 8
 // Цели макро ставятся не сразу, а шагом связки: не больше стольких ручек за кусок (пересчёт до ~70 мкс на ручку).
-#define ACID_LINK_PER_CHUNK 4
+#define ACID_LINK_PER_CHUNK 2
 #define ACID_LINK_DEFER (ACID_PAGES * ACID_KNOBS)
 #define ACID_LINK_PAGES (ACID_PAGE_MOD1 + ACID_MODS)
 
