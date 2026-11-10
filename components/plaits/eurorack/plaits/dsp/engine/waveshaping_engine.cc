@@ -74,7 +74,7 @@ void WaveshapingEngine::Render(
   
   // Start from bandlimited slope signal.
   slope_.Render<OSCILLATOR_SHAPE_SLOPE>(f0, pw, out, size);
-  triangle_.Render<OSCILLATOR_SHAPE_SLOPE>(f0, 0.5f, aux, size);
+  // acid: AUX (sine + second fold) is never read: no triangle, no sine, no fold_2.
 
   // Try to estimate how rich the spectrum is, and reduce the range of the
   // waveshaping control accordingly.
@@ -125,12 +125,8 @@ void WaveshapingEngine::Render(
     float index = mix * wf_gain_modulation.Next() + 0.5f;
     float fold = InterpolateHermite(
         lut_fold + 1, index, 512.0f);
-    float fold_2 = -InterpolateHermite(
-        lut_fold_2 + 1, index, 512.0f);
-    
-    float sine = Sine(aux[i] * 0.25f + 0.5f);
     out[i] = fold;
-    aux[i] = sine + (fold_2 - sine) * overtone_gain_modulation.Next();
+    (void)overtone_gain_modulation;
   }
 }
 

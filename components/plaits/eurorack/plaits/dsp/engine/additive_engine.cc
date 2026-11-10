@@ -137,15 +137,8 @@ void AdditiveEngine::Render(
   harmonic_oscillator_[0].Render<1>(f0, &amplitudes_[0], out, size);
   harmonic_oscillator_[1].Render<13>(f0, &amplitudes_[12], out, size);
 
-  UpdateAmplitudes(
-      centroid,
-      slope,
-      bumps,
-      &amplitudes_[24],
-      organ_harmonics,
-      8);
-
-  harmonic_oscillator_[2].Render<1>(f0, &amplitudes_[24], aux, size);
+  // acid: AUX (organ harmonics) is never read.
+  (void)organ_harmonics;
 }
 
 }  // namespace plaits

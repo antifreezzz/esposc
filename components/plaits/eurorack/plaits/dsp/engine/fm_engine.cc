@@ -89,7 +89,6 @@ void FMEngine::Render(
       &previous_feedback_, 2.0f * parameters.morph - 1.0f, size);
   
   Downsampler carrier_downsampler(&carrier_fir_);
-  Downsampler sub_downsampler(&sub_fir_);
   
   while (size--) {
     const float max_uint32 = 4294967296.0f;
@@ -104,19 +103,16 @@ void FMEngine::Render(
       modulator_phase_ += static_cast<uint32_t>(max_uint32 * \
            _modulator_frequency * (1.0f + previous_sample_ * phase_feedback));
       carrier_phase_ += carrier_increment;
-      sub_phase_ += carrier_increment >> 1;
       float modulator_fb = feedback > 0.0f ? 0.25f * feedback * feedback : 0.0f;
       float modulator = SinePM(
           modulator_phase_, modulator_fb * previous_sample_);
       float carrier = SinePM(carrier_phase_, amount * modulator);
-      float sub = SinePM(sub_phase_, amount * carrier * 0.25f);
+      // acid: the AUX sub oscillator is never read.
       ONE_POLE(previous_sample_, carrier, 0.05f);
       carrier_downsampler.Accumulate(j, carrier);
-      sub_downsampler.Accumulate(j, sub);
     }
     
     *out++ = carrier_downsampler.Read();
-    *aux++ = sub_downsampler.Read();
   }
 }
 
