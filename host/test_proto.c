@@ -228,6 +228,28 @@ TEST(test_page_bsp)
     CHECK(pl_page_bsp(PL_PAGE_GRIDS) == -1);
     CHECK(pl_page_bsp(PL_USER_FIRST) == 10 && pl_page_bsp(PL_USER_FIRST + 5) == 15);
     CHECK(pl_page_bsp(PL_PAGE_MIX_DRUMS) == -1 && pl_page_bsp(PL_PAGE_MIX_SYN1 + 1) == -1);
+    CHECK(pl_page_bsp(PL_PAGE_MOD1) == 19 && pl_page_bsp(PL_PAGE_MOD1 + 3) == 22);
+    CHECK(pl_page_bsp(PL_PAGE_MOD1 + 4) == -1);
+}
+
+TEST(test_mod_frames)
+{
+    CHECK(sizeof(pl_mod_t) == 27);
+    CHECK(sizeof(pl_mod_edit_t) == 4);
+    pl_mod_t m = {.mod = 2, .knob = {0, 3, 80}, .t = {{6, 2}, {PL_NONE, 0}, {PL_NONE, 0}, {PL_NONE, 0}}, .held = {0x05, 0}};
+    pl_mod_edit_t ed = {.mod = 1, .idx = 3, .page = 8, .enc = 4};
+    int8_t pos[PL_MOD_PAGES] = {-127, 0, 64, 127};
+    uint8_t f[PL_FRAME_MAX];
+    start();
+    feed(f, pl_encode(PL_MOD, &m, sizeof m, f));
+    CHECK(frames == 1 && got_type == PL_MOD && got_len == sizeof m && memcmp(got_pl, &m, sizeof m) == 0);
+    feed(f, pl_encode(PL_MOD_EDIT, &ed, sizeof ed, f));
+    CHECK(frames == 2 && got_type == PL_MOD_EDIT && got_len == sizeof ed && memcmp(got_pl, &ed, sizeof ed) == 0);
+    feed(f, pl_encode(PL_MOD_POS, pos, sizeof pos, f));
+    CHECK(frames == 3 && got_type == PL_MOD_POS && got_len == sizeof pos && memcmp(got_pl, pos, sizeof pos) == 0);
+    start();
+    feed(f, pl_encode(PL_MOD_POS, pos, 3, f));
+    CHECK(frames == 0);
 }
 
 // Шаг Grids: 1 байт; заголовок с другой длиной - не кадр.
@@ -280,5 +302,6 @@ int main(void)
     RUN(test_page_bsp);
     RUN(test_grids_step_frame);
     RUN(test_seq_frames);
+    RUN(test_mod_frames);
     TEST_MAIN_END();
 }

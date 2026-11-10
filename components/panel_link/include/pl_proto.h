@@ -21,6 +21,11 @@
 #define PL_MIX_PAGES 3
 #define PL_PAGE_MIX_DRUMS (PL_USER_FIRST + PL_USER_PAGES) // 20
 #define PL_PAGE_MIX_SYN1 (PL_PAGE_MIX_DRUMS + 1)          // 21, синт 2 - следом
+// Модуляторы: страницы 23..26 внутри, на BSP 19..22.
+#define PL_MOD_PAGES 4
+#define PL_PAGE_MOD1 (PL_PAGE_MIX_DRUMS + PL_MIX_PAGES) // 23
+#define PL_BSP_MOD_FIRST 19
+#define PL_MOD_TARGETS 4
 #define PL_TARGETS 4
 #define PL_NONE 0xFF
 #define PL_TYPE_PETRI 25 // тип синта (энкодер 2 страниц 6-7): чашка Петри, у слоя не бывает
@@ -53,6 +58,9 @@ enum {
     PL_SEQ_POS = 24,  // синт -> панель: позиция игры и темп (pl_seq_pos_t), при изменении
     PL_SEQ_SCALE = 25, // панель -> синт: лад такта {synth, pat, scale} (0 - со страницы 9, 1 + k - лад k)
     PL_MODE = 26,      // панель -> синт: поставить режим (1 байт: PL_DEMO_* без BSP, с BSP - PL_MODE_LIVE или PL_DEMO_DRONE)
+    PL_MOD = 27,       // синт -> панель: ручки, цели и подхват одного модулятора (pl_mod_t)
+    PL_MOD_EDIT = 28,  // панель -> синт: поставить или убрать цель модулятора (pl_mod_edit_t)
+    PL_MOD_POS = 29,   // синт -> панель: 4 байта out (int8, -127..127)
 };
 
 // Секвенсер: байт шага - ступень 0..14 (PL_SEQ_REST - пауза) и флаги; совпадает с ACID_SEQ_* синта.
@@ -143,6 +151,21 @@ typedef struct {
 typedef struct {
     uint8_t up, enc, idx, pe, lo, hi; // pe PL_NONE - убрать цель idx
 } pl_custom_edit_t;
+
+typedef struct {
+    uint8_t page, enc; // page PL_NONE - пусто
+} pl_mod_target_t;
+
+typedef struct {
+    uint8_t mod;                       // модулятор 0..3
+    uint8_t knob[PL_KNOBS];            // значения ручек модулятора
+    pl_mod_target_t t[PL_MOD_TARGETS]; // цели 0..3
+    uint8_t held[2];                   // бит enc - 1: ручка ждёт подхвата BSP
+} pl_mod_t;
+
+typedef struct {
+    uint8_t mod, idx, page, enc; // page PL_NONE - убрать цель idx
+} pl_mod_edit_t;
 
 enum { PL_SCENE_RECALL, PL_SCENE_STORE };
 typedef struct {
