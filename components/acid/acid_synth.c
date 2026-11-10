@@ -254,6 +254,9 @@ int acid_page_from_bsp(int v)
     if (v == ACID_BSP_PETRI) {
         return ACID_PAGE_PETRI;
     }
+    if (v >= ACID_BSP_MOD_FIRST && v < ACID_BSP_MOD_FIRST + ACID_MODS) {
+        return ACID_PAGE_MOD1 + v - ACID_BSP_MOD_FIRST;
+    }
     if (v >= 0 && v < ACID_BSP_USER_FIRST) {
         return v;
     }
@@ -270,6 +273,9 @@ int acid_page_to_bsp(int page)
 {
     if (page == ACID_PAGE_PETRI) {
         return ACID_BSP_PETRI;
+    }
+    if (page >= ACID_PAGE_MOD1 && page < ACID_PAGE_MOD1 + ACID_MODS) {
+        return ACID_BSP_MOD_FIRST + page - ACID_PAGE_MOD1;
     }
     if (page >= 0 && page < ACID_PAGE_LAYER1) {
         return page;
