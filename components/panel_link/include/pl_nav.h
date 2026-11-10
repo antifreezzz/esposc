@@ -42,5 +42,7 @@ int pl_nav_act_tap(int group, int n, int x0, int y0, int x1, int y1); // ном�
 // Выбор режима: без BSP (live 0) METAL, ACID, DRONE, SEQ; с BSP LIVE, DRONE. Коды для PL_MODE в mode, число - ответ.
 int pl_nav_modes(int live, int mode[4]);
 const char *pl_nav_mode_name(int live, int mode);
+// Поле demo модели после выбора mode, до снимка синта: без BSP - песня, с BSP - дрон или прежняя песня.
+int pl_nav_mode_demo(int live, int demo, int mode);
 void pl_nav_mode_rect(int n, int i, int *x, int *y, int *w, int *h); // плитка i из n на экране
 int pl_nav_mode_at(int n, int x, int y);                              // плитка под точкой, -1 мимо

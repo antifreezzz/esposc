@@ -206,7 +206,7 @@ TEST(test_mode_frame)
     start();
     feed(f, pl_encode(PL_MODE, NULL, 0, f));
     CHECK(frames == 0);
-    CHECK(PL_MODE_LIVE == 0);
+    CHECK(!pl_mode_ok(0, PL_MODE_LIVE)); // LIVE не совпадает ни с одной песней: устаревший снимок не включит демо
     for (int m = PL_DEMO_METAL; m <= PL_DEMO_SEQ; m++) {
         CHECK(pl_mode_ok(0, m));
     }

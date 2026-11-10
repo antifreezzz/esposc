@@ -1325,7 +1325,7 @@ static void overlay_input(pl_model_t *m, int tap, int x0, int y0, int x1, int y1
         int i = pl_nav_mode_at(n, x0, y0);
         if (i >= 0 && i == pl_nav_mode_at(n, x1, y1) && pl_model_linked(m, ms) && pl_mode_ok(m->mode, modes[i])) {
             link_mode(modes[i]);
-            m->demo = modes[i];
+            m->demo = pl_nav_mode_demo(m->mode, m->demo, modes[i]);
         }
         u.overlay = OVL_NONE;
     } else if (u.overlay == OVL_MORPH) {

@@ -452,7 +452,7 @@ static void synth_task(void *arg)
                 next_mode = (s_demo_song + 1) % (MODE_SEQ + 1);
             }
         }
-        int want = BENCH ? -1 : panel_uart_take_mode(); // панель выбрала режим из списка
+        int want = BENCH || fade ? -1 : panel_uart_take_mode(); // режим из списка; пока идёт уход - ждёт
         if (want >= 0 && fade == 0 && pl_mode_ok(live, want)) {
             if (live) {
                 if ((want == PL_DEMO_DRONE) != s_drone) {
