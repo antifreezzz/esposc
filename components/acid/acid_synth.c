@@ -11,6 +11,7 @@ uint32_t acid_prof[ACID_PROF_N];
 
 #include "acid_math.h"
 #include "acid_mem.h"
+#include "acid_mod.h"
 
 #define RES 0.85f
 #define FENV_NORMAL_HZ 3000.0f
@@ -242,6 +243,10 @@ void acid_synth_init(acid_synth_t *s, float sr)
     s->grids_step = -1;
     s->grids_hits = 0;
     s->page = PAGE_SYNTH1;
+    memset(s->mod_base, KNOB_NONE, sizeof s->mod_base);
+    memset(s->mod_mask, 0, sizeof s->mod_mask);
+    memset(s->mod_unset, 0, sizeof s->mod_unset);
+    s->trig = 0;
 }
 
 int acid_page_from_bsp(int v)
@@ -395,6 +400,10 @@ static int slot_note(const acid_synth_t *s, const acid_slot_t *v, int note)
 static void note_on(acid_synth_t *s, acid_slot_t *v, int note, int vel)
 {
     if (s->drone && v->nheld > 0) {
+        if (v == &s->slot[v->idx]) {
+            s->trig |= (v->idx ? ACID_TRIG_NOTE2 : ACID_TRIG_NOTE1) |
+                       (vel > ACCENT_VEL ? (v->idx ? ACID_TRIG_ACC2 : ACID_TRIG_ACC1) : 0);
+        }
         int old = v->held[v->nheld - 1];
         for (int i = 0; v->pet && i < v->nheld - 1; i++) {
             acid_petri_note_off(v->pet, v->held[i]);
@@ -415,6 +424,10 @@ static void note_on(acid_synth_t *s, acid_slot_t *v, int note, int vel)
         // Дребезг: та же нота сразу после короткого нажатия - это продолжение той же ноты.
         v->pend_note = -1;
         return;
+    }
+    if (v == &s->slot[v->idx]) {
+        s->trig |= (v->idx ? ACID_TRIG_NOTE2 : ACID_TRIG_NOTE1) |
+                   (vel > ACCENT_VEL ? (v->idx ? ACID_TRIG_ACC2 : ACID_TRIG_ACC1) : 0);
     }
     if (v->pend_note >= 0) {
         note_release(s, v, v->pend_note); // короткая нота закончилась, новая не слайдит из неё
@@ -476,19 +489,24 @@ static void drum_on(acid_synth_t *s, int note, int vel)
     // Пэды BSP при мягкой игре дают velocity 3-30: без пола такие удары не слышны.
     float v = DRUM_VEL_FLOOR + (1.0f - DRUM_VEL_FLOOR) * (float)vel / 127.0f;
     if (note == 36) {
+        s->trig |= ACID_TRIG_KICK;
         acid_kick_trigger(&s->kick);
         s->kick_vel = v;
         acid_pump_hit(&s->pump, v); // от ноты: при бочке в нуле тоже качает
     } else if (note == 38 || note == 40) {
+        s->trig |= ACID_TRIG_SNARE;
         acid_snare_trigger(&s->snare);
         s->snare_vel = v;
     } else if (note == 39) {
+        s->trig |= ACID_TRIG_CLAP;
         acid_clap_trigger(&s->clap);
         s->clap_vel = v;
     } else if (note == 42 || note == 44 || note == 46) {
+        s->trig |= ACID_TRIG_HAT;
         acid_hat_trigger(&s->hat, note == 46);
         s->hat_vel = v;
     } else if (acid_perc_inst_of(note, NULL) >= 0) {
+        s->trig |= ACID_TRIG_PERC;
         acid_perc_trigger(&s->perc, note, v);
     } else if (note == 49 || note == 51 || note == 53) {
         // Без пола: слои записанной динамики делит ручка чувствительности (страница 2).
@@ -822,6 +840,14 @@ static void page_synth(acid_synth_t *s, acid_slot_t *sl, int slot, int v, int la
             layer_sync(sl, &s->slot[sl->idx]);
         }
         if (v < ACID_TYPES + layer && !(layer && v == ACID_TYPE_PETRI)) {
+            if (v != sl->sel_type) {
+                int p = (layer ? ACID_PAGE_LAYER1 : PAGE_SYNTH1) + sl->idx;
+                for (int e = TYPE_ENC + 1; e < ACID_KNOBS; e++) {
+                    if (s->mod_mask[p] & (1u << e)) {
+                        acid_synth_mod_release(s, p, e);
+                    }
+                }
+            }
             type_request(sl, v); // значение на экране = номер типа, остальное игнор; слой не бывает PETRI
         }
     } else if (slot > TYPE_ENC && sl->sel_type != ACID_LAYER_OFF && synth_knob_ok(sl->sel_type, slot, v)) {
@@ -924,9 +950,32 @@ static void grids_play(acid_synth_t *s)
     s->grids_step = s->drummer.knob[DRM_ON] ? (int)(s->beat.bar & 1) * ACID_BEAT_STEPS + s->beat.step : -1;
 }
 
+// Индекс слота синта или слоя (0..3) по странице, -1 - не синт и не слой.
+static int synth_page_idx(int page)
+{
+    if (page == PAGE_SYNTH1 || page == PAGE_SYNTH1 + 1) {
+        return page - PAGE_SYNTH1;
+    }
+    if (page >= ACID_PAGE_LAYER1 && page < ACID_PAGE_LAYER1 + ACID_SLOTS) {
+        return ACID_SLOTS + page - ACID_PAGE_LAYER1;
+    }
+    return -1;
+}
+
 // Ручка от пользователя (BSP, панель, сцена, демо): поменялось действующее значение - память пора записать.
 static void user_knob(acid_synth_t *s, int page, int slot, int v)
 {
+    if (s->mod_base[page][slot] != KNOB_NONE) {
+        int idx = synth_page_idx(page);
+        if (idx >= 0) {
+            s->mod_unset[idx] &= (uint16_t)~(1u << slot);
+        }
+        if (s->mod_base[page][slot] != v) {
+            s->mod_base[page][slot] = (uint8_t)v;
+            s->save = 1;
+        }
+        return;
+    }
     int was = acid_synth_knob(s, page, slot);
     apply_page(s, page, slot, v);
     if (acid_synth_knob(s, page, slot) != was) {
@@ -966,7 +1015,7 @@ void acid_synth_set_knob(acid_synth_t *s, int page, int enc, int v)
     }
 }
 
-int acid_synth_knob(const acid_synth_t *s, int page, int enc)
+static int raw_knob(const acid_synth_t *s, int page, int enc)
 {
     if (page < 0 || page >= ACID_PAGES || enc < 0 || enc >= ACID_KNOBS) {
         return 0;
@@ -991,6 +1040,120 @@ int acid_synth_knob(const acid_synth_t *s, int page, int enc)
         return k != KNOB_NONE ? k : def[enc];
     }
     return s->raw[page][enc];
+}
+
+int acid_synth_knob(const acid_synth_t *s, int page, int enc)
+{
+    if (page < 0 || page >= ACID_PAGES || enc < 0 || enc >= ACID_KNOBS) {
+        return 0;
+    }
+    if (s->mod_base[page][enc] != KNOB_NONE) {
+        return s->mod_base[page][enc];
+    }
+    return raw_knob(s, page, enc);
+}
+
+unsigned acid_synth_take_trig(acid_synth_t *s)
+{
+    unsigned r = s->trig;
+    s->trig = 0;
+    return r;
+}
+
+uint32_t acid_synth_clock_pos(const acid_synth_t *s)
+{
+    const acid_beat_t *b = &s->beat;
+    return (b->bar * ACID_BEAT_STEPS + (uint32_t)b->step) * ACID_BEAT_TICKS + (uint32_t)(b->tick > 0 ? b->tick - 1 : 0);
+}
+
+int acid_synth_knob_smooth(const acid_synth_t *s, int page, int enc)
+{
+    if (!acid_mod_page_ok(page, enc)) {
+        return 0;
+    }
+    switch (page) {
+    case 0: return enc <= 14;
+    case 1: return 1;
+    case PAGE_DRUMS2: return enc <= 10;
+    case PAGE_TOMS: return enc >= 2;
+    case PAGE_TOMS + 1:
+    case PAGE_COW: return enc >= 2 && enc <= 13;
+    case PAGE_FX: return enc != 6 && enc != 9 && enc != 10 && enc <= 13;
+    case ACID_PAGE_GRIDS: return enc >= 2 && enc <= 7;
+    default: {
+        int idx = synth_page_idx(page);
+        if (idx < 0) {
+            return 0;
+        }
+        const acid_slot_t *sl = idx < ACID_SLOTS ? &s->slot[idx] : &s->layer[idx - ACID_SLOTS];
+        int t = sl->sel_type;
+        if (t == ACID_LAYER_OFF || enc == TYPE_ENC) {
+            return 0;
+        }
+        if (t == 0) {
+            return (enc >= 2 && enc <= 6) || enc == 8 || enc >= DRIVE_ENC;
+        }
+        if (t == ACID_TYPE_PETRI) {
+            return enc != PETRI_MODE_ENC && enc != PETRI_SHAPE_ENC;
+        }
+        return enc != 8;
+    }
+    }
+}
+
+int acid_synth_mod_apply(acid_synth_t *s, int page, int enc, int eff)
+{
+    if (!acid_synth_knob_smooth(s, page, enc)) {
+        return 0;
+    }
+    eff = eff < 0 ? 0 : eff > 127 ? 127 : eff;
+    if (s->mod_base[page][enc] == KNOB_NONE) {
+        s->mod_base[page][enc] = (uint8_t)raw_knob(s, page, enc);
+        s->mod_mask[page] |= (uint16_t)(1u << enc);
+        int idx = synth_page_idx(page);
+        if (idx >= 0) {
+            const acid_slot_t *sl = idx < ACID_SLOTS ? &s->slot[idx] : &s->layer[idx - ACID_SLOTS];
+            if (sl->sel_type < ACID_TYPES && sl->knob[sl->sel_type][enc] == KNOB_NONE) {
+                s->mod_unset[idx] |= (uint16_t)(1u << enc);
+            }
+        }
+    }
+    if (raw_knob(s, page, enc) == eff) {
+        return 0;
+    }
+    apply_page(s, page, enc, eff);
+    return 1;
+}
+
+void acid_synth_mod_release(acid_synth_t *s, int page, int enc)
+{
+    if (page < 0 || page >= ACID_PAGES || enc <= 0 || enc >= ACID_KNOBS || s->mod_base[page][enc] == KNOB_NONE) {
+        return;
+    }
+    int base = s->mod_base[page][enc];
+    s->mod_base[page][enc] = KNOB_NONE;
+    s->mod_mask[page] &= (uint16_t)~(1u << enc);
+    apply_page(s, page, enc, base);
+    int idx = synth_page_idx(page);
+    if (idx >= 0 && (s->mod_unset[idx] & (1u << enc))) {
+        s->mod_unset[idx] &= (uint16_t)~(1u << enc);
+        acid_slot_t *sl = idx < ACID_SLOTS ? &s->slot[idx] : &s->layer[idx - ACID_SLOTS];
+        if (sl->sel_type < ACID_TYPES) {
+            sl->knob[sl->sel_type][enc] = KNOB_NONE;
+        }
+    }
+}
+
+void acid_synth_mod_clear(acid_synth_t *s)
+{
+    for (int p = 0; p < ACID_PAGES; p++) {
+        uint16_t m = s->mod_mask[p];
+        for (int e = 1; m && e < ACID_KNOBS; e++) {
+            if (m & (1u << e)) {
+                acid_synth_mod_release(s, p, e);
+            }
+        }
+    }
 }
 
 // Перестройка дрона по 9 TONAL и TRANS: на границе такта и сразу при повороте ручки.
@@ -1163,6 +1326,13 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
         int beat_step = -1;
         if (acid_beat_tick(&s->beat)) {
             beat_step = s->beat.step;
+            s->trig |= ACID_TRIG_STEP;
+            if ((beat_step & 3) == 0) {
+                s->trig |= ACID_TRIG_BEAT;
+            }
+            if (beat_step == 0) {
+                s->trig |= ACID_TRIG_BAR | ((s->beat.bar & 3) == 0 ? ACID_TRIG_BAR4 : 0);
+            }
             grids_play(s);
         }
         if (s->seq) {
@@ -1571,8 +1741,17 @@ size_t acid_synth_export(const acid_synth_t *s, void *buf, size_t cap)
     b += sizeof BLOB_MAGIC;
     for (int k = 0; k < 2 * ACID_SLOTS; k++) {
         const acid_slot_t *v = k < ACID_SLOTS ? &s->slot[k] : &s->layer[k - ACID_SLOTS];
+        int page = k < ACID_SLOTS ? PAGE_SYNTH1 + k : ACID_PAGE_LAYER1 + k - ACID_SLOTS;
         *b++ = (uint8_t)v->sel_type;
         memcpy(b, v->knob, sizeof v->knob);
+        if (v->sel_type < ACID_TYPES && s->mod_mask[page]) {
+            uint8_t *row = b + (size_t)v->sel_type * ACID_KNOBS;
+            for (int e = 1; e < ACID_KNOBS; e++) {
+                if (s->mod_base[page][e] != KNOB_NONE) {
+                    row[e] = (s->mod_unset[k] & (1u << e)) ? KNOB_NONE : s->mod_base[page][e];
+                }
+            }
+        }
         b += sizeof v->knob;
     }
     memcpy(b, s->tonal.knob, sizeof s->tonal.knob);
@@ -1597,6 +1776,9 @@ int acid_synth_import(acid_synth_t *s, const void *buf, size_t len)
     if (!ver) {
         return 0;
     }
+    memset(s->mod_base, KNOB_NONE, sizeof s->mod_base);
+    memset(s->mod_mask, 0, sizeof s->mod_mask);
+    memset(s->mod_unset, 0, sizeof s->mod_unset);
     const int types = ver >= 4 ? ACID_TYPES : OLD_TYPES;
     b += sizeof BLOB_MAGIC;
     for (int k = 0; k < (ver == 2 ? 1 : 2) * ACID_SLOTS; k++) {

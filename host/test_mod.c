@@ -2,6 +2,9 @@
 #include <string.h>
 
 #include "acid_mod.h"
+#include "acid_synth.h"
+#include "pl_labels.h"
+#include "pl_pick.h"
 #include "test.h"
 
 #define DT (32.0f / 48000.0f) // кусок
@@ -306,6 +309,154 @@ TEST(test_blob)
     CHECK(!acid_mod_import(&b, buf, sizeof buf) && acid_mod_knob(&b, 2, ACID_MOD_RATE) != 99);
 }
 
+static acid_synth_t syn;
+
+static void midi_ev(int type, int ch, int d1, int d2)
+{
+    acid_midi_event_t ev = {.type = type, .ch = (uint8_t)ch, .d1 = (uint8_t)d1, .d2 = (uint8_t)d2};
+    acid_synth_midi(&syn, &ev);
+}
+
+TEST(test_synth_triggers)
+{
+    acid_synth_init(&syn, 48000.0f);
+    CHECK(acid_synth_take_trig(&syn) == 0);
+    midi_ev(ACID_MIDI_NOTE_ON, 4, 60, 100);
+    CHECK(acid_synth_take_trig(&syn) == ACID_TRIG_NOTE1);
+    CHECK(acid_synth_take_trig(&syn) == 0);
+    midi_ev(ACID_MIDI_NOTE_ON, 4, 62, 101);
+    CHECK(acid_synth_take_trig(&syn) == (ACID_TRIG_NOTE1 | ACID_TRIG_ACC1));
+    midi_ev(ACID_MIDI_NOTE_ON, 5, 48, 120);
+    CHECK(acid_synth_take_trig(&syn) == (ACID_TRIG_NOTE2 | ACID_TRIG_ACC2));
+    midi_ev(ACID_MIDI_NOTE_ON, 1, 36, 100);
+    midi_ev(ACID_MIDI_NOTE_ON, 1, 38, 100);
+    midi_ev(ACID_MIDI_NOTE_ON, 1, 39, 100);
+    midi_ev(ACID_MIDI_NOTE_ON, 1, 42, 100);
+    midi_ev(ACID_MIDI_NOTE_ON, 1, 41, 100);
+    CHECK(acid_synth_take_trig(&syn) ==
+          (ACID_TRIG_KICK | ACID_TRIG_SNARE | ACID_TRIG_CLAP | ACID_TRIG_HAT | ACID_TRIG_PERC));
+    midi_ev(ACID_MIDI_START, 0, 0, 0);
+    midi_ev(ACID_MIDI_CLOCK, 0, 0, 0);
+    CHECK(acid_synth_take_trig(&syn) == (ACID_TRIG_STEP | ACID_TRIG_BEAT | ACID_TRIG_BAR | ACID_TRIG_BAR4));
+    for (int i = 1; i < 6; i++) {
+        midi_ev(ACID_MIDI_CLOCK, 0, 0, 0);
+    }
+    CHECK(acid_synth_take_trig(&syn) == 0 && acid_synth_clock_pos(&syn) == 5);
+    midi_ev(ACID_MIDI_CLOCK, 0, 0, 0); // вторая шестнадцатая
+    CHECK(acid_synth_take_trig(&syn) == ACID_TRIG_STEP && acid_synth_clock_pos(&syn) == 6);
+    for (int i = 7; i <= 96; i++) {
+        midi_ev(ACID_MIDI_CLOCK, 0, 0, 0);
+    }
+    CHECK((acid_synth_take_trig(&syn) & (ACID_TRIG_BAR | ACID_TRIG_BAR4)) == ACID_TRIG_BAR);
+}
+
+TEST(test_synth_overlay_and_blob)
+{
+    acid_synth_init(&syn, 48000.0f);
+    acid_synth_set_knob(&syn, 6, 3, 90);
+    acid_synth_take_save(&syn);
+    static uint8_t blob0[ACID_SYNTH_BLOB], blob1[ACID_SYNTH_BLOB];
+    CHECK(acid_synth_export(&syn, blob0, sizeof blob0) == ACID_SYNTH_BLOB);
+    float cut0 = syn.slot[0].cut_base;
+
+    // Нетронутая ручка синта (6, 2 = 69), тронутая (6, 3 = 90) и ручка микса (0, 1 = 127).
+    CHECK(acid_synth_mod_apply(&syn, 6, 2, 115) == 1);
+    CHECK(acid_synth_mod_apply(&syn, 6, 2, 115) == 0); // то же значение повторно не пересчитывает
+    CHECK(acid_synth_mod_apply(&syn, 6, 3, 30) == 1);
+    CHECK(acid_synth_mod_apply(&syn, 0, 1, 50) == 1);
+    CHECK(syn.slot[0].cut_base > cut0 * 2.0f && syn.master < 0.5f);
+    CHECK(acid_synth_knob(&syn, 6, 2) == 69 && acid_synth_knob(&syn, 6, 3) == 90 && acid_synth_knob(&syn, 0, 1) == 127);
+    CHECK(!acid_synth_take_save(&syn));
+    CHECK(acid_synth_export(&syn, blob1, sizeof blob1) == ACID_SYNTH_BLOB);
+    CHECK(memcmp(blob0, blob1, ACID_SYNTH_BLOB) == 0);
+
+    // Правка базы под модуляцией: меняет базу и ставит флаг записи, звук обновит следующий шаг модулятора.
+    float mod_cut = syn.slot[0].cut_base;
+    acid_synth_set_knob(&syn, 6, 2, 80);
+    CHECK(acid_synth_knob(&syn, 6, 2) == 80 && acid_synth_take_save(&syn));
+    CHECK(syn.slot[0].cut_base == mod_cut);
+
+    acid_synth_mod_release(&syn, 6, 2);
+    CHECK(acid_synth_knob(&syn, 6, 2) == 80 && syn.slot[0].cut_base != mod_cut && syn.slot[0].cut_base != cut0);
+    CHECK(!acid_synth_take_save(&syn));
+
+    acid_synth_mod_clear(&syn);
+    CHECK(syn.master == 1.0f && acid_synth_knob(&syn, 6, 3) == 90);
+}
+
+TEST(test_mod_step_and_type_change)
+{
+    acid_synth_init(&syn, 48000.0f);
+    fresh();
+    acid_mod_set(&m, 0, ACID_MOD_SHAPE, ACID_SHAPE_SQR); // в начале периода out = +1
+    for (int i = 0; i < ACID_MOD_TARGETS; i++) {
+        acid_mod_target(&m, 0, i, 0, 2 + i); // DRIVE, SYNTH 1, SYNTH 2, KICK
+        acid_mod_set(&m, 0, ACID_MOD_DEPTH1 + i, 100);
+    }
+    acid_mod_take_save(&m);
+    // За кусок не больше 2 ручек, по кругу.
+    CHECK(acid_mod_step(&m, &syn, 4) == 2);
+    CHECK(syn.mod_base[0][2] != 0xFF && syn.mod_base[0][3] != 0xFF && syn.mod_base[0][4] == 0xFF);
+    CHECK(acid_mod_step(&m, &syn, 4) == 2);
+    CHECK(syn.mod_base[0][4] != 0xFF && syn.mod_base[0][5] != 0xFF);
+    CHECK(acid_mod_step(&m, &syn, 4) == 0); // все 4 уже на своих значениях
+
+    // На ступени защиты 2 - не больше 1 ручки за кусок.
+    syn.tight = 2;
+    acid_mod_set(&m, 0, ACID_MOD_DEPTH1, 40);
+    acid_mod_set(&m, 0, ACID_MOD_DEPTH1 + 1, 40);
+    CHECK(acid_mod_step(&m, &syn, 4) == 1);
+    CHECK(acid_mod_step(&m, &syn, 4) == 1);
+    syn.tight = 0;
+
+    // Глубина 64 (ноль) и удаление цели возвращают базу и снимают оверлей.
+    acid_mod_set(&m, 0, ACID_MOD_DEPTH1, 64);
+    acid_mod_target(&m, 0, 1, ACID_MOD_NONE, 0);
+    acid_mod_step(&m, &syn, 4);
+    CHECK(syn.mod_base[0][2] == 0xFF && syn.mod_base[0][3] == 0xFF);
+
+    // Смена типа синта снимает оверлей; ручка, которой у нового типа нет (enc 10 у 303), не модулируется.
+    acid_synth_set_knob(&syn, 6, 1, 1); // Plaits
+    fresh();
+    acid_mod_set(&m, 0, ACID_MOD_SHAPE, ACID_SHAPE_SQR);
+    acid_mod_target(&m, 0, 0, 6, 2);  // HARMONICS -> у 303 CUTOFF (плавная)
+    acid_mod_target(&m, 0, 1, 6, 10); // M ENV -> у 303 пусто
+    acid_mod_set(&m, 0, ACID_MOD_DEPTH1, 100);
+    acid_mod_set(&m, 0, ACID_MOD_DEPTH1 + 1, 100);
+    acid_mod_step(&m, &syn, 4);
+    CHECK(syn.mod_base[6][2] == 64 && syn.mod_base[6][10] == 64);
+    acid_synth_set_knob(&syn, 6, 1, 0); // 303: оверлей снят сразу
+    CHECK(syn.mod_base[6][2] == 0xFF && syn.mod_base[6][10] == 0xFF);
+    acid_mod_step(&m, &syn, 4);
+    CHECK(syn.mod_base[6][2] == 69 && syn.mod_base[6][10] == 0xFF);
+}
+
+TEST(test_smooth_matches_pick)
+{
+    acid_synth_init(&syn, 48000.0f);
+    for (int page = 0; page < ACID_PAGES; page++) {
+        int is_syn = page == 6 || page == 7 || page == 10 || page == 11;
+        int max_t = is_syn ? (page >= 10 ? ACID_LAYER_OFF : ACID_TYPES - 1) : 0;
+        for (int t = 0; t <= max_t; t++) {
+            if (page >= 10 && t == ACID_TYPE_PETRI) {
+                continue;
+            }
+            if (is_syn) {
+                acid_synth_set_knob(&syn, page, 1, t);
+            }
+            uint8_t raw[16] = {0};
+            for (int e = 1; e < ACID_KNOBS; e++) {
+                raw[e] = (uint8_t)acid_synth_knob(&syn, page, e);
+            }
+            for (int e = 0; e < ACID_KNOBS; e++) {
+                int want = acid_mod_page_ok(page, e) && pl_knob_label(page, e, raw) != NULL &&
+                           pl_pick_kind(page, e, raw) == PL_PICK_NONE;
+                CHECK(acid_synth_knob_smooth(&syn, page, e) == want);
+            }
+        }
+    }
+}
+
 int main(void)
 {
     RUN(test_defaults);
@@ -318,5 +469,9 @@ int main(void)
     RUN(test_sync_follows_clock);
     RUN(test_targets_and_offsets);
     RUN(test_blob);
+    RUN(test_synth_triggers);
+    RUN(test_synth_overlay_and_blob);
+    RUN(test_mod_step_and_type_change);
+    RUN(test_smooth_matches_pick);
     TEST_MAIN_END();
 }

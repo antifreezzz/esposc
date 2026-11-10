@@ -100,7 +100,7 @@ typedef struct {
 enum { ACID_PAN_SYNTH1, ACID_PAN_SYNTH2, ACID_PAN_HAT, ACID_PAN_CLAP, ACID_PAN_SNARE, ACID_PANS };
 
 // Два синта и ударка, играют от MIDI (BSP или демо-трек). Поля публичные ради тестов, снаружи не трогать.
-typedef struct {
+typedef struct acid_synth {
     float sr;
     acid_slot_t slot[ACID_SLOTS];
     // Слои: второй голос каждого синта на его нотах, в его шине (панорама, посыл, громкость MIX - общие).
@@ -161,6 +161,10 @@ typedef struct {
     uint32_t bsp_held[2][4]; // ноты, зажатые BSP на синте 1 и 2 (бит ноты): общую ноту отпускает последний
     int page; // 0 микс, 1 ударка, 2 ударка 2, 3 томы, 4 рим, 5 ковбелл, 6 синт 1, 7 синт 2, 8 эффекты, 9 тональность
     int drone; // режим дрона: оба синта непрерывно тянут ноту, её высоту ведёт страница 9 TONAL
+    uint8_t mod_base[ACID_PAGES][ACID_KNOBS]; // 0xFF - ручка не под модуляцией; иначе её база
+    uint16_t mod_mask[ACID_PAGES];            // биты ручек под оверлеем базы
+    uint16_t mod_unset[2 * ACID_SLOTS];       // биты ручек синтов и слоёв, бывших KNOB_NONE до оверлея
+    uint16_t trig;                            // события запусков модуляторов за кусок (ACID_TRIG_*)
 
     int save;          // ручка или тип поменялись: память ручек пора записать
 } acid_synth_t;
@@ -242,3 +246,11 @@ void acid_synth_set_knob(acid_synth_t *s, int page, int enc, int v);
 void acid_synth_petri(acid_synth_t *s, const acid_petri_frame_t *f);
 // Действующее значение ручки 0..127 (как на экране BSP); нетронутая - умолчание. Вне диапазона - 0.
 int acid_synth_knob(const acid_synth_t *s, int page, int enc);
+// События запусков с прошлого вызова (ACID_TRIG_*) и сброс маски; позиция клока в тиках (24 на четверть).
+unsigned acid_synth_take_trig(acid_synth_t *s);
+uint32_t acid_synth_clock_pos(const acid_synth_t *s);
+// Оверлей модуляторов: плавная ли ручка сейчас, применить действующее значение (1 - звук пересчитан) и снять.
+int acid_synth_knob_smooth(const acid_synth_t *s, int page, int enc);
+int acid_synth_mod_apply(acid_synth_t *s, int page, int enc, int eff);
+void acid_synth_mod_release(acid_synth_t *s, int page, int enc);
+void acid_synth_mod_clear(acid_synth_t *s);

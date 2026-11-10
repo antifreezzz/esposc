@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "acid_math.h"
+#include "acid_synth.h"
 
 static const uint8_t MAGIC[4] = {'M', 'D', '1', 1};
 static const uint16_t SYNC_TICKS[ACID_MOD_SYNCS] = {0, 6, 12, 24, 48, 96, 192, 384, 768};
@@ -290,4 +291,55 @@ int acid_mod_import(acid_mod_t *m, const void *buf, size_t len)
         recalc(m, o);
     }
     return 1;
+}
+
+int acid_mod_step(acid_mod_t *m, acid_synth_t *s, int budget)
+{
+    acid_mod_run(m, acid_synth_take_trig(s), acid_synth_clock_pos(s));
+    uint16_t want[ACID_PAGES] = {0};
+    for (int k = 0; k < ACID_MODS; k++) {
+        if (!m->m[k].knob[ACID_MOD_AMOUNT]) {
+            continue;
+        }
+        for (int i = 0; i < ACID_MOD_TARGETS; i++) {
+            int p = m->m[k].t[i].page, e = m->m[k].t[i].enc;
+            if (p != ACID_MOD_NONE && m->m[k].knob[ACID_MOD_DEPTH1 + i] != 64 && acid_synth_knob_smooth(s, p, e)) {
+                want[p] |= (uint16_t)(1u << e);
+            }
+        }
+    }
+    for (int p = 0; p < ACID_PAGES; p++) {
+        uint16_t gone = s->mod_mask[p] & (uint16_t)~want[p];
+        for (int e = 1; gone && e < ACID_KNOBS; e++) {
+            if (gone & (1u << e)) {
+                acid_synth_mod_release(s, p, e);
+            }
+        }
+    }
+    int lim = s->tight >= 2 ? 1 : ACID_MOD_PER_CHUNK;
+    if (budget < lim) {
+        lim = budget;
+    }
+    if (lim <= 0) {
+        return 0;
+    }
+    uint16_t seen[ACID_PAGES] = {0};
+    int applied = 0, n = ACID_MODS * ACID_MOD_TARGETS;
+    for (int step = 0; step < n; step++) {
+        int slot = (m->next + step) % n;
+        int k = slot / ACID_MOD_TARGETS, i = slot % ACID_MOD_TARGETS;
+        int p = m->m[k].t[i].page, e = m->m[k].t[i].enc;
+        if (p == ACID_MOD_NONE || !(want[p] & (1u << e)) || (seen[p] & (1u << e))) {
+            continue;
+        }
+        seen[p] |= (uint16_t)(1u << e);
+        int eff = acid_synth_knob(s, p, e) + acid_mod_sum(m, p, e, NULL);
+        if (acid_synth_mod_apply(s, p, e, eff)) {
+            if (++applied >= lim) {
+                m->next = (slot + 1) % n;
+                break;
+            }
+        }
+    }
+    return applied;
 }
