@@ -321,6 +321,22 @@ TEST(test_slot_plaits_sleeps_after_note)
     }
 }
 
+// 303 после отпущенной ноты засыпает: выход ровно 0, осциллятор и фильтр не считаются; новая нота звучит.
+TEST(test_slot_303_sleeps_after_note)
+{
+    live();
+    on(BASS, 45, 100);
+    rms(4800);
+    off(BASS, 45);
+    rms(48000);
+    float ph = s.slot[0].osc.phase;
+    float r = rms(4800);
+    CHECK(r == 0.0f);
+    CHECK(s.slot[0].osc.phase == ph);
+    on(BASS, 45, 100);
+    CHECK(rms(4800) > 0.01f);
+}
+
 TEST(test_slot_save_flag)
 {
     live();
@@ -529,6 +545,7 @@ int main(void)
     RUN(test_slot_plaits_page);
     RUN(test_slot_idle_plaits_silent);
     RUN(test_slot_plaits_sleeps_after_note);
+    RUN(test_slot_303_sleeps_after_note);
     RUN(test_slot_save_flag);
     RUN(test_slot_export_import);
     RUN(test_tonal_blob_roundtrip);

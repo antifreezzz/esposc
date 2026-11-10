@@ -54,6 +54,7 @@ static const uint8_t PAN_DEFAULT[ACID_PANS] = {64, 64, 80, 48, 64};
 #define IDLE_BLOCKS 400  // 100 мс тишины без гейта: молчащий Plaits не считаем
 // Тишина Plaits: его выход после ноты не ноль, а +1 LSB (Clip16(1 + x)), у six-op хвост ±6 LSB. 8 LSB ~ -72 дБFS.
 #define PLAITS_QUIET (8.0f / 32768.0f)
+#define AMP_SLEEP 1e-5f // 303 без гейта тише -100 дБ: голос не считаем
 #define SEQ2_TYPE 11     // синт 2 по умолчанию: FM 2-op (модель Plaits 10)
 #define PLAITS_ACCENT 0.4f // обычная нота Plaits тише акцентной на столько
 #define KNOB_NONE 0xFF
@@ -1268,6 +1269,10 @@ static float plaits_next(acid_slot_t *v, int gate)
 static float voice_next(acid_synth_t *s, acid_slot_t *v, int gate)
 {
     acid_amp_gate(&v->amp, gate);
+    if (!gate && v->amp.value < AMP_SLEEP) {
+        v->amp.value = 0.0f; // спит: осциллятор и фильтр стоят, с новой нотой продолжат с того же места
+        return 0.0f;
+    }
     if (v->gliding) {
         float gc = v->half ? v->glide_coef * v->glide_coef : v->glide_coef; // полюс за два сэмпла
         v->pitch_log2 = v->target_log2 + (v->pitch_log2 - v->target_log2) * gc;
