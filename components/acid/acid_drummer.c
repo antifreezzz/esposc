@@ -1,8 +1,6 @@
 // Барабанщик: решения Grids на шаг -> ноты по конечностям и сбивки.
 #include "acid_drummer.h"
 
-#include "pl_grids.h"
-
 #define KNOB_MAX 127
 
 static const uint8_t EVERY_BARS[4] = {0, 4, 8, 16}; // сбивка каждые: список ручки -> тактов
@@ -10,7 +8,7 @@ static const uint8_t FILL_BEATS[3] = {1, 2, 4};     // длина сбивки: 
 static const uint8_t TOMS[6] = {50, 48, 47, 45, 43, 41}; // сверху вниз по ходу сбивки
 
 enum { N_KICK = 36, N_SNARE = 38, N_PEDAL = 44, N_CRASH = 49 };
-enum { VEL_ACCENT = 120, VEL_NORMAL = 90, VEL_PEDAL = 50, VEL_JITTER = 8 };
+enum { VEL_ACCENT = 120, VEL_NORMAL = 90, VEL_GHOST = 45, VEL_PEDAL = 50, VEL_JITTER = 8 };
 
 void acid_drummer_init(acid_drummer_t *d)
 {
@@ -25,6 +23,7 @@ void acid_drummer_init(acid_drummer_t *d)
     d->knob[DRM_FILL_EVERY] = 2; // 8 тактов
     d->perturb[0] = d->perturb[1] = d->perturb[2] = 0;
     d->rnd = 0x2545F491u;
+    d->user = 0;
     acid_drummer_reset(d);
 }
 
@@ -35,9 +34,19 @@ void acid_drummer_reset(acid_drummer_t *d)
     d->crash_next = 0;
 }
 
+void acid_drummer_use_user(acid_drummer_t *d, const pl_grids_pat_t *user)
+{
+    d->user = user;
+}
+
+int acid_drummer_grid(const acid_drummer_t *d)
+{
+    return pl_grids_src_grid(d->knob[DRM_SRC], d->user);
+}
+
 int acid_drummer_set(acid_drummer_t *d, int enc, int v)
 {
-    if (enc < DRM_ON || enc > DRM_FILL_NOW || v < 0 || v > KNOB_MAX) {
+    if (enc < DRM_ON || enc > DRM_SWING || v < 0 || v > KNOB_MAX) {
         return 0;
     }
     switch (enc) {
@@ -58,6 +67,16 @@ int acid_drummer_set(acid_drummer_t *d, int enc, int v)
         break;
     case DRM_FILL_LEN:
         if (v >= (int)sizeof FILL_BEATS) {
+            return 0;
+        }
+        break;
+    case DRM_SRC:
+        if (v >= PL_GRIDS_SRCS) {
+            return 0;
+        }
+        break;
+    case DRM_SWING:
+        if (v > DRM_SWING_MAX) {
             return 0;
         }
         break;
@@ -89,10 +108,11 @@ static void add(acid_hit_t *out, int *n, int note, int vel)
     (*n)++;
 }
 
-// Сила удара: акцент 120, иначе 90, плюс разброс -8..+8 для живости.
-static int vel_of(acid_drummer_t *d, int accent)
+// Сила удара: акцент 120, гост 45, иначе 90, плюс разброс -8..+8 для живости.
+static int vel_of(acid_drummer_t *d, int accent, int ghost)
 {
-    return (accent ? VEL_ACCENT : VEL_NORMAL) + (int)(next_rnd(d) % (2 * VEL_JITTER + 1)) - VEL_JITTER;
+    int base = accent ? VEL_ACCENT : ghost ? VEL_GHOST : VEL_NORMAL;
+    return base + (int)(next_rnd(d) % (2 * VEL_JITTER + 1)) - VEL_JITTER;
 }
 
 static uint8_t sat_add128(uint8_t v)
@@ -106,14 +126,18 @@ int acid_drummer_step(acid_drummer_t *d, int step, uint32_t bar, acid_hit_t out[
         acid_drummer_reset(d);
         return 0;
     }
+    // Сетка источника: 16 шагов по 4 на долю или 12 триольных по 3.
+    int src = d->knob[DRM_SRC];
+    int beat = acid_drummer_grid(d) == PL_GRIDS_12T ? 3 : 4;
+    int bar_steps = 4 * beat;
     int crash = 0;
     if (step == 0) {
         // Новый такт: сбивка прошлого такта кончилась, авто-сбивка на конец такта фразы.
         d->fill_from = d->fill_to = 0;
         int every = EVERY_BARS[d->knob[DRM_FILL_EVERY]];
         if (every && (bar + 1) % (uint32_t)every == 0) {
-            d->fill_from = 16 - 4 * FILL_BEATS[d->knob[DRM_FILL_LEN]];
-            d->fill_to = 16;
+            d->fill_from = bar_steps - beat * FILL_BEATS[d->knob[DRM_FILL_LEN]];
+            d->fill_to = bar_steps;
         }
         // Хаос: возмущение на дорожку в начале каждого 32-шагового паттерна.
         if ((bar & 1) == 0) {
@@ -126,24 +150,27 @@ int acid_drummer_step(acid_drummer_t *d, int step, uint32_t bar, acid_hit_t out[
         d->crash_next = 0;
     }
     // «Сейчас»: с ближайшей доли до конца такта; нажатое на последней доле уходит на шаг 0 следующего такта.
-    if (d->fill_pending && step % 4 == 0) {
+    if (d->fill_pending && step % beat == 0) {
         d->fill_from = step;
-        d->fill_to = 16;
+        d->fill_to = bar_steps;
         d->fill_pending = 0;
     }
-    int in_fill = !crash && d->fill_from < d->fill_to && step >= d->fill_from && step < d->fill_to;
+    // Источник сменили посреди сбивки на сетку короче: конец сбивки - конец такта этой сетки.
+    int fill_to = d->fill_to < bar_steps ? d->fill_to : bar_steps;
+    int in_fill = !crash && d->fill_from < fill_to && step >= d->fill_from && step < fill_to;
 
     uint8_t x = pl_grids_u8(d->knob[DRM_X]);
     uint8_t y = pl_grids_u8(d->knob[DRM_Y]);
     uint8_t dens[3] = {pl_grids_u8(d->knob[DRM_KICK]), pl_grids_u8(d->knob[DRM_SNARE]),
                        pl_grids_u8(d->knob[DRM_HAT])};
     int g = (int)(bar & 1) * 16 + step;
-    uint8_t m = pl_grids_step(x, y, dens, d->perturb, g);
+    // Биты маски: 0-2 удар дорожки, 3-5 акцент, 6-8 гост.
+    unsigned m = pl_grids_src_step(src, d->user, x, y, dens, d->perturb, g);
     int n = 0;
 
     // Правая нога: бочка по дорожке 0; после сбивки на шаге 0 - всегда, вместе с крэшем.
     if ((m & 1) || crash) {
-        add(out, &n, N_KICK, vel_of(d, crash || ((m >> 3) & 1)));
+        add(out, &n, N_KICK, vel_of(d, crash || ((m >> 3) & 1), (m >> 6) & 1));
     }
     if (crash) {
         add(out, &n, N_CRASH, VEL_ACCENT); // крэш бьёт рука времени
@@ -151,21 +178,21 @@ int acid_drummer_step(acid_drummer_t *d, int step, uint32_t bar, acid_hit_t out[
     if (in_fill) {
         // Обе руки на малом и томах: дорожки малого и хэта при плотности +128.
         uint8_t fd[3] = {dens[0], sat_add128(dens[1]), sat_add128(dens[2])};
-        uint8_t f = pl_grids_step(x, y, fd, d->perturb, g);
+        unsigned f = pl_grids_src_step(src, d->user, x, y, fd, d->perturb, g);
         if ((f >> 1) & 1) {
-            add(out, &n, N_SNARE, vel_of(d, (f >> 4) & 1));
+            add(out, &n, N_SNARE, vel_of(d, (f >> 4) & 1, (f >> 7) & 1));
         }
         if ((f >> 2) & 1) {
-            int idx = 6 * (step - d->fill_from) / (d->fill_to - d->fill_from);
-            add(out, &n, TOMS[idx], vel_of(d, (f >> 5) & 1));
+            int idx = 6 * (step - d->fill_from) / (fill_to - d->fill_from);
+            add(out, &n, TOMS[idx], vel_of(d, (f >> 5) & 1, (f >> 8) & 1));
         }
-        if (step == d->fill_to - 1) {
+        if (step == fill_to - 1) {
             d->crash_next = 1;
         }
     } else {
         // Вторая рука: малый по дорожке 1.
         if ((m >> 1) & 1) {
-            add(out, &n, N_SNARE, vel_of(d, (m >> 4) & 1));
+            add(out, &n, N_SNARE, vel_of(d, (m >> 4) & 1, (m >> 7) & 1));
         }
         // Рука времени по дорожке 2, на шаге крэша молчит.
         if (((m >> 2) & 1) && !crash) {
@@ -180,11 +207,11 @@ int acid_drummer_step(acid_drummer_t *d, int step, uint32_t bar, acid_hit_t out[
             } else {
                 note = 42;
             }
-            add(out, &n, note, vel_of(d, accent));
+            add(out, &n, note, vel_of(d, accent, (m >> 8) & 1));
         }
     }
     // Левая нога: педаль хэта на 2 и 4 долях тихо, только в режиме райд.
-    if (d->knob[DRM_TIME] == DRM_TIME_RIDE && (step == 4 || step == 12)) {
+    if (d->knob[DRM_TIME] == DRM_TIME_RIDE && (step == beat || step == 3 * beat)) {
         add(out, &n, N_PEDAL, VEL_PEDAL);
     }
     return n;
