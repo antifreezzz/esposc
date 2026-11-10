@@ -1,6 +1,7 @@
 #include "pl_grids.h"
 #include "pl_labels.h"
 
+#include <math.h>
 #include <stdio.h>
 
 #define N(a) ((int)(sizeof(a) / sizeof((a)[0])))
@@ -61,6 +62,14 @@ static const char *const ORDER[3] = {"FWD", "BOUNCE", "RANDOM"};
 static const char *const TARGET[3] = {"BOTH", "S1", "S2"};
 static const char *const HELD[3] = {"FINISH", "SLIDE", "JUMP"};
 static const char *const SCALE[8] = {"CHROM", "MAJOR", "MINOR", "DORIAN", "PHRYG", "MIXO", "HARM MIN", "PENTA"};
+// Страница модулятора (энкодеры 2-13), порядок значений - как в acid_mod.h.
+static const char *const MOD[16] = {NULL,     "SHAPE",   "RATE",    "SYNC",    "TRIG",    "PROB",    "ATTACK", "DECAY",
+                                    "AMOUNT", "DEPTH 1", "DEPTH 2", "DEPTH 3", "DEPTH 4", NULL,      NULL,     NULL};
+static const char *const MOD_SHAPE[8] = {"SIN", "TRI", "SAW", "RAMP", "SQR", "S&H", "DRIFT", "ENV"};
+static const char *const MOD_SYNC[9] = {"FREE", "1/16", "1/8", "1/4", "1/2", "1 BAR", "2 BARS", "4 BARS", "8 BARS"};
+static const char *const MOD_TRIG[14] = {"FREE", "S1 NOTE", "S2 NOTE", "S1 ACC", "S2 ACC", "KICK", "SNARE",
+                                         "HAT",  "CLAP",    "PERC",    "BEAT",   "BAR",    "4 BARS", "STEP"};
+static const char *const MOD_NAME[PL_MOD_PAGES] = {"MOD 1", "MOD 2", "MOD 3", "MOD 4"};
 static const char *const OFF_ON[2] = {"OFF", "ON"};
 static const char *const HAT_MODE[3] = {"CLOSED", "OPEN", "MIX"};
 static const char *const TIME_HAND[2] = {"HAT", "RIDE"};
@@ -69,8 +78,16 @@ static const char *const FILL_LEN[3] = {"1", "2", "4"};
 static const char *const FILL_NOW[2] = {"-", "FILL"};
 static const char *const ROOT[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 
+static int is_mod_page(int page)
+{
+    return page >= PL_PAGE_MOD1 && page < PL_PAGE_MOD1 + PL_MOD_PAGES;
+}
+
 const char *pl_page_name(int page)
 {
+    if (is_mod_page(page)) {
+        return MOD_NAME[page - PL_PAGE_MOD1];
+    }
     return page >= 0 && page < N(PAGE_NAME) ? PAGE_NAME[page] : NULL;
 }
 
@@ -114,6 +131,9 @@ const char *pl_knob_label(int page, int enc, const uint8_t page_raw[16])
     if (enc < 1 || enc > 15 || (layer_off(page, page_raw) && enc > 1)) {
         return NULL;
     }
+    if (is_mod_page(page)) {
+        return MOD[enc];
+    }
     switch (as_synth(page)) {
     case 0: return MIX[enc];
     case 1: return DRUMS[enc];
@@ -143,6 +163,18 @@ static int list_of(int page, int enc, const uint8_t *raw, const char *const **wo
 {
     *words = NULL;
     *lo = 0;
+    if (is_mod_page(page)) {
+        if (enc == 1) {
+            *words = MOD_SHAPE, *hi = 7;
+        } else if (enc == 3) {
+            *words = MOD_SYNC, *hi = 8;
+        } else if (enc == 4) {
+            *words = MOD_TRIG, *hi = 13;
+        } else {
+            return 0;
+        }
+        return 1;
+    }
     if (is_layer(page) && enc == 1) {
         *words = TYPES, *hi = LAYER_OFF;
         return 1;
@@ -216,10 +248,39 @@ int pl_knob_skip(int page, int enc, const uint8_t page_raw[16])
     return is_layer(page) && enc == 1 ? PETRI : -1;
 }
 
+// Значения числовых ручек модулятора: частота, проценты, время, глубина со знаком (как считает acid_mod.c).
+static const char *mod_number(int enc, int v, char buf[12])
+{
+    if (enc == 2) {
+        float hz = 0.05f * exp2f((float)v * (8.644f / 127.0f));
+        snprintf(buf, 12, hz < 1.0f ? "%.2f Hz" : hz < 10.0f ? "%.1f Hz" : "%.0f Hz", (double)hz);
+    } else if (enc == 6 || enc == 7) {
+        float s = 0.001f * exp2f((float)v * (13.288f / 127.0f));
+        if (s < 0.9995f) {
+            snprintf(buf, 12, "%.0f ms", (double)(s * 1000.0f));
+        } else {
+            snprintf(buf, 12, s < 9.95f ? "%.1f s" : "%.0f s", (double)s);
+        }
+    } else if (enc == 5 || enc == 8) {
+        snprintf(buf, 12, "%d%%", (v * 100 + 63) / 127);
+    } else if (enc >= 9 && enc <= 12) {
+        snprintf(buf, 12, v > 64 ? "+%d" : "%d", v - 64);
+    } else {
+        snprintf(buf, 12, "%d", v);
+    }
+    return buf;
+}
+
 const char *pl_value_text(int page, int enc, int v, const uint8_t page_raw[16], char buf[12])
 {
     const char *const *w;
     int lo, hi;
+    if (is_mod_page(page)) {
+        if (list_of(page, enc, page_raw, &w, &lo, &hi) && v >= lo && v <= hi) {
+            return w[v - lo];
+        }
+        return mod_number(enc, v, buf);
+    }
     if (list_of(page, enc, page_raw, &w, &lo, &hi) && v >= lo && v <= hi) {
         if (w) {
             return w[v - lo];
@@ -257,6 +318,9 @@ static const uint32_t PAGE_COLOR[14] = {0xf2c46d, 0xff6b4a, 0xffb648, 0xff8a4c, 
 
 uint32_t pl_page_color(int page)
 {
+    if (is_mod_page(page)) {
+        return 0xc4a6e0; // C_MOD панели
+    }
     return page >= 0 && page < N(PAGE_COLOR) ? PAGE_COLOR[page] : 0;
 }
 
@@ -264,6 +328,9 @@ uint32_t pl_knob_color(int page, int enc, const uint8_t page_raw[16])
 {
     if (!pl_knob_label(page, enc, page_raw)) {
         return 0;
+    }
+    if (is_mod_page(page)) { // форма, время и запуск, огибающая, глубины
+        return enc <= 4 ? 0xc4a6e0 : enc <= 7 ? 0x8fc4d8 : enc == 8 ? 0xffb648 : 0xe39bb0;
     }
     switch (as_synth(page)) {
     case 0: // MIX: мастер/драйв, синты, ударка, пампинг/DJ-фильтр, панорама
@@ -337,6 +404,9 @@ int pl_knob_bipolar(int page, int enc, const uint8_t page_raw[16])
     if (!pl_knob_label(page, enc, page_raw)) {
         return 0;
     }
+    if (is_mod_page(page)) {
+        return enc >= 9 && enc <= 12; // глубины со знаком, 64 - ноль
+    }
     switch (as_synth(page)) {
     case 0: return enc == 11 || enc == 13 || enc == 14;
     case 1: return enc >= 13 && enc <= 15;
@@ -405,6 +475,11 @@ const char *pl_page_summary(int page, const uint8_t page_raw[16], char buf[24])
                  ROOT[page_raw[7] < N(ROOT) ? page_raw[7] : 0]);
         return buf;
     default:
+        if (is_mod_page(page)) { // форма и запуск: SIN FREE, S&H KICK
+            snprintf(buf, 24, "%s %s", MOD_SHAPE[page_raw[1] < N(MOD_SHAPE) ? page_raw[1] : 0],
+                     MOD_TRIG[page_raw[4] < N(MOD_TRIG) ? page_raw[4] : 0]);
+            return buf;
+        }
         return "";
     }
 }

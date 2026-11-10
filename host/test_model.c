@@ -374,8 +374,110 @@ TEST(test_grids_patterns)
     CHECK(pl_model_grids_pat(&g, 3, &p) == 0);
 }
 
+static void mod_frame(int k, int knob_base, int page, int enc, int held_enc)
+{
+    pl_mod_t f;
+    memset(&f, 0, sizeof f);
+    f.mod = (uint8_t)k;
+    for (int e = 0; e < PL_KNOBS; e++) {
+        f.knob[e] = (uint8_t)(knob_base + e);
+    }
+    for (int i = 0; i < PL_MOD_TARGETS; i++) {
+        f.t[i] = (pl_mod_target_t){PL_NONE, 0};
+    }
+    f.t[1] = (pl_mod_target_t){(uint8_t)page, (uint8_t)enc};
+    if (held_enc > 0) {
+        f.held[(held_enc - 1) / 8] = (uint8_t)(1 << ((held_enc - 1) % 8));
+    }
+    pl_model_apply(&m, PL_MOD, (const uint8_t *)&f, sizeof f, 50);
+}
+
+TEST(test_mod_frame_applied)
+{
+    pl_model_init(&m);
+    CHECK(m.mod_have == 0 && m.mod_t[0][0].page == PL_NONE && m.mod_t[3][3].page == PL_NONE);
+    mod_frame(2, 10, 8, 3, 9);
+    CHECK(m.mod_have == 1 << 2);
+    CHECK(m.mod_knob[2][0] == 10 && m.mod_knob[2][15] == 25 && m.mod_knob[0][5] == 0);
+    CHECK(m.mod_t[2][0].page == PL_NONE && m.mod_t[2][1].page == 8 && m.mod_t[2][1].enc == 3);
+    CHECK(m.mod_held[2][9] == 1 && m.mod_held[2][8] == 0 && m.mod_held[2][10] == 0 && m.mod_held[1][9] == 0);
+    CHECK(m.last_rx_ms == 50);
+    mod_frame(2, 20, PL_NONE, 0, 0); // новый кадр заменяет целиком, подхват снят
+    CHECK(m.mod_knob[2][1] == 21 && m.mod_t[2][1].page == PL_NONE && m.mod_held[2][9] == 0);
+    mod_frame(0, 0, 0, 2, 0);
+    CHECK(m.mod_have == 5);
+}
+
+TEST(test_mod_frame_wrong_skipped)
+{
+    pl_model_init(&m);
+    pl_mod_t f;
+    memset(&f, 0, sizeof f);
+    f.mod = PL_MOD_PAGES; // нет такого модулятора
+    pl_model_apply(&m, PL_MOD, (const uint8_t *)&f, sizeof f, 5);
+    CHECK(m.mod_have == 0 && m.last_rx_ms == 0);
+    f.mod = 1;
+    pl_model_apply(&m, PL_MOD, (const uint8_t *)&f, sizeof f - 1, 6); // короткий - мусор
+    CHECK(m.mod_have == 0 && m.last_rx_ms == 0);
+}
+
+TEST(test_mod_pos_applied)
+{
+    pl_model_init(&m);
+    int8_t pos[4] = {-127, 0, 55, 127};
+    pl_model_apply(&m, PL_MOD_POS, (const uint8_t *)pos, sizeof pos, 77);
+    CHECK(m.mod_out[0] == -127 && m.mod_out[1] == 0 && m.mod_out[2] == 55 && m.mod_out[3] == 127);
+    CHECK(m.last_rx_ms == 77 && m.mod_pos_ms == 77);
+    pos[0] = 9;
+    pl_model_apply(&m, PL_MOD_POS, (const uint8_t *)pos, 3, 88); // длина не та
+    CHECK(m.mod_out[0] == -127 && m.last_rx_ms == 77);
+}
+
+// Ручки страницы модулятора ходят обычным PL_KNOB со страницей 23..26.
+TEST(test_mod_knob_events)
+{
+    pl_model_init(&m);
+    linked();
+    knob(PL_PAGE_MOD1 + 1, 5, 99, 0, 99, 0, 100); // BSP
+    CHECK(m.mod_knob[1][5] == 99 && m.bsp_pos[5] == 99 && m.mod_held[1][5] == 0);
+    CHECK(m.toast_page == PL_PAGE_MOD1 + 1 && m.toast_enc == 5 && m.toast_until_ms == 100 + PL_TOAST_MS);
+    knob(PL_PAGE_MOD1 + 1, 5, 20, 2, 99, 1, 110); // с панели: ждёт подхвата
+    CHECK(m.mod_knob[1][5] == 20 && m.mod_held[1][5] == 1 && m.toast_until_ms == 100 + PL_TOAST_MS);
+    CHECK(m.raw[0][5] == 0 && m.mod_knob[0][5] == 0 && m.mod_knob[2][5] == 0); // чужие страницы не тронуты
+    m.toast_until_ms = 0;
+    knob(PL_PAGE_MOD1, 14, 7, 0, 7, 0, 120); // пустой энкодер не всплывает
+    CHECK(m.mod_knob[0][14] == 7 && m.toast_until_ms == 0);
+    knob(PL_PAGE_MOD1 + PL_MOD_PAGES, 5, 1, 0, 1, 0, 130); // нет такой страницы
+    knob(PL_PAGE_MIX_DRUMS, 5, 1, 0, 1, 0, 130);
+    CHECK(m.raw[0][5] == 0 && m.mod_knob[3][5] == 0);
+    // Смена страницы BSP на модулятор: экран идёт за ним, своё эхо и демо - нет.
+    knob(PL_PAGE_MOD1 + 2, 0, PL_PAGE_MOD1 + 2, 2, 0xFF, 0, 140);
+    CHECK(m.bsp_page == PL_PAGE_MOD1 + 2 && m.goto_page == -1);
+    knob(PL_PAGE_MOD1 + 2, 0, PL_PAGE_MOD1 + 2, 0, 0xFF, 0, 150);
+    CHECK(m.bsp_page == PL_PAGE_MOD1 + 2 && m.goto_page == PL_PAGE_MOD1 + 2);
+}
+
+TEST(test_mod_local_set)
+{
+    pl_model_init(&m);
+    CHECK(!pl_model_local_set(&m, PL_PAGE_MOD1, 5, 50)); // снимка нет
+    linked();
+    CHECK(!pl_model_local_set(&m, PL_PAGE_MOD1, 5, 50)); // кадра модулятора нет: значения не настоящие
+    mod_frame(0, 0, PL_NONE, 0, 0);
+    CHECK(pl_model_local_set(&m, PL_PAGE_MOD1, 5, 50));
+    CHECK(m.mod_knob[0][5] == 50 && m.mod_held[0][5] == 1);
+    CHECK(!pl_model_local_set(&m, PL_PAGE_MOD1 + 1, 5, 50)); // этот кадр не приходил
+    CHECK(!pl_model_local_set(&m, PL_PAGE_MOD1, 0, 50) && !pl_model_local_set(&m, PL_PAGE_MOD1, 16, 50));
+    CHECK(!pl_model_local_set(&m, PL_PAGE_MOD1 + PL_MOD_PAGES, 5, 50));
+}
+
 int main(void)
 {
+    RUN(test_mod_frame_applied);
+    RUN(test_mod_frame_wrong_skipped);
+    RUN(test_mod_pos_applied);
+    RUN(test_mod_knob_events);
+    RUN(test_mod_local_set);
     RUN(test_grids_patterns);
     RUN(test_load_frame_stored);
     RUN(test_grids_step_frame);
