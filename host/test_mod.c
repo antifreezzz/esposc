@@ -420,9 +420,12 @@ TEST(test_mod_step_and_type_change)
     syn.tight = 0;
     CHECK(acid_mod_step(&m, &syn, 2) == 1); // после защиты движение продолжается с новой глубиной
 
-    // Глубина 64 (ноль) и удаление цели возвращают базу и снимают оверлей.
+    // Глубина 64 (ноль) и удаление цели возвращают базу и снимают оверлей, когда есть бюджет.
     acid_mod_set(&m, 0, ACID_MOD_DEPTH1, 64);
     acid_mod_target(&m, 0, 1, ACID_MOD_NONE, 0);
+    float phase = m.m[0].phase;
+    CHECK(acid_mod_step(&m, &syn, 0) == 0 && m.m[0].phase != phase); // фазы идут без обхода целей
+    CHECK(syn.mod_base[0][2] != 0xFF && syn.mod_base[0][3] != 0xFF);
     acid_mod_step(&m, &syn, 4);
     CHECK(syn.mod_base[0][2] == 0xFF && syn.mod_base[0][3] == 0xFF);
 

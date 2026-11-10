@@ -96,4 +96,5 @@ int acid_mod_take_save(acid_mod_t *m);
 void acid_mod_export(const acid_mod_t *m, void *buf);
 int acid_mod_import(acid_mod_t *m, const void *buf, size_t len); // 0 - чужой blob, ничего не тронуто
 // Шаг модуляторов и применение изменившихся целей (не больше budget и ACID_MOD_PER_CHUNK, на защите >= 1 - стоп).
+// При budget 0 идут только фазы, обход целей и снятие оверлеев ждут бюджета.
 int acid_mod_step(acid_mod_t *m, struct acid_synth *s, int budget);

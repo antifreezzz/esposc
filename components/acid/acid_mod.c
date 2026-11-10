@@ -299,6 +299,9 @@ int acid_mod_step(acid_mod_t *m, acid_synth_t *s, int budget)
         return 0; // защита: фазы и последние действующие значения замирают, базу не снимаем
     }
     acid_mod_run(m, acid_synth_take_trig(s), acid_synth_clock_pos(s));
+    if (budget <= 0) {
+        return 0; // без бюджета не обходим цели и не тратим применение на снятие оверлея
+    }
     uint16_t want[ACID_PAGES] = {0};
     for (int k = 0; k < ACID_MODS; k++) {
         if (!m->m[k].knob[ACID_MOD_AMOUNT]) {

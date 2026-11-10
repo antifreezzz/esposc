@@ -299,7 +299,11 @@ static void render_block(float *l, float *r)
         }
         to_panel(acid_link_step(&s_link, &s_synth, &lev), &lev); // макро и модуляторы: не больше 2 ручек за кусок
         if (!s_demo_on || MOD_BENCH) {
-            acid_mod_step(&s_mod, &s_synth, ACID_LINK_PER_CHUNK - s_link.step_n);
+            if (off == 0) {
+                acid_mod_step(&s_mod, &s_synth, ACID_LINK_PER_CHUNK - s_link.step_n);
+            } else {
+                acid_mod_run(&s_mod, acid_synth_take_trig(&s_synth), acid_synth_clock_pos(&s_synth));
+            }
         }
         if (s_link.snapshot_due) {
             s_link.snapshot_due = 0; // сменился тип синта: у типа своя память, страница новая целиком
