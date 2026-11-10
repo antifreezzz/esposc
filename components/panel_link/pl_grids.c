@@ -80,3 +80,91 @@ void pl_grids_preview(const uint8_t knob[16], uint8_t out[PL_GRIDS_STEPS])
         out[s] = pl_grids_step(x, y, density, none, s);
     }
 }
+
+static uint8_t bank_level(const pl_grids_bank_t *b, int part, int step)
+{
+    int per_bar = b->grid == PL_GRIDS_12T ? 12 : 16;
+    int in = step % 16;
+    if (in >= per_bar) {
+        return 0;
+    }
+    switch (b->part[part][(step / 16) * per_bar + in]) {
+    case 'X': return PL_GRIDS_LV_ACC;
+    case 'x': return PL_GRIDS_LV_HIT;
+    case 'g': return PL_GRIDS_LV_GHOST;
+    case ',': return PL_GRIDS_LV_EXTRA;
+    default: return 0;
+    }
+}
+
+static const pl_grids_pat_t *user_pat(int src, const pl_grids_pat_t *user)
+{
+    return user && src >= PL_GRIDS_SRC_USER && src < PL_GRIDS_SRCS ? &user[src - PL_GRIDS_SRC_USER] : 0;
+}
+
+int pl_grids_src_grid(int src, const pl_grids_pat_t *user)
+{
+    if (src >= 1 && src < PL_GRIDS_SRC_USER) {
+        return pl_grids_bank[src - 1].grid;
+    }
+    const pl_grids_pat_t *u = user_pat(src, user);
+    return u && u->grid == PL_GRIDS_12T ? PL_GRIDS_12T : PL_GRIDS_16;
+}
+
+uint8_t pl_grids_src_level(int src, const pl_grids_pat_t *user, uint8_t x, uint8_t y, int part, int step)
+{
+    if (src == PL_GRIDS_SRC_MAP) {
+        return pl_grids_level(x, y, part, step);
+    }
+    if (src >= 1 && src < PL_GRIDS_SRC_USER) {
+        return bank_level(&pl_grids_bank[src - 1], part, step);
+    }
+    const pl_grids_pat_t *u = user_pat(src, user);
+    if (!u || (u->grid == PL_GRIDS_12T && step % 16 >= 12)) {
+        return 0;
+    }
+    return u->lv[part * PL_GRIDS_STEPS + step];
+}
+
+uint16_t pl_grids_src_step(int src, const pl_grids_pat_t *user, uint8_t x, uint8_t y, const uint8_t density[3],
+                           const uint8_t perturb[3], int step)
+{
+    uint16_t state = 0;
+    for (int p = 0; p < PL_GRIDS_PARTS; p++) {
+        uint8_t level = pl_grids_src_level(src, user, x, y, p, step);
+        if (level < 255 - perturb[p]) {
+            level = (uint8_t)(level + perturb[p]);
+        } else {
+            level = 255;
+        }
+        uint8_t threshold = (uint8_t)~density[p];
+        if (level > threshold) {
+            state |= (uint16_t)(1 << p);
+            if (level > PL_GRIDS_ACCENT) {
+                state |= (uint16_t)(8 << p);
+            } else if (src != PL_GRIDS_SRC_MAP && level < PL_GRIDS_GHOST) {
+                state |= (uint16_t)(64 << p);
+            }
+        }
+    }
+    return state;
+}
+
+void pl_grids_copy(int src, const pl_grids_pat_t *user, uint8_t x, uint8_t y, const uint8_t density[3],
+                   pl_grids_pat_t *out)
+{
+    pl_grids_pat_t r;
+    r.grid = (uint8_t)pl_grids_src_grid(src, user);
+    for (int p = 0; p < PL_GRIDS_PARTS; p++) {
+        for (int s = 0; s < PL_GRIDS_STEPS; s++) {
+            uint8_t lv = pl_grids_src_level(src, user, x, y, p, s);
+            if (src == PL_GRIDS_SRC_MAP) {
+                lv = lv <= (uint8_t)~density[p] ? 0 : lv > PL_GRIDS_ACCENT ? PL_GRIDS_LV_ACC : PL_GRIDS_LV_HIT;
+            } else if (user_pat(src, user)) {
+                lv = user_pat(src, user)->lv[p * PL_GRIDS_STEPS + s]; // и немые слоты триолей: копия точная
+            }
+            r.lv[p * PL_GRIDS_STEPS + s] = lv;
+        }
+    }
+    *out = r; // out может быть одним из user
+}
