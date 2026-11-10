@@ -76,6 +76,7 @@ static acid_seq_clk_t s_seq_clk; // внутренний клок секвенс
 static int s_seq_save;           // правили секвенсер: записать в тишине
 static acid_link_t s_link;       // панель: подхват BSP, глушение ручек демо
 static acid_custom_t s_custom;   // свои страницы: переживают смену демо <-> live
+static acid_mod_t s_mod;         // модуляторы: так же, во flash (STORE_MOD)
 static acid_scene_t s_scene;     // сцены: так же
 static const acid_bank_t *s_bank; // тарелки из флэша, NULL - молчат
 
@@ -156,7 +157,7 @@ static void to_panel(int n, acid_link_ev_t *lev)
     }
 }
 
-// Правки своих страниц и сцены с панели, шаг перехода сцены. Перед каждым куском, как события MIDI.
+// Правки своих страниц, целей модуляторов и сцены с панели, шаг перехода сцены. Перед каждым куском, как события MIDI.
 static void custom_and_scenes(void)
 {
     static uint8_t last_used, last_state;
@@ -165,6 +166,10 @@ static void custom_and_scenes(void)
     while (panel_uart_receive_edit(&ed)) {
         int page = ed.pe == PL_NONE ? ACID_CUSTOM_NONE : ed.pe >> 4;
         acid_link_custom_edit(&s_link, ed.up, ed.enc, ed.idx, page, ed.pe & 15, ed.lo, ed.hi);
+    }
+    pl_mod_edit_t med;
+    while (panel_uart_receive_mod_edit(&med)) {
+        acid_link_mod_edit(&s_link, &s_synth, med.mod, med.idx, med.page, med.enc);
     }
     pl_scene_t sq;
     while (panel_uart_receive_scene(&sq)) {
@@ -180,6 +185,10 @@ static void custom_and_scenes(void)
     if (s_link.custom_due) {
         panel_uart_custom_due(s_link.custom_due);
         s_link.custom_due = 0;
+    }
+    if (s_link.mod_due) {
+        panel_uart_mod_due(s_link.mod_due);
+        s_link.mod_due = 0;
     }
     if (s_scene.used != last_used || s_scene.cur != last_cur || s_scene.state != last_state) {
         last_used = s_scene.used;
@@ -267,6 +276,9 @@ static void render_block(float *l, float *r)
             acid_synth_petri(&s_synth, &pf); // оба ядра свободны: ящики голосов чашки
         }
         to_panel(acid_link_step(&s_link, &s_synth, &lev), &lev); // цели макро: не больше 4 ручек за кусок
+        if (!s_demo_on) {
+            acid_mod_step(&s_mod, &s_synth, ACID_LINK_PER_CHUNK - s_link.step_n);
+        }
         if (s_link.snapshot_due) {
             s_link.snapshot_due = 0; // сменился тип синта: у типа своя память, страница новая целиком
             panel_uart_snapshot_due();
@@ -328,6 +340,7 @@ static void enter_mode(int live, const uint8_t *blob, int blob_ok)
     }
     acid_link_init(&s_link);
     acid_link_use_custom(&s_link, &s_custom);
+    acid_link_use_mod(&s_link, &s_mod);
     if (s_drone) {
         acid_synth_set_drone(&s_synth, 1);
         if (!live) {
@@ -358,6 +371,7 @@ static void keep_user_knobs(uint8_t *blob, int *blob_ok, int *save_pending)
 static uint8_t s_cblob[ACID_CUSTOM_BLOB];
 static uint8_t s_sblob[ACID_SCENE_BLOB];
 static uint8_t s_qblob[ACID_SEQ_BLOB];
+static uint8_t s_mblob[ACID_MOD_BLOB];
 
 // До старта связи с панелью: она шлёт кадры своих страниц из s_custom.
 static void load_user_data(void)
@@ -376,6 +390,11 @@ static void load_user_data(void)
     size_t qn = store_load(STORE_SEQ, s_qblob, sizeof s_qblob); // версия 1 короче: длину проверяет import
     if (qn > 0 && acid_seq_import(&s_seq, s_qblob, qn)) {
         ESP_LOGI(TAG, "sequencer restored");
+    }
+    acid_mod_init(&s_mod, (float)CHUNK / (float)SR);
+    if (store_load(STORE_MOD, s_mblob, sizeof s_mblob) == ACID_MOD_BLOB &&
+        acid_mod_import(&s_mod, s_mblob, sizeof s_mblob)) {
+        ESP_LOGI(TAG, "modulators restored");
     }
 }
 
@@ -407,7 +426,7 @@ static void synth_task(void *arg)
         acid_synth_export(&s_synth, blob, sizeof blob); // дальше blob - в нынешнем формате (enter_mode)
         ESP_LOGI(TAG, "knobs restored");
     }
-    int custom_pending = 0, scene_pending = 0;
+    int custom_pending = 0, scene_pending = 0, mod_pending = 0;
     int seq_pending = 0, last_seq_run = s_seq.t[0].run | s_seq.t[1].run << 1;
     uint8_t mode;
     if (!BENCH && store_load(STORE_MODE, &mode, 1) == 1 && mode <= MODE_SEQ) {
@@ -504,8 +523,9 @@ static void synth_task(void *arg)
         // Поменяли ручку или тип: память ручек пишем, когда выход помолчит (flash стопорит кэш) или при смене режима.
         // Ручки демо не сохраняем.
         save_pending |= acid_synth_take_save(&s_synth) && !s_demo_on;
-        // Свои страницы и сцены - действия пользователя, пишутся и в демо.
+        // Свои страницы, модуляторы и сцены - действия пользователя, пишутся и в демо.
         custom_pending |= s_custom.save;
+        mod_pending |= acid_mod_take_save(&s_mod);
         // Секвенсер: правки с панели и смена ▶ (Stop BSP тоже) - во flash, run переживает выключение.
         int seq_run = s_seq.t[0].run | s_seq.t[1].run << 1;
         seq_pending |= s_seq_save || seq_run != last_seq_run;
@@ -523,6 +543,11 @@ static void synth_task(void *arg)
             if (custom_pending) {
                 store_save(STORE_CUSTOM, s_cblob, acid_custom_export(&s_custom, s_cblob, sizeof s_cblob));
                 custom_pending = 0;
+            }
+            if (mod_pending) {
+                acid_mod_export(&s_mod, s_mblob);
+                store_save(STORE_MOD, s_mblob, sizeof s_mblob);
+                mod_pending = 0;
             }
             if (seq_pending) {
                 store_save(STORE_SEQ, s_qblob, acid_seq_export(&s_seq, s_qblob, sizeof s_qblob));
@@ -645,7 +670,8 @@ void app_main(void)
     usb_host_start();
     ESP_ERROR_CHECK(midi_in_start());
     ESP_ERROR_CHECK(audio_out_start());
-    ESP_ERROR_CHECK(panel_uart_start(&s_synth, &s_link, &s_custom, &s_scene, &s_seq, &s_demo_on, &s_live, &s_demo_song));
+    ESP_ERROR_CHECK(panel_uart_start(&s_synth, &s_link, &s_custom, &s_scene, &s_seq, &s_mod, &s_demo_on, &s_live,
+                                     &s_demo_song));
     s_stats_q = xQueueCreate(1, sizeof(stats_msg_t));
     xTaskCreatePinnedToCore(stats_task, "stats", 3072, NULL, 1, NULL, 0);
     xTaskCreatePinnedToCore(synth_task, "synth", 4096, NULL, 6, &s_synth_task, 1);

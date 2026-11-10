@@ -11,10 +11,10 @@
 
 // Синт и связку задача читает без лока для снимка: устаревшая цифра на экране до следующего события, звук не трогает.
 // demo_on - режим для снимка (1 демо), demo_song - номер песни демо (PL_DEMO_*).
-// Свои страницы и сцены (c, sc) - так же для кадров PL_CUSTOM и PL_SCENE_STATE, секвенсер q - для PL_SEQ_*.
+// Свои страницы, сцены и модуляторы (c, sc, m) - для кадров PL_CUSTOM, PL_SCENE_STATE и PL_MOD, секвенсер q - для PL_SEQ_*.
 esp_err_t panel_uart_start(const acid_synth_t *s, const acid_link_t *l, const acid_custom_t *c, const acid_scene_t *sc,
-                           const acid_seq_t *q, const volatile int *demo_on, const volatile int *live,
-                           const volatile int *demo_song);
+                           const acid_seq_t *q, const acid_mod_t *m, const volatile int *demo_on,
+                           const volatile int *live, const volatile int *demo_song);
 // Кадр секвенсера с панели (PL_SEQ_STEP..PL_SEQ_BPM, PL_SEQ_SCALE): 1 если есть (без ожидания), нагрузка в p.
 #define PANEL_SEQ_MAX 11
 int panel_uart_receive_seq(uint8_t *type, uint8_t p[PANEL_SEQ_MAX]);
@@ -36,10 +36,14 @@ void panel_uart_send_knob(const acid_link_ev_t *ev);
 void panel_uart_snapshot_due(void);
 // Правка цели своей страницы с панели: 1 если есть (без ожидания).
 int panel_uart_receive_edit(pl_custom_edit_t *out);
+// Правка цели модулятора с панели: 1 если есть (без ожидания).
+int panel_uart_receive_mod_edit(pl_mod_edit_t *out);
 // Вызов или запись сцены с панели: 1 если есть (без ожидания).
 int panel_uart_receive_scene(pl_scene_t *out);
 // Отправить кадры PL_CUSTOM своих страниц из маски (бит up) при первой возможности.
 void panel_uart_custom_due(unsigned mask);
+// Отправить кадры PL_MOD модуляторов из маски (бит mod) при первой возможности.
+void panel_uart_mod_due(unsigned mask);
 // Отправить состояние сцен при первой возможности.
 void panel_uart_scene_due(void);
 // Таблица чашки Петри с панели (последняя, без ожидания): 1 если пришла новая.
