@@ -34,7 +34,7 @@
 #define ACID_PAGE_GRIDS 12
 #define ACID_PAGE_PETRI 13
 #define ACID_PAGE_REVERB 27 // только панель: номера BSP нет
-#define ACID_REVERB_KNOBS 5
+#define ACID_REVERB_KNOBS 6
 #define ACID_PAGE_MOD1 23
 #define ACID_BSP_PETRI 18
 #define ACID_BSP_MOD_FIRST 19
@@ -146,6 +146,7 @@ typedef struct acid_synth {
     acid_reverb_t reverb;
     float *rv_mem;                  // линии ревёрба, внутренняя память
     float rv_wet, rv_send1, rv_send2, rv_send_drums;
+    float rv_narrow;                // 0 - полная ширина wet, 0.5 - моно
     float rv_duck;                  // ступень 3: уход за 10 мс, затем DSP стоит
     uint8_t rv_raw[ACID_REVERB_KNOBS];
     float rv_prev[ACID_SPLIT_MAX];  // посыл прошлого куска для цельного рендера
@@ -190,6 +191,7 @@ typedef struct acid_synth {
 #define ACID_SAVED_PAGES 9
 #define ACID_SYNTH_BLOB_V4 (4 + 2 * ACID_SLOTS * (1 + ACID_TYPES * ACID_KNOBS) + ACID_TONAL_KNOBS) // синты, слои
 #define ACID_SYNTH_BLOB_V5 (ACID_SYNTH_BLOB_V4 + ACID_SAVED_PAGES * ACID_KNOBS)
+#define ACID_SYNTH_BLOB_V7 (ACID_SYNTH_BLOB_V5 + 5) // версии 6-7: пять ручек реверба, без ширины
 #define ACID_SYNTH_BLOB (ACID_SYNTH_BLOB_V5 + ACID_REVERB_KNOBS)
 
 // Умолчания всех ручек, тишина до первой ноты.

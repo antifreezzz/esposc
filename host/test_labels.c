@@ -279,12 +279,12 @@ TEST(test_fx_reverb_labels)
     CHECK(strcmp(pl_value_text(8, 15, 0, raw, buf), "0") == 0);
     CHECK(strcmp(pl_value_text(8, 15, 64, raw, buf), "64") == 0);
     CHECK(strcmp(pl_value_text(8, 15, 127, raw, buf), "127") == 0);
-    static const char *const name[5] = {"RVB S1", "RVB S2", "RVB DRUMS", "DECAY", "DAMP"};
+    static const char *const name[6] = {"RVB S1", "RVB S2", "RVB DRUMS", "DECAY", "DAMP", "WIDTH"};
     CHECK(strcmp(pl_page_name(PL_PAGE_REVERB), "REVERB") == 0);
     CHECK(pl_page_color(PL_PAGE_REVERB) == pl_page_color(8));
     for (int e = 1; e < PL_KNOBS; e++) {
         const char *label = pl_knob_label(PL_PAGE_REVERB, e, raw);
-        CHECK(label == (e <= 5 ? name[e - 1] : NULL));
+        CHECK(label == (e <= 6 ? name[e - 1] : NULL));
         if (label) {
             CHECK(strcmp(label, name[e - 1]) == 0);
             CHECK(strcmp(pl_value_text(PL_PAGE_REVERB, e, 64, raw, buf), "64") == 0);

@@ -173,7 +173,7 @@ TEST(test_reverb_panel_only)
     CHECK(knob(ACID_PAGE_REVERB, 2) == 33);
     CHECK(ev.page == ACID_PAGE_REVERB && ev.enc == 1 && ev.value == 33 && ev.src == ACID_SRC_PANEL && ev.held == 1);
     CHECK(s.page == 8 && l.held[ACID_PAGE_REVERB][1] == 1);
-    CHECK(panel(ACID_PAGE_REVERB, 7, 99) == 0);
+    CHECK(panel(ACID_PAGE_REVERB, 8, 99) == 0);
     CHECK(acid_link_panel_page(&l, &s, ACID_PAGE_REVERB, &ev) == 0);
     CHECK(s.page == 8 && acid_link_page(&l, &s) == 8);
 }

@@ -44,7 +44,7 @@ TEST(test_reverb_defaults_and_off_bit_exact)
     memset(&b, 0, sizeof b);
     acid_synth_init(&a, SR);
     acid_synth_init(&b, SR);
-    static const int def[ACID_REVERB_KNOBS] = {64, 64, 64, 64, 50};
+    static const int def[ACID_REVERB_KNOBS] = {64, 64, 64, 64, 50, 127};
     for (int e = 0; e < ACID_REVERB_KNOBS; e++) {
         CHECK(acid_synth_knob(&a, ACID_PAGE_REVERB, e + 1) == def[e]);
     }
@@ -91,13 +91,13 @@ TEST(test_reverb_blob_import_and_roundtrip)
     memset(&b, 0, sizeof b);
     acid_synth_init(&a, SR);
     acid_synth_init(&b, SR);
-    static const int val[ACID_REVERB_KNOBS] = {11, 22, 33, 77, 88};
+    static const int val[ACID_REVERB_KNOBS] = {11, 22, 33, 77, 88, 99};
     for (int e = 0; e < ACID_REVERB_KNOBS; e++) {
         acid_synth_set_knob(&a, ACID_PAGE_REVERB, e + 1, val[e]);
     }
     uint8_t blob[ACID_SYNTH_BLOB];
     CHECK(acid_synth_export(&a, blob, sizeof blob) == ACID_SYNTH_BLOB);
-    CHECK(blob[3] == 7);
+    CHECK(blob[3] == 8);
     CHECK(acid_synth_import(&b, blob, sizeof blob));
     for (int e = 0; e < ACID_REVERB_KNOBS; e++) {
         CHECK(acid_synth_knob(&b, ACID_PAGE_REVERB, e + 1) == val[e]);
@@ -105,12 +105,25 @@ TEST(test_reverb_blob_import_and_roundtrip)
     blob[3] = 5;
     acid_synth_init(&b, SR);
     CHECK(acid_synth_import(&b, blob, ACID_SYNTH_BLOB_V5));
-    static const int def[ACID_REVERB_KNOBS] = {64, 64, 64, 64, 50};
+    static const int def[ACID_REVERB_KNOBS] = {64, 64, 64, 64, 50, 127};
     for (int e = 0; e < ACID_REVERB_KNOBS; e++) {
         CHECK(acid_synth_knob(&b, ACID_PAGE_REVERB, e + 1) == def[e]);
     }
     CHECK(acid_synth_export(&b, blob, sizeof blob) == ACID_SYNTH_BLOB);
-    CHECK(blob[3] == 7);
+    CHECK(blob[3] == 8);
+    // Версия 7: пять ручек, ширины нет - полная.
+    acid_synth_init(&a, SR);
+    for (int e = 0; e < ACID_REVERB_KNOBS; e++) {
+        acid_synth_set_knob(&a, ACID_PAGE_REVERB, e + 1, val[e]);
+    }
+    CHECK(acid_synth_export(&a, blob, sizeof blob) == ACID_SYNTH_BLOB);
+    blob[3] = 7;
+    acid_synth_init(&b, SR);
+    CHECK(acid_synth_import(&b, blob, ACID_SYNTH_BLOB_V7));
+    for (int e = 0; e < 5; e++) {
+        CHECK(acid_synth_knob(&b, ACID_PAGE_REVERB, e + 1) == val[e]);
+    }
+    CHECK(acid_synth_knob(&b, ACID_PAGE_REVERB, 6) == 127);
     // Версия 6 (сборка одного дня): wet лежал на месте LYR HALF (FX 15). Переезжает на FX 16, LYR HALF выключен.
     acid_synth_init(&a, SR);
     acid_synth_set_knob(&a, 8, 14, 0);
@@ -119,9 +132,43 @@ TEST(test_reverb_blob_import_and_roundtrip)
     blob[3] = 6;
     blob[ACID_SYNTH_BLOB_V4 + 6 * ACID_KNOBS + 14] = 90; // эффекты - седьмая из сохраняемых страниц
     acid_synth_init(&b, SR);
-    CHECK(acid_synth_import(&b, blob, sizeof blob));
+    CHECK(acid_synth_import(&b, blob, ACID_SYNTH_BLOB_V7));
     CHECK(acid_synth_knob(&b, 8, 15) == 90);
     CHECK(acid_synth_knob(&b, 8, 14) == 0 && !b.layer_half);
+}
+
+// Ширина: wet = разница с сухим синтом. На 0 оба канала wet одинаковы (моно), на 127 - как раньше, разные.
+static float wet_side(int width)
+{
+    memset(&a, 0, sizeof a);
+    memset(&b, 0, sizeof b);
+    acid_synth_init(&a, SR);
+    acid_synth_init(&b, SR);
+    acid_synth_set_knob(&b, 8, 15, 127);
+    acid_synth_set_knob(&b, ACID_PAGE_REVERB, 6, width);
+    note(&a, 4, 48);
+    note(&b, 4, 48);
+    float dl[CH], dr[CH], wl[CH], wr[CH];
+    double side = 0.0, mid = 0.0;
+    for (int k = 0; k < 200; k++) {
+        acid_synth_render_lr(&a, dl, dr, CH);
+        acid_synth_render_lr(&b, wl, wr, CH);
+        for (int i = 0; i < CH; i++) {
+            double l = wl[i] - dl[i], r = wr[i] - dr[i];
+            side += (l - r) * (l - r);
+            mid += (l + r) * (l + r);
+        }
+    }
+    CHECK(mid > 1e-6);
+    return (float)(side / mid);
+}
+
+TEST(test_reverb_width)
+{
+    float full = wet_side(127), half = wet_side(64), mono = wet_side(0);
+    CHECK(full > 0.1f);
+    CHECK(mono < 1e-9f);
+    CHECK(half > 0.15f * full && half < 0.4f * full); // сторона вдвое тише: энергия вчетверо
 }
 
 TEST(test_reverb_load_duck_and_sleep)
@@ -157,6 +204,7 @@ int main(void)
     RUN(test_reverb_kick_not_sent);
     RUN(test_reverb_each_send);
     RUN(test_reverb_blob_import_and_roundtrip);
+    RUN(test_reverb_width);
     RUN(test_reverb_load_duck_and_sleep);
     TEST_MAIN_END();
 }

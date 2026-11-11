@@ -59,12 +59,12 @@ TEST(test_kind_other_pages)
     CHECK(pl_pick_sub(8, 14) == -1 && pl_pick_sub(0, 15) == -1 && pl_pick_sub(PL_PAGE_REVERB, 1) == -1);
     CHECK(pl_pick_grab(0, 5, raw, 1) == 1);
     CHECK(kind(8, 11) == PL_PICK_NONE); // WIDTH
-    for (int e = 1; e <= 5; e++) {
+    for (int e = 1; e <= 6; e++) {
         CHECK(kind(PL_PAGE_REVERB, e) == PL_PICK_NONE);
         CHECK(pl_pick_grab(PL_PAGE_REVERB, e, raw, 0));
         CHECK(pl_pick_grab(PL_PAGE_REVERB, e, raw, 1));
     }
-    CHECK(kind(PL_PAGE_REVERB, 6) == PL_PICK_NONE);
+    CHECK(kind(PL_PAGE_REVERB, 7) == PL_PICK_NONE);
     for (int e = 1; e <= 15; e++) {
         CHECK(kind(9, e) == PL_PICK_GRID); // TONAL: всё списки и шаги
     }

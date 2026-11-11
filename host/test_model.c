@@ -32,14 +32,14 @@ TEST(test_model_snapshot_replaces_all)
     memset(&s2, 0, sizeof s2);
     s2.bsp_pos[2] = 55;
     s2.held[(6 * 16 + 2) / 8] = (uint8_t)(1 << ((6 * 16 + 2) % 8));
-    for (int e = 1; e <= 5; e++) {
+    for (int e = 1; e <= 6; e++) {
         s2.reverb[e - 1] = (uint8_t)(20 + e);
     }
     pl_model_apply(&m, PL_SNAPSHOT2, (const uint8_t *)&s2, sizeof s2, 20);
     CHECK(m.have && m.mode == 1 && m.bsp_page == 3);
     CHECK(m.demo == 1);
     CHECK(m.raw[6][2] == 62 && m.raw[9][15] == 105);
-    for (int e = 1; e <= 5; e++) {
+    for (int e = 1; e <= 6; e++) {
         CHECK(m.reverb[e] == 20 + e);
     }
     CHECK(m.bsp_pos[2] == 55);
@@ -130,7 +130,7 @@ TEST(test_reverb_local_set)
     CHECK(m.reverb[2] == 40 && m.reverb_held[2] == 1);
     CHECK(m.raw[8][2] == 0 && m.mod_knob[0][2] == 0);
     CHECK(pl_model_local_set(&m, PL_PAGE_REVERB, 0, 40) == 0);
-    CHECK(pl_model_local_set(&m, PL_PAGE_REVERB, 6, 40) == 0);
+    CHECK(pl_model_local_set(&m, PL_PAGE_REVERB, 7, 40) == 0);
 }
 
 TEST(test_toast_skips_empty_knob)

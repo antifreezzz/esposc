@@ -27,7 +27,7 @@ _Static_assert(ACID_PAGE_PETRI == PL_PAGE_PETRI && ACID_BSP_PETRI == 18 && ACID_
                    ACID_LAYER_OFF == PL_LAYER_OFF && ACID_PETRI_TABLE == PL_PETRI_POINTS,
                "petri numbers shared by synth and panel (pl_proto.h, pl_page_bsp)");
 _Static_assert(ACID_PAGES == PL_PAGES && ACID_PAGE_GRIDS == PL_PAGE_GRIDS && ACID_USER_FIRST == PL_USER_FIRST &&
-                   ACID_PAGE_REVERB == PL_PAGE_REVERB && ACID_REVERB_KNOBS == 5,
+                   ACID_PAGE_REVERB == PL_PAGE_REVERB && ACID_REVERB_KNOBS == PL_REVERB_KNOBS,
                "synth and panel page numbering");
 _Static_assert(sizeof(pl_snapshot2_t) <= PL_PAYLOAD_MAX, "snapshot2 fits UART frame");
 _Static_assert(ACID_SEQ_REST == PL_SEQ_REST && ACID_SEQ_DEG == PL_SEQ_DEG && ACID_SEQ_ACC == PL_SEQ_ACC &&

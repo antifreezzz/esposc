@@ -461,7 +461,7 @@ TEST(test_blob_v5_all_pages_roundtrip)
     acid_synth_set_knob(&s, ACID_PAGE_PETRI, 2, 30);
     static uint8_t blob[ACID_SYNTH_BLOB];
     CHECK(acid_synth_export(&s, blob, sizeof blob) == ACID_SYNTH_BLOB);
-    CHECK(blob[3] == 7);
+    CHECK(blob[3] == 8);
 
     acid_synth_init(&b, SR);
     acid_synth_notes_off(&b);

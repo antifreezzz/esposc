@@ -64,9 +64,10 @@ static const uint8_t PAN_DEFAULT[ACID_PANS] = {64, 64, 80, 48, 64};
 #define DRIVE_TONE 64  // тон и вой, пока их не трогали
 #define TYPE_ENC 1       // энкодер 2 на странице синта
 // 2: + ручки слоя тональности, 3: + слои синтов, 4: + PETRI, 5: + страницы микса, ударки, эффектов, Grids, чашки,
-// 6: + пять ручек реверба (wet на FX 15 вместо LYR HALF), 7: LYR HALF на FX 15, wet на FX 16.
-static const uint8_t BLOB_MAGIC[4] = {'A', 'S', '5', 7};
-static const uint8_t RV_DEFAULT[ACID_REVERB_KNOBS] = {64, 64, 64, 64, 50};
+// 6: + пять ручек реверба (wet на FX 15 вместо LYR HALF), 7: LYR HALF на FX 15, wet на FX 16,
+// 8: + ширина реверба.
+static const uint8_t BLOB_MAGIC[4] = {'A', 'S', '5', 8};
+static const uint8_t RV_DEFAULT[ACID_REVERB_KNOBS] = {64, 64, 64, 64, 50, 127};
 #define OLD_TYPES 25 // версии 2-3: без PETRI, у слоя «выкл» = 25
 #define BLOB_OLD(slots) (4 + (slots) * (1 + OLD_TYPES * ACID_KNOBS) + ACID_TONAL_KNOBS)
 #define LAYER_GAIN_RAW 100 // громкость слоя после включения (FX 13-14)
@@ -223,6 +224,7 @@ void acid_synth_init(acid_synth_t *s, float sr)
     s->rv_wet = 0.0f;
     s->rv_send1 = s->rv_send2 = s->rv_send_drums = 64.0f / 127.0f;
     s->rv_duck = 1.0f;
+    s->rv_narrow = 0.0f;
     memset(s->rv_prev, 0, sizeof s->rv_prev);
     s->send1 = s->send2 = s->send_drums = 0.0f;
     for (int k = 0; k < ACID_PANS; k++) {
@@ -926,6 +928,7 @@ static void page_reverb(acid_synth_t *s, int slot, int v)
     case 3: s->rv_send_drums = lin(v, 0.0f, 1.0f); break;
     case 4:
     case 5: acid_reverb_set(&s->reverb, s->rv_raw[3], s->rv_raw[4]); break;
+    case 6: s->rv_narrow = (float)(127 - v) * (1.0f / 254.0f); break;
     default: break;
     }
 }
@@ -1845,8 +1848,10 @@ void acid_synth_render_mix_lr(acid_synth_t *s, float *l, float *r, size_t n, con
             } else if (duck < 1.0f) {
                 s->rv_duck = duck < 1.0f - ACID_DUCK_UP ? duck + ACID_DUCK_UP : 1.0f;
             }
-            l[i] += s->rv_wet * duck * rv_wl[i];
-            r[i] += s->rv_wet * duck * rv_wr[i];
+            // Ширина: каналы wet сходятся к середине. На полной ширине narrow 0 и wet проходит как есть.
+            float g = s->rv_wet * duck, cross = s->rv_narrow * (rv_wl[i] - rv_wr[i]);
+            l[i] += g * (rv_wl[i] - cross);
+            r[i] += g * (rv_wr[i] + cross);
         }
     }
     acid_stutter_run2(&s->stutter, l, r, (int)n);
@@ -1953,8 +1958,9 @@ int acid_synth_import(acid_synth_t *s, const void *buf, size_t len)
 {
     const uint8_t *b = buf;
     // Версия 2 (до слоёв) - только синты; 2-3 - по 25 типов (без PETRI), у слоя «выкл» = 25.
-    int ver = len == ACID_SYNTH_BLOB && memcmp(b, BLOB_MAGIC, sizeof BLOB_MAGIC) == 0       ? 7
-              : len == ACID_SYNTH_BLOB && memcmp(b, "AS5\x06", 4) == 0                  ? 6
+    int ver = len == ACID_SYNTH_BLOB && memcmp(b, BLOB_MAGIC, sizeof BLOB_MAGIC) == 0       ? 8
+              : len == ACID_SYNTH_BLOB_V7 && memcmp(b, "AS5\x07", 4) == 0               ? 7
+              : len == ACID_SYNTH_BLOB_V7 && memcmp(b, "AS5\x06", 4) == 0               ? 6
               : len == ACID_SYNTH_BLOB_V5 && memcmp(b, "AS5\x05", 4) == 0               ? 5
               : len == ACID_SYNTH_BLOB_V4 && memcmp(b, "AS5\x04", 4) == 0               ? 4
               : len == BLOB_OLD(2 * ACID_SLOTS) && memcmp(b, "AS5\x03", 4) == 0 ? 3
@@ -2000,7 +2006,7 @@ int acid_synth_import(acid_synth_t *s, const void *buf, size_t len)
             }
         }
     }
-    for (int e = 0; ver >= 6 && e < ACID_REVERB_KNOBS; e++) {
+    for (int e = 0; ver >= 6 && e < (ver >= 8 ? ACID_REVERB_KNOBS : 5); e++) {
         if (b[e] <= 127) {
             apply_page(s, ACID_PAGE_REVERB, e + 1, b[e]);
         }

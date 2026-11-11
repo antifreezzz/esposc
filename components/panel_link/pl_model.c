@@ -67,7 +67,7 @@ static void apply_snapshot2(pl_model_t *m, const pl_snapshot2_t *s)
     for (int i = 0; i < PL_PAGES * PL_KNOBS; i++) {
         m->held[i / PL_KNOBS][i % PL_KNOBS] = (s->held[i / 8] >> (i % 8)) & 1;
     }
-    for (int e = 1; e <= 5; e++) {
+    for (int e = 1; e <= PL_REVERB_KNOBS; e++) {
         m->reverb[e] = s->reverb[e - 1];
     }
     memset(m->reverb_held, 0, sizeof m->reverb_held);
@@ -112,7 +112,7 @@ static void apply_knob(pl_model_t *m, const pl_knob_t *k, uint32_t ms)
         return;
     }
     if (k->page == PL_PAGE_REVERB) {
-        if (k->enc <= 5) {
+        if (k->enc <= PL_REVERB_KNOBS) {
             m->reverb[k->enc] = k->value;
             m->reverb_held[k->enc] = k->held;
         }
@@ -213,7 +213,7 @@ void pl_model_hello_sent(pl_model_t *m, uint32_t ms)
 int pl_model_local_set(pl_model_t *m, int page, int enc, int v)
 {
     if (page == PL_PAGE_REVERB) {
-        if (!m->have || enc <= 0 || enc > 5) {
+        if (!m->have || enc <= 0 || enc > PL_REVERB_KNOBS) {
             return 0;
         }
         m->reverb[enc] = (uint8_t)v;

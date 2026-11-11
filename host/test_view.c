@@ -42,7 +42,7 @@ TEST(test_reverb_cell)
     CHECK(strcmp(c.label, "RVB S1") == 0);
     CHECK(c.v == 33 && c.lo == 0 && c.hi == 127 && strcmp(c.text, "33") == 0);
     CHECK(c.held == 1 && c.eff == -1 && c.color == pl_knob_color(PL_PAGE_REVERB, 1, m.reverb));
-    pl_view_cell(&m, PL_PAGE_REVERB, 6, &c);
+    pl_view_cell(&m, PL_PAGE_REVERB, 7, &c);
     CHECK(c.label == NULL);
     CHECK(strcmp(pl_view_page_name(PL_PAGE_REVERB), "REVERB") == 0);
     CHECK(pl_view_page_color(PL_PAGE_REVERB) == pl_page_color(8));
