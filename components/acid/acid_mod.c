@@ -346,3 +346,15 @@ int acid_mod_step(acid_mod_t *m, acid_synth_t *s, int budget)
     }
     return applied;
 }
+
+int acid_mod_chunk(acid_mod_t *m, acid_synth_t *s, int apply, int budget)
+{
+    if (apply) {
+        return acid_mod_step(m, s, budget);
+    }
+    if (s->tight >= 1) {
+        return 0; // защита: как в acid_mod_step, иначе фазы шли бы на кусках без применения
+    }
+    acid_mod_run(m, acid_synth_take_trig(s), acid_synth_clock_pos(s));
+    return 0;
+}

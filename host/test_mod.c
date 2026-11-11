@@ -472,6 +472,39 @@ TEST(test_smooth_matches_pick)
     }
 }
 
+// Блок синта - три куска: применение целей раз в блок, фазы каждый кусок. Под защитой замирает всё, и на кусках
+// без применения: фазы стоят, запуск ждёт в синте и срабатывает после защиты.
+TEST(test_chunk_freezes_under_guard)
+{
+    acid_synth_init(&syn, 48000.0f);
+    fresh();
+    acid_mod_set(&m, 0, ACID_MOD_SHAPE, ACID_SHAPE_SAW);
+    acid_mod_set(&m, 1, ACID_MOD_SHAPE, ACID_SHAPE_ENV);
+    acid_mod_set(&m, 1, ACID_MOD_TRIG, 5); // KICK
+    acid_mod_target(&m, 0, 0, 0, 2);
+    acid_mod_set(&m, 0, ACID_MOD_DEPTH1, 100);
+    // Без защиты: кусок без применения двигает фазу, ручку не трогает; с применением - ставит.
+    float phase = m.m[0].phase;
+    CHECK(acid_mod_chunk(&m, &syn, 0, 2) == 0 && m.m[0].phase != phase && syn.mod_base[0][2] == 0xFF);
+    CHECK(acid_mod_chunk(&m, &syn, 1, 2) == 1 && syn.mod_base[0][2] != 0xFF);
+    for (int tight = 1; tight <= 3; tight++) {
+        syn.tight = tight;
+        acid_midi_event_t kick = {.type = ACID_MIDI_NOTE_ON, .ch = 1, .d1 = 36, .d2 = 100};
+        acid_synth_midi(&syn, &kick);
+        phase = m.m[0].phase;
+        float out = acid_mod_out(&m, 0);
+        for (int c = 0; c < 6; c++) {
+            CHECK(acid_mod_chunk(&m, &syn, c % 3 == 0, 2) == 0);
+        }
+        CHECK(m.m[0].phase == phase && acid_mod_out(&m, 0) == out);
+        CHECK(m.m[1].stage == 0 && acid_mod_out(&m, 1) == 0.0f); // огибающая не запустилась
+        CHECK(syn.trig & ACID_TRIG_KICK);                       // запуск ждёт
+    }
+    syn.tight = 0;
+    acid_mod_chunk(&m, &syn, 0, 2);
+    CHECK(m.m[0].phase != phase && m.m[1].stage == 1);
+}
+
 int main(void)
 {
     RUN(test_defaults);
@@ -488,5 +521,6 @@ int main(void)
     RUN(test_synth_overlay_and_blob);
     RUN(test_mod_step_and_type_change);
     RUN(test_smooth_matches_pick);
+    RUN(test_chunk_freezes_under_guard);
     TEST_MAIN_END();
 }

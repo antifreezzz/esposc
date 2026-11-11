@@ -98,3 +98,6 @@ int acid_mod_import(acid_mod_t *m, const void *buf, size_t len); // 0 - чужо
 // Шаг модуляторов и применение изменившихся целей (не больше budget и ACID_MOD_PER_CHUNK, на защите >= 1 - стоп).
 // При budget 0 идут только фазы, обход целей и снятие оверлеев ждут бюджета.
 int acid_mod_step(acid_mod_t *m, struct acid_synth *s, int budget);
+// Кусок цикла синта: шаг фаз с запусками и клоком синта, а при apply - ещё и применение целей (acid_mod_step).
+// Блок - несколько кусков, применение раз в блок. На защите >= 1 замирает всё: фазы стоят, запуски ждут в синте.
+int acid_mod_chunk(acid_mod_t *m, struct acid_synth *s, int apply, int budget);
