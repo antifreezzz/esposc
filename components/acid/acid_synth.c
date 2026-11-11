@@ -1423,7 +1423,31 @@ static void slot_tick(acid_synth_t *s, acid_slot_t *v)
     }
 }
 
-// Сэмпл голоса Plaits с громкостью слота: блоки по 12, молчащий голос не считаем.
+// Следующий блок Plaits в pbuf: 12 сэмплов, молчащий голос не считаем.
+static void plaits_refill(acid_slot_t *v, int gate)
+{
+    v->ppos = 0;
+    if (acid_drive_on(&v->drv)) {
+        acid_drive_pitch(&v->drv, acid_exp2(v->pitch_log2));
+    }
+    if (!gate && v->idle >= IDLE_BLOCKS) {
+        memset(v->pbuf, 0, sizeof v->pbuf);
+        return;
+    }
+    acid_plaits_params_t *p = &v->pp;
+    p->note = 12.0f * (v->pitch_log2 - log2f(440.0f)) + 69.0f + (v->half ? 12.0f : 0.0f); // Plaits на 48 кГц
+    p->trigger = gate && !v->retrig;
+    v->retrig = 0;
+    p->level = gate ? (v->accented ? 1.0f : 1.0f - v->p_accent) : 0.0f;
+    acid_plaits_render(v->plaits, p, v->pbuf, ACID_PLAITS_BLOCK);
+    int quiet = !gate;
+    for (int i = 0; i < ACID_PLAITS_BLOCK && quiet; i++) {
+        quiet = fabsf(v->pbuf[i]) <= PLAITS_QUIET;
+    }
+    v->idle = quiet ? v->idle + 1 : 0;
+}
+
+// Сэмпл голоса Plaits с громкостью слота: блоки по 12.
 static float plaits_next(acid_slot_t *v, int gate)
 {
     if (v->gliding) {
@@ -1431,25 +1455,7 @@ static float plaits_next(acid_slot_t *v, int gate)
         v->pitch_log2 = v->target_log2 + (v->pitch_log2 - v->target_log2) * gc;
     }
     if (v->ppos == ACID_PLAITS_BLOCK) {
-        v->ppos = 0;
-        if (acid_drive_on(&v->drv)) {
-            acid_drive_pitch(&v->drv, acid_exp2(v->pitch_log2));
-        }
-        if (!gate && v->idle >= IDLE_BLOCKS) {
-            memset(v->pbuf, 0, sizeof v->pbuf);
-        } else {
-            acid_plaits_params_t *p = &v->pp;
-            p->note = 12.0f * (v->pitch_log2 - log2f(440.0f)) + 69.0f + (v->half ? 12.0f : 0.0f); // Plaits на 48 кГц
-            p->trigger = gate && !v->retrig;
-            v->retrig = 0;
-            p->level = gate ? (v->accented ? 1.0f : 1.0f - v->p_accent) : 0.0f;
-            acid_plaits_render(v->plaits, p, v->pbuf, ACID_PLAITS_BLOCK);
-            int quiet = !gate;
-            for (int i = 0; i < ACID_PLAITS_BLOCK && quiet; i++) {
-                quiet = fabsf(v->pbuf[i]) <= PLAITS_QUIET;
-            }
-            v->idle = quiet ? v->idle + 1 : 0;
-        }
+        plaits_refill(v, gate);
     }
     float y = v->pbuf[v->ppos++];
     if (acid_drive_on(&v->drv)) {
@@ -1458,8 +1464,39 @@ static float plaits_next(acid_slot_t *v, int gate)
     return y * (PLAITS_GAIN * v->gain);
 }
 
+// Кусок голоса Plaits: те же сэмплы, что n вызовов plaits_next, но блок pbuf уходит в выход одним проходом.
+static void plaits_run(acid_slot_t *v, int gate, float *out, int n)
+{
+    while (n > 0) {
+        if (v->gliding) {
+            *out++ = plaits_next(v, gate); // слайд двигает высоту каждый сэмпл
+            n--;
+            continue;
+        }
+        if (v->ppos == ACID_PLAITS_BLOCK) {
+            plaits_refill(v, gate);
+        }
+        int m = ACID_PLAITS_BLOCK - v->ppos;
+        m = m > n ? n : m;
+        const float *y = &v->pbuf[v->ppos];
+        if (acid_drive_on(&v->drv)) {
+            for (int i = 0; i < m; i++) {
+                out[i] = acid_drive_run(&v->drv, y[i] * PLAITS_GAIN) * v->gain;
+            }
+        } else {
+            float g = PLAITS_GAIN * v->gain;
+            for (int i = 0; i < m; i++) {
+                out[i] = y[i] * g;
+            }
+        }
+        v->ppos += m;
+        out += m;
+        n -= m;
+    }
+}
+
 // Сэмпл голоса 303 с громкостью слота.
-static float voice_next(acid_synth_t *s, acid_slot_t *v, int gate)
+static inline float voice_next(acid_synth_t *s, acid_slot_t *v, int gate)
 {
     acid_amp_gate(&v->amp, gate);
     if (!gate && v->amp.value < AMP_SLEEP) {
@@ -1517,7 +1554,7 @@ static void petri_ctrl(acid_synth_t *s, acid_slot_t *v)
 }
 
 // Сэмпл голоса PETRI с громкостью слота: сумма голосов чашки -> ladder -> перегруз.
-static float petri_next(acid_synth_t *s, acid_slot_t *v)
+static inline float petri_next(acid_synth_t *s, acid_slot_t *v)
 {
     if (!acid_petri_active(v->pet)) {
         return 0.0f; // молчит: ни таблиц, ни фильтра
@@ -1564,6 +1601,43 @@ static float slot_next(acid_synth_t *s, acid_slot_t *v, int gate)
         y *= fade_step(s, v);
     }
     return y;
+}
+
+// n сэмплов слота со временем слота: то же, что на каждом сэмпле slot_tick и slot_next, но разбор типа - раз на
+// кусок, а не на сэмпл (на плате обвязка сэмпла стоила слоту ~45 мкс на блок 2 мс). Гейт внутри куска не
+// меняется: ноты приходят между кусками, а отложенное отпускание и смена типа идут по сэмплу.
+static void slot_run(acid_synth_t *s, acid_slot_t *v, float *out, int n)
+{
+    while (n > 0) {
+        int m = n;
+        if (v->pend_note >= 0) {
+            int32_t d = (int32_t)(v->pend_at - v->now); // отпускание - на d-м сэмпле отсюда
+            m = d > 1 ? (d - 1 < n ? d - 1 : n) : 0;
+        }
+        if (m == 0 || v->fade != 0) {
+            slot_tick(s, v);
+            *out++ = slot_next(s, v, v->nheld > 0);
+            n--;
+            continue;
+        }
+        int gate = v->nheld > 0;
+        v->now += (uint32_t)m;
+        if (v->type == 0) {
+            for (int i = 0; i < m; i++) {
+                out[i] = voice_next(s, v, gate);
+            }
+        } else if (v->type == ACID_LAYER_OFF || (v->type == ACID_TYPE_PETRI && !v->pet)) {
+            memset(out, 0, (size_t)m * sizeof *out);
+        } else if (v->type == ACID_TYPE_PETRI) {
+            for (int i = 0; i < m; i++) {
+                out[i] = petri_next(s, v);
+            }
+        } else {
+            plaits_run(v, gate, out, m);
+        }
+        out += m;
+        n -= m;
+    }
 }
 
 // Слой звучит: тип не OFF или ещё идёт уход в OFF. Выключенный не считается и в смесь не попадает.
@@ -1619,20 +1693,43 @@ static inline float layer_add(acid_synth_t *s, int k, float y)
     return y + s->layer_gain[k] * *d * out;
 }
 
+// Слой синта k поверх out. Обычный случай (полная частота, защита не глушит, тип не меняется) - куском.
+static void layer_mix(acid_synth_t *s, int k, float *out, size_t n)
+{
+    acid_slot_t *lv = &s->layer[k];
+    float tmp[MIX_CHUNK];
+    size_t i = 0;
+    while (i < n) {
+        if (!layer_on(lv)) {
+            return;
+        }
+        int half = s->layer_half || s->tight >= 2;
+        if (half || lv->half || s->tight == 3 || s->layer_duck[k] != 1.0f || lv->fade != 0) {
+            out[i] = layer_add(s, k, out[i]);
+            i++;
+            continue;
+        }
+        size_t m = n - i < MIX_CHUNK ? n - i : MIX_CHUNK;
+        slot_run(s, lv, tmp, (int)m);
+        float g = s->layer_gain[k] * s->layer_duck[k];
+        for (size_t j = 0; j < m; j++) {
+            out[i + j] = out[i + j] + g * tmp[j];
+        }
+        lv->hlast = tmp[m - 1];
+        i += m;
+    }
+}
+
 void acid_synth_render_slot(acid_synth_t *s, int k, float *out, size_t n)
 {
-    acid_slot_t *v = &s->slot[k];
-    for (size_t i = 0; i < n; i++) {
-        slot_tick(s, v);
-        out[i] = layer_add(s, k, slot_next(s, v, v->nheld > 0));
-    }
+    slot_run(s, &s->slot[k], out, (int)n);
+    layer_mix(s, k, out, n);
 }
 
 void acid_synth_render_layer(acid_synth_t *s, int k, float *out, size_t n)
 {
-    for (size_t i = 0; i < n; i++) {
-        out[i] = layer_add(s, k, 0.0f);
-    }
+    memset(out, 0, n * sizeof *out);
+    layer_mix(s, k, out, n);
 }
 
 void acid_synth_render_side(acid_synth_t *s, acid_synth_side_t *side, size_t n)
@@ -1647,19 +1744,17 @@ void acid_synth_render_side(acid_synth_t *s, acid_synth_side_t *side, size_t n)
 
 void acid_synth_render_src(acid_synth_t *s, acid_synth_src_t *src, size_t n)
 {
-    acid_slot_t *v = &s->slot[0];
     ACID_PROF_T(t);
+    slot_run(s, &s->slot[0], src->y, (int)n);
+    s->clock_now += (uint32_t)n;
+    ACID_PROF_ADD(ACID_PROF_SYNTH1, t);
     for (size_t i = 0; i < n; i++) {
-        slot_tick(s, v);
-        src->y[i] = slot_next(s, v, v->nheld > 0);
-        s->clock_now++;
-        ACID_PROF_ADD(ACID_PROF_SYNTH1, t);
         src->kick[i] = s->kick_gain * s->kick_vel * acid_kick_next(&s->kick);
         src->hat[i] = s->hat_gain * s->hat_vel * acid_hat_next(&s->hat);
         src->clap[i] = s->clap_gain * s->clap_vel * acid_clap_next(&s->clap);
         src->snare[i] = s->snare_gain * s->snare_vel * acid_snare_next(&s->snare);
-        ACID_PROF_ADD(ACID_PROF_DRUMS, t);
     }
+    ACID_PROF_ADD(ACID_PROF_DRUMS, t);
 }
 
 void acid_synth_render_mix_lr(acid_synth_t *s, float *l, float *r, size_t n, const float *slot1, const float *layer0,
