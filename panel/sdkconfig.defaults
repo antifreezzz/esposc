@@ -20,3 +20,8 @@ CONFIG_LV_COLOR_DEPTH_16=y
 CONFIG_LV_FONT_MONTSERRAT_14=y
 # LVGL: куча на все объекты экрана (меню, свои страницы, сцены, редактор, Grids); 96 КБ не хватило экрану Grids
 CONFIG_LV_MEM_SIZE=131072
+# Смена экрана - полная перерисовка LVGL, на -Og и с кэшем команд 16 КБ она шла 115-160 мс (стенд UI_BENCH,
+# 2026-11-11). Код исполняется из PSRAM, и отрисовка упиралась в промахи кэша команд: 32 КБ дали 100 -> 65 мс,
+# -O2 - ещё ~15 %. Горячие функции LVGL лежат во внутренней памяти (main/linker.lf).
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB=y

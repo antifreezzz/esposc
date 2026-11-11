@@ -14,6 +14,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "ui_bench.h"
 
 // Пины и тайминги Guition ESP32-4848S040 (проверены в minimaxdumbtest).
 #define LCD_W 480
@@ -43,6 +44,9 @@ static const char *TAG = "display";
 static esp_lcd_touch_handle_t s_touch;
 static int64_t s_refr_t0, s_refr_us, s_refr_max;
 static int s_frames;
+// Первые перерисовки окна по отдельности (стенд отклика): начало по esp_timer и длительность, мкс.
+static int64_t s_log_t0[DISPLAY_LOG];
+static int s_log_dt[DISPLAY_LOG];
 
 // Замер: сколько кадров LVGL перерисовал и сколько это стоило.
 static void refr_cb(lv_event_t *e)
@@ -54,6 +58,10 @@ static void refr_cb(lv_event_t *e)
         int64_t dt = now - s_refr_t0;
         s_refr_us += dt;
         s_refr_max = dt > s_refr_max ? dt : s_refr_max;
+        if (s_frames < DISPLAY_LOG) {
+            s_log_t0[s_frames] = s_refr_t0;
+            s_log_dt[s_frames] = (int)dt;
+        }
         s_frames++;
     }
 }
@@ -105,6 +113,15 @@ void display_scan_stats(int out[8])
         out[i] = v[i];
     }
     s_vs.win = s_fb.win = 0;
+}
+
+int display_frame_log(int i, int64_t *start)
+{
+    if (i < 0 || i >= DISPLAY_LOG || i >= s_frames) {
+        return -1;
+    }
+    *start = s_log_t0[i];
+    return s_log_dt[i];
 }
 
 void display_stats(int *frames, int *mean_us, int *max_us)
@@ -267,6 +284,9 @@ static void screen_task(void *arg)
 {
     (void)arg;
     s_screen_err = screen_start();
+#ifdef UI_BENCH
+    ui_bench_start();
+#endif
     xTaskNotifyGive(s_starter);
     vTaskDelete(NULL);
 }

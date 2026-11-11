@@ -7,6 +7,7 @@
 #include "petri_bench.h"
 #include "petri_task.h"
 #include "ui.h"
+#include "ui_bench.h"
 
 #define STEP_MS 10 // опрос тача и UART
 
@@ -32,6 +33,9 @@ void app_main(void)
         uint32_t ms = (uint32_t)(esp_timer_get_time() / 1000);
         int x = 0, y = 0;
         int down = display_touch(&x, &y);
+#ifdef UI_BENCH
+        ui_bench_touch(ms, &down, &x, &y);
+#endif
         link_poll(&s_model, ms);
         int64_t t0 = esp_timer_get_time();
         ui_step(&s_model, down, x, y, ms);
@@ -40,8 +44,10 @@ void app_main(void)
         step_max = dt > step_max ? dt : step_max;
         steps++;
         if (ms - stats_ms >= 10000) {
-            int f, mean, worst;
+            int f = 0, mean = 0, worst = 0;
+#ifndef UI_BENCH
             display_stats(&f, &mean, &worst);
+#endif
             ESP_LOGI("panel", "10 s: frames %d, redraw mean %d worst %d us; ui step mean %lld worst %lld us; touch %d",
                      f, mean, worst, step_us / steps, step_max, down);
             int sc[8];

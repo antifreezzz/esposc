@@ -15,3 +15,4 @@ build-i2s/
 build-uac/
 build-i2s-tone/
 panel/build-bench/
+panel/build-uibench/
