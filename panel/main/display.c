@@ -28,7 +28,10 @@
 #define PIN_TP_SDA 19
 #define PIN_TP_SCL 45
 #define DRAW_LINES 48   // буфер отрисовки LVGL во внутренней памяти
-#define BOUNCE_LINES 10 // строки буфера во внутренней памяти: экран не рвётся при работе флэша
+// Строки буфера во внутренней памяти: кадр из PSRAM идёт на экран через него, прерывание дозаполняет его раз в
+// BOUNCE_LINES строк (строка 46 мкс). При 10 строках опоздание прерывания на ~0.4 мс уже показывало старые полосы
+// (на кадр - несколько копий картинки со сдвигом); 20 строк дают вдвое больший запас, цена - ещё 19 КБ внутренней RAM.
+#define BOUNCE_LINES 20
 
 static const char *TAG = "display";
 static esp_lcd_touch_handle_t s_touch;
@@ -181,7 +184,9 @@ esp_err_t display_start(void)
     ESP_RETURN_ON_ERROR(lvgl_port_init(&port), TAG, "lvgl port");
     lvgl_port_display_cfg_t disp = {
         // Рисуем кусками во внутренней памяти: программная отрисовка прямо в кадр в PSRAM стоила ~100 мс на экран.
-        .io_handle = io, .panel_handle = panel, .buffer_size = LCD_W * DRAW_LINES, .double_buffer = 1,
+        // Буфер один: выдача куска синхронная (копия в кадр и сразу готово), второй буфер LVGL не пригодился бы,
+        // а 46 КБ внутренней памяти нужны буферу экрана и чашке Петри.
+        .io_handle = io, .panel_handle = panel, .buffer_size = LCD_W * DRAW_LINES, .double_buffer = 0,
         .hres = LCD_W, .vres = LCD_H, .color_format = LV_COLOR_FORMAT_RGB565,
         .flags = {.buff_dma = 1},
     };
