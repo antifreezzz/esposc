@@ -63,7 +63,8 @@ static const uint8_t PAN_DEFAULT[ACID_PANS] = {64, 64, 80, 48, 64};
 #define DRIVE_ENC 13   // энкодеры 14-16 страницы синта: перегруз, тон, вой (у 303 и Plaits одни)
 #define DRIVE_TONE 64  // тон и вой, пока их не трогали
 #define TYPE_ENC 1       // энкодер 2 на странице синта
-// 2: + ручки слоя тональности, 3: + слои синтов, 4: + PETRI, 5: + страницы микса, ударки, эффектов, Grids, чашки.
+// 2: + ручки слоя тональности, 3: + слои синтов, 4: + PETRI, 5: + страницы микса, ударки, эффектов, Grids, чашки,
+// 6: + пять ручек реверба.
 static const uint8_t BLOB_MAGIC[4] = {'A', 'S', '5', 6};
 static const uint8_t RV_DEFAULT[ACID_REVERB_KNOBS] = {64, 64, 64, 64, 50};
 #define OLD_TYPES 25 // версии 2-3: без PETRI, у слоя «выкл» = 25
@@ -1128,7 +1129,7 @@ int acid_synth_knob_smooth(const acid_synth_t *s, int page, int enc)
     case PAGE_TOMS: return enc >= 2;
     case PAGE_TOMS + 1:
     case PAGE_COW: return enc >= 2 && enc <= 13;
-    case PAGE_FX: return enc != 6 && enc != 9 && enc != 10 && enc <= 13;
+    case PAGE_FX: return enc != 6 && enc != 9 && enc != 10 && enc <= 14;
     case ACID_PAGE_GRIDS: return enc >= 2 && enc <= 7;
     default: {
         int idx = synth_page_idx(page);
@@ -1367,6 +1368,9 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
         break;
     case ACID_MIDI_KNOB:
         acid_synth_set_knob(s, ev->ch, ev->d1, ev->d2);
+        break;
+    case ACID_MIDI_LAYER_HALF:
+        s->layer_half = ev->d2 >= 64;
         break;
     case ACID_MIDI_CLOCK: {
         float spb = acid_clock_spb(&s->clock);

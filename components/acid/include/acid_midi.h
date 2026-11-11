@@ -12,6 +12,7 @@ typedef enum {
     ACID_MIDI_START,
     ACID_MIDI_CONTINUE,
     ACID_MIDI_KNOB, // только внутри (демо): ch - страница, d1 - enc, d2 - значение; из USB не приходит
+    ACID_MIDI_LAYER_HALF, // только демо: d2 >= 64 ставит слои на половинную частоту
 } acid_midi_type_t;
 
 typedef struct {
