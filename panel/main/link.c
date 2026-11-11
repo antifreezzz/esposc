@@ -50,6 +50,7 @@ void link_poll(pl_model_t *m, uint32_t ms)
             }
         }
     }
+    pl_model_mod_expire(m, ms); // в демо синт выход модуляторов не шлёт: точки на ручках встают на базу
     static int linked, seen;
     int now_linked = pl_model_linked(m, ms);
     if (m->have && (!seen || now_linked != linked)) {

@@ -11,6 +11,7 @@
 #define PL_QUIET_MS 2000 // тишина дольше - просим снимок заново
 #define PL_HELLO_MS 500  // не чаще: ответ может быть в пути
 #define PL_PAGE_MS 300   // повтор страницы экрана, если синт её не взял
+#define PL_MOD_STALE_MS 500 // PL_MOD_POS идёт ~20 Гц: тишина дольше - модуляторы стоят
 #define PL_LOST_MS 6000  // тишина дольше при HELLO раз в 2 с - связи нет
 
 typedef struct {
@@ -58,6 +59,9 @@ int pl_model_linked(const pl_model_t *m, uint32_t ms);
 int pl_model_page_resend(const pl_model_t *m, int screen_page, uint32_t ms);
 // Экран сам выбрал страницу и отправил её синту; отменяет ждущее листание с BSP.
 void pl_model_page_sent(pl_model_t *m, uint32_t ms);
+// Выход модуляторов старше PL_MOD_STALE_MS (синт их остановил: демо) обнуляется: точки действующих значений
+// встают на базу. Звать каждый опрос связи.
+void pl_model_mod_expire(pl_model_t *m, uint32_t ms);
 // Сырые значения страницы 0..13 или модулятора 23..26 (ручки с энкодера 0), NULL - у страницы такого массива нет.
 const uint8_t *pl_model_raw(const pl_model_t *m, int page);
 // Своя правка: показать сразу, не дожидаясь эха; синт пометит её «ждёт BSP».

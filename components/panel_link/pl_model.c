@@ -223,6 +223,14 @@ int pl_model_local_set(pl_model_t *m, int page, int enc, int v)
     return 1;
 }
 
+void pl_model_mod_expire(pl_model_t *m, uint32_t ms)
+{
+    // Знаковая разность, как в pl_model_linked: время опроса бывает раньше последнего кадра.
+    if ((int32_t)(ms - m->mod_pos_ms) > PL_MOD_STALE_MS) {
+        memset(m->mod_out, 0, sizeof m->mod_out);
+    }
+}
+
 const uint8_t *pl_model_raw(const pl_model_t *m, int page)
 {
     if (page >= 0 && page < PL_PAGES) {

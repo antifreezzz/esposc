@@ -265,6 +265,28 @@ TEST(test_effective_edges)
     CHECK(pl_mod_effective(&m, 99, 2) == 0 && pl_mod_effective(&m, 0, 16) == 0 && pl_mod_effective(&m, -1, 1) == 0);
 }
 
+// Синт перестал слать выход (демо: модуляторы стоят, PL_MOD_POS нет) - последний выход устаревает, ручки на базе.
+TEST(test_stale_output_expires)
+{
+    acid_synth_init(&syn, 48000.0f);
+    model_from_synth();
+    m.raw[0][2] = 60;
+    m.mod_knob[0][ACID_MOD_AMOUNT] = 127;
+    m.mod_knob[0][ACID_MOD_DEPTH1] = 100;
+    set_target(0, 0, 0, 2);
+    int8_t pos[PL_MOD_PAGES] = {100, -50, 0, 0};
+    pl_model_apply(&m, PL_MOD_POS, (const uint8_t *)pos, sizeof pos, 1000);
+    CHECK(pl_mod_effective(&m, 0, 2) > 60);
+    pl_model_mod_expire(&m, 1000 + PL_MOD_STALE_MS); // ровно на пороге ещё свежий
+    CHECK(m.mod_out[0] == 100 && m.mod_out[1] == -50 && pl_mod_effective(&m, 0, 2) > 60);
+    pl_model_mod_expire(&m, 1000 + PL_MOD_STALE_MS + 1);
+    CHECK(m.mod_out[0] == 0 && m.mod_out[1] == 0 && pl_mod_effective(&m, 0, 2) == 60);
+    // Время отрисовки раньше кадра (отстаёт на перерисовку) - не устаревание.
+    pl_model_apply(&m, PL_MOD_POS, (const uint8_t *)pos, sizeof pos, 5000);
+    pl_model_mod_expire(&m, 4990);
+    CHECK(m.mod_out[0] == 100);
+}
+
 TEST(test_edit_target)
 {
     acid_synth_init(&syn, 48000.0f);
@@ -300,6 +322,7 @@ int main(void)
     RUN(test_can_target_examples);
     RUN(test_effective_matches_synth);
     RUN(test_effective_edges);
+    RUN(test_stale_output_expires);
     RUN(test_edit_target);
     TEST_MAIN_END();
 }
