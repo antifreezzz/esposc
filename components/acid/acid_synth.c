@@ -64,7 +64,8 @@ static const uint8_t PAN_DEFAULT[ACID_PANS] = {64, 64, 80, 48, 64};
 #define DRIVE_TONE 64  // тон и вой, пока их не трогали
 #define TYPE_ENC 1       // энкодер 2 на странице синта
 // 2: + ручки слоя тональности, 3: + слои синтов, 4: + PETRI, 5: + страницы микса, ударки, эффектов, Grids, чашки.
-static const uint8_t BLOB_MAGIC[4] = {'A', 'S', '5', 5};
+static const uint8_t BLOB_MAGIC[4] = {'A', 'S', '5', 6};
+static const uint8_t RV_DEFAULT[ACID_REVERB_KNOBS] = {64, 64, 64, 64, 50};
 #define OLD_TYPES 25 // версии 2-3: без PETRI, у слоя «выкл» = 25
 #define BLOB_OLD(slots) (4 + (slots) * (1 + OLD_TYPES * ACID_KNOBS) + ACID_TONAL_KNOBS)
 #define LAYER_GAIN_RAW 100 // громкость слоя после включения (FX 13-14)
@@ -207,12 +208,21 @@ void acid_synth_init(acid_synth_t *s, float sr)
         // Статтер работает, только пока включён: в PSRAM.
         s->fx_mem = acid_mem_big(2 * ACID_DELAY_LEN * sizeof *s->fx_mem, 1);
         s->st_mem = acid_mem_big(2 * ACID_STUTTER_LEN * sizeof *s->st_mem, 0);
-        if (!s->fx_mem || !s->st_mem) {
-            abort(); // без буферов эффектов играть нечем: лучше перезагрузка, чем запись по NULL
-        }
+    }
+    if (!s->rv_mem) {
+        s->rv_mem = acid_mem_big(ACID_REVERB_MEM * sizeof *s->rv_mem, 1);
+    }
+    if (!s->fx_mem || !s->st_mem || !s->rv_mem) {
+        abort(); // без буферов эффектов играть нечем: лучше перезагрузка, чем запись по NULL
     }
     acid_delay_init(&s->delay, sr, s->fx_mem);
     acid_stutter_init(&s->stutter, sr, s->st_mem);
+    acid_reverb_init(&s->reverb, s->rv_mem);
+    memcpy(s->rv_raw, RV_DEFAULT, sizeof s->rv_raw);
+    s->rv_wet = 0.0f;
+    s->rv_send1 = s->rv_send2 = s->rv_send_drums = 64.0f / 127.0f;
+    s->rv_duck = 1.0f;
+    memset(s->rv_prev, 0, sizeof s->rv_prev);
     s->send1 = s->send2 = s->send_drums = 0.0f;
     for (int k = 0; k < ACID_PANS; k++) {
         acid_pan((float)PAN_DEFAULT[k], &s->pan_l[k], &s->pan_r[k]);
@@ -808,7 +818,14 @@ static void page_fx(acid_synth_t *s, int slot, int v)
     case 11: acid_delay_set_motion(&s->delay, s->delay.motion, v); break;
     case 12:
     case 13: s->layer_gain[slot - 12] = lin(v, 0.0f, 1.0f); break;
-    case 14: s->layer_half = v >= 64; break;
+    case 14:
+        s->rv_wet = lin(v, 0.0f, 1.0f);
+        if (v == 0) {
+            acid_reverb_init(&s->reverb, s->rv_mem);
+            acid_reverb_set(&s->reverb, s->rv_raw[3], s->rv_raw[4]);
+            memset(s->rv_prev, 0, sizeof s->rv_prev);
+        }
+        break;
     default: break;
     }
     if (slot >= 6 && slot <= 8) {
@@ -898,9 +915,26 @@ static void page_petri(acid_synth_t *s, int slot, int v)
 
 static void drone_retune(acid_synth_t *s);
 
+static void page_reverb(acid_synth_t *s, int slot, int v)
+{
+    s->rv_raw[slot - 1] = (uint8_t)v;
+    switch (slot) {
+    case 1: s->rv_send1 = lin(v, 0.0f, 1.0f); break;
+    case 2: s->rv_send2 = lin(v, 0.0f, 1.0f); break;
+    case 3: s->rv_send_drums = lin(v, 0.0f, 1.0f); break;
+    case 4:
+    case 5: acid_reverb_set(&s->reverb, s->rv_raw[3], s->rv_raw[4]); break;
+    default: break;
+    }
+}
+
 // Энкодер slot (с 1) на странице page, как будто BSP стоит на ней.
 static void apply_page(acid_synth_t *s, int page, int slot, int v)
 {
+    if (page == ACID_PAGE_REVERB && slot > 0 && slot <= ACID_REVERB_KNOBS) {
+        page_reverb(s, slot, v);
+        return;
+    }
     if (page == ACID_PAGE_PETRI) {
         page_petri(s, slot, v); // своя проверка списков: фриз смотрит на прежнее значение
         return;
@@ -973,7 +1007,7 @@ static int synth_page_idx(int page)
 // Ручка от пользователя (BSP, панель, сцена, демо): поменялось действующее значение - память пора записать.
 static void user_knob(acid_synth_t *s, int page, int slot, int v)
 {
-    if (s->mod_base[page][slot] != KNOB_NONE) {
+    if (page != ACID_PAGE_REVERB && s->mod_base[page][slot] != KNOB_NONE) {
         int idx = synth_page_idx(page);
         if (idx >= 0) {
             s->mod_unset[idx] &= (uint16_t)~(1u << slot);
@@ -1018,13 +1052,18 @@ void acid_synth_petri(acid_synth_t *s, const acid_petri_frame_t *f)
 
 void acid_synth_set_knob(acid_synth_t *s, int page, int enc, int v)
 {
-    if (page >= 0 && page < ACID_PAGES && enc > 0 && enc < ACID_KNOBS && v >= 0 && v <= 127) {
+    int page_ok = (page >= 0 && page < ACID_PAGES) || page == ACID_PAGE_REVERB;
+    int enc_ok = page == ACID_PAGE_REVERB ? enc > 0 && enc <= ACID_REVERB_KNOBS : enc > 0 && enc < ACID_KNOBS;
+    if (page_ok && enc_ok && v >= 0 && v <= 127) {
         user_knob(s, page, enc, v);
     }
 }
 
 static int raw_knob(const acid_synth_t *s, int page, int enc)
 {
+    if (page == ACID_PAGE_REVERB) {
+        return enc > 0 && enc <= ACID_REVERB_KNOBS ? s->rv_raw[enc - 1] : 0;
+    }
     if (page < 0 || page >= ACID_PAGES || enc < 0 || enc >= ACID_KNOBS) {
         return 0;
     }
@@ -1052,6 +1091,9 @@ static int raw_knob(const acid_synth_t *s, int page, int enc)
 
 int acid_synth_knob(const acid_synth_t *s, int page, int enc)
 {
+    if (page == ACID_PAGE_REVERB) {
+        return raw_knob(s, page, enc);
+    }
     if (page < 0 || page >= ACID_PAGES || enc < 0 || enc >= ACID_KNOBS) {
         return 0;
     }
@@ -1755,8 +1797,22 @@ void acid_synth_render_src(acid_synth_t *s, acid_synth_src_t *src, size_t n)
     ACID_PROF_ADD(ACID_PROF_DRUMS, t);
 }
 
+void acid_synth_render_reverb(acid_synth_t *s, const float *send, float *wl, float *wr, size_t n)
+{
+    if (s->rv_wet == 0.0f || s->rv_duck == 0.0f) {
+        memset(wl, 0, n * sizeof *wl);
+        memset(wr, 0, n * sizeof *wr);
+        return;
+    }
+    if (!acid_reverb_run(&s->reverb, send, wl, wr, (int)n)) {
+        memset(wl, 0, n * sizeof *wl);
+        memset(wr, 0, n * sizeof *wr);
+    }
+}
+
 void acid_synth_render_mix_lr(acid_synth_t *s, float *l, float *r, size_t n, const float *slot1, const float *layer0,
-                              const acid_synth_src_t *src, const acid_synth_side_t *side)
+                              const acid_synth_src_t *src, const acid_synth_side_t *side, float *rv_send,
+                              const float *rv_wl, const float *rv_wr)
 {
     ACID_PROF_T(t);
     // Стерео: панорамы по источникам, бочка в центре. Эффекты - проходами по куску: каждый зависит только от
@@ -1769,14 +1825,28 @@ void acid_synth_render_mix_lr(acid_synth_t *s, float *l, float *r, size_t n, con
         float s1 = slot1[i];
         float cl = side->cyl[i], cr = side->cyr[i]; // уже стерео с балансом
         float ql = side->pcl[i], qr = side->pcr[i]; // перкуссия, уже с панорамой
-        // Посылы до пампинга и панорамы: повторы не качаются вместе с сухим звуком.
+        // Посылы до пампинга и панорамы: повторы не качаются вместе с сухим звуком. Бочка в ревёрб не идёт.
         send[i] = s->send1 * y + s->send2 * s1 + s->send_drums * (hat + clap + snare + 0.5f * (cl + cr + ql + qr));
+        rv_send[i] = s->rv_send1 * y + s->rv_send2 * s1 +
+                     s->rv_send_drums * (hat + clap + snare + 0.5f * (cl + cr + ql + qr));
         l[i] = kick + pump[i] * (pl[ACID_PAN_SYNTH1] * y + pl[ACID_PAN_SYNTH2] * s1 + pl[ACID_PAN_HAT] * hat +
                                  pl[ACID_PAN_CLAP] * clap + pl[ACID_PAN_SNARE] * snare + cl + ql);
         r[i] = kick + pump[i] * (pr[ACID_PAN_SYNTH1] * y + pr[ACID_PAN_SYNTH2] * s1 + pr[ACID_PAN_HAT] * hat +
                                  pr[ACID_PAN_CLAP] * clap + pr[ACID_PAN_SNARE] * snare + cr + qr);
     }
     acid_delay_mix2(&s->delay, send, l, r, (int)n);
+    if (rv_wl && s->rv_wet > 0.0f && (s->rv_duck > 0.0f || s->tight != 3)) {
+        for (size_t i = 0; i < n; i++) {
+            float duck = s->rv_duck;
+            if (s->tight == 3) {
+                s->rv_duck = duck > ACID_DUCK_DOWN ? duck - ACID_DUCK_DOWN : 0.0f;
+            } else if (duck < 1.0f) {
+                s->rv_duck = duck < 1.0f - ACID_DUCK_UP ? duck + ACID_DUCK_UP : 1.0f;
+            }
+            l[i] += s->rv_wet * duck * rv_wl[i];
+            r[i] += s->rv_wet * duck * rv_wr[i];
+        }
+    }
     acid_stutter_run2(&s->stutter, l, r, (int)n);
     acid_crush_run2(&s->crush, l, r, (int)n);
     acid_djf_run2(&s->djf, l, r, (int)n);
@@ -1791,13 +1861,14 @@ void acid_synth_render_with_lr(acid_synth_t *s, float *l, float *r, size_t n, co
 {
     acid_synth_side_t side;
     acid_synth_src_t src;
-    float layer0[ACID_SPLIT_MAX];
+    float layer0[ACID_SPLIT_MAX], rv_wl[ACID_SPLIT_MAX], rv_wr[ACID_SPLIT_MAX];
     for (size_t off = 0; off < n; off += ACID_SPLIT_MAX) {
         size_t m = n - off < ACID_SPLIT_MAX ? n - off : ACID_SPLIT_MAX;
         acid_synth_render_layer(s, 0, layer0, m);
         acid_synth_render_src(s, &src, m);
         acid_synth_render_side(s, &side, m);
-        acid_synth_render_mix_lr(s, l + off, r + off, m, slot1 + off, layer0, &src, &side);
+        acid_synth_render_reverb(s, s->rv_prev, rv_wl, rv_wr, m);
+        acid_synth_render_mix_lr(s, l + off, r + off, m, slot1 + off, layer0, &src, &side, s->rv_prev, rv_wl, rv_wr);
     }
 }
 
@@ -1872,6 +1943,7 @@ size_t acid_synth_export(const acid_synth_t *s, void *buf, size_t cap)
             *b++ = e > 0 ? (uint8_t)acid_synth_knob(s, SAVED_PAGES[i], e) : 0;
         }
     }
+    memcpy(b, s->rv_raw, sizeof s->rv_raw);
     return ACID_SYNTH_BLOB;
 }
 
@@ -1879,7 +1951,8 @@ int acid_synth_import(acid_synth_t *s, const void *buf, size_t len)
 {
     const uint8_t *b = buf;
     // Версия 2 (до слоёв) - только синты; 2-3 - по 25 типов (без PETRI), у слоя «выкл» = 25.
-    int ver = len == ACID_SYNTH_BLOB && memcmp(b, BLOB_MAGIC, sizeof BLOB_MAGIC) == 0       ? 5
+    int ver = len == ACID_SYNTH_BLOB && memcmp(b, BLOB_MAGIC, sizeof BLOB_MAGIC) == 0       ? 6
+              : len == ACID_SYNTH_BLOB_V5 && memcmp(b, "AS5\x05", 4) == 0               ? 5
               : len == ACID_SYNTH_BLOB_V4 && memcmp(b, "AS5\x04", 4) == 0               ? 4
               : len == BLOB_OLD(2 * ACID_SLOTS) && memcmp(b, "AS5\x03", 4) == 0 ? 3
               : len == BLOB_OLD(ACID_SLOTS) && memcmp(b, "AS5\x02", 4) == 0     ? 2
@@ -1913,11 +1986,16 @@ int acid_synth_import(acid_synth_t *s, const void *buf, size_t len)
         }
     }
     b += ACID_TONAL_KNOBS;
-    for (int i = 0; ver == 5 && i < ACID_SAVED_PAGES; i++, b += ACID_KNOBS) {
+    for (int i = 0; ver >= 5 && i < ACID_SAVED_PAGES; i++, b += ACID_KNOBS) {
         for (int e = 1; e < ACID_KNOBS; e++) {
             if (!performance_knob(SAVED_PAGES[i], e) && b[e] <= 127) {
                 apply_page(s, SAVED_PAGES[i], e, b[e]);
             }
+        }
+    }
+    for (int e = 0; ver == 6 && e < ACID_REVERB_KNOBS; e++) {
+        if (b[e] <= 127) {
+            apply_page(s, ACID_PAGE_REVERB, e + 1, b[e]);
         }
     }
     if (s->drone) {

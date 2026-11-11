@@ -186,7 +186,7 @@ static void coverage(const acid_demo_song_t *song)
         CHECK(z.crush);
         CHECK(count(z.stutter, 5, 1) >= 2);
         CHECK(z.tonal_step && z.scale_chrom && z.scale_mode);
-        CHECK(z.layer[0] && z.layer[1] && z.layer_vol && z.layer_half);
+        CHECK(z.layer[0] && z.layer[1] && z.layer_vol);
         CHECK(z.grids && z.grids_fill);
         CHECK(z.grids_bank && z.grids_swing);
         CHECK(z.petri);

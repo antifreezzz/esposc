@@ -1,4 +1,4 @@
-// Слой на половинной частоте (FX 15 LYR HALF): считается каждый второй сэмпл, звучит как полный - та же высота,
+// Слой на половинной частоте: считается каждый второй сэмпл, звучит как полный - та же высота,
 // те же огибающие, глайд и смена типа (у 303); переход без щелчка.
 #include <math.h>
 #include <stdlib.h>
@@ -10,7 +10,6 @@
 #define SR 48000.0f
 #define N 24000 // 0.5 с
 #define WIN 240 // окно огибающей 5 мс
-#define PAGE_FX 8
 #define PI_D 3.14159265358979
 
 static acid_synth_t f, h; // f - слой на полной частоте, h - на половинной
@@ -22,7 +21,7 @@ static void init_pair(int type)
     acid_synth_init(&h, SR);
     acid_synth_set_knob(&f, ACID_PAGE_LAYER1, 1, type);
     acid_synth_set_knob(&h, ACID_PAGE_LAYER1, 1, type);
-    acid_synth_set_knob(&h, PAGE_FX, 14, 127);
+    h.layer_half = 1;
 }
 
 static void note(int on, int n)
@@ -84,17 +83,11 @@ static int tail_win(const float *x, int n, float frac)
     return -1;
 }
 
-TEST(test_half_knob_is_switch)
+TEST(test_half_default_reset)
 {
     acid_synth_init(&h, SR);
     CHECK(!h.layer_half);
-    acid_synth_set_knob(&h, PAGE_FX, 14, 63);
-    CHECK(!h.layer_half);
-    acid_synth_set_knob(&h, PAGE_FX, 14, 64);
-    CHECK(h.layer_half);
-    acid_synth_set_knob(&h, PAGE_FX, 14, 0);
-    CHECK(!h.layer_half);
-    acid_synth_set_knob(&h, PAGE_FX, 14, 127);
+    h.layer_half = 1;
     acid_synth_init(&h, SR); // смена режима (демо/живой) начинает с выключенной
     CHECK(!h.layer_half);
 }
@@ -166,7 +159,7 @@ TEST(test_half_toggle_no_click)
 {
     for (int type = 0; type <= 7; type += 7) {
         init_pair(type);
-        acid_synth_set_knob(&h, PAGE_FX, 14, 0);
+        h.layer_half = 0;
         note(1, 45);
         render(yf, yh, 4800);
         float base = 0.0f;
@@ -175,7 +168,7 @@ TEST(test_half_toggle_no_click)
         }
         float jump = 0.0f, prev = yh[4799];
         for (int k = 0; k < 6; k++) {
-            acid_synth_set_knob(&h, PAGE_FX, 14, k % 2 ? 0 : 127);
+            h.layer_half = k % 2 == 0;
             render(yf, yh, 1000);
             for (int i = 0; i < 1000; i++) {
                 jump = fabsf(yh[i] - prev) > jump ? fabsf(yh[i] - prev) : jump;
@@ -188,7 +181,7 @@ TEST(test_half_toggle_no_click)
 
 int main(void)
 {
-    RUN(test_half_knob_is_switch);
+    RUN(test_half_default_reset);
     RUN(test_half_303_same_pitch_and_envelope);
     RUN(test_half_303_glide);
     RUN(test_half_plaits_pitch);
