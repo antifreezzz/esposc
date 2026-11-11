@@ -5,6 +5,10 @@
 
 #include "plaits/dsp/voice.h"
 
+// Plaits считает высоту от частоты кодека своего железа (kCorrectedSampleRate 47872.34 Гц), мы играем на
+// честных 48000: без поправки все его модели на 4.6 цента выше 303 и PETRI. 12 * log2(48000 / 47872.34).
+static const float kTuneFix = -0.046105f;
+
 struct acid_plaits {
     plaits::Voice voice;
     char ram[16384]; // общий буфер движков, как в прошивке Plaits
@@ -29,7 +33,7 @@ extern "C" void acid_plaits_render(acid_plaits_t *p, const acid_plaits_params_t 
 {
     plaits::Patch patch = {};
     patch.engine = pp->model;
-    patch.note = pp->note;
+    patch.note = pp->note + kTuneFix;
     patch.harmonics = pp->harmonics;
     patch.timbre = pp->timbre;
     patch.morph = pp->morph;
