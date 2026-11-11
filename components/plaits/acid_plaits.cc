@@ -55,3 +55,6 @@ extern "C" void acid_plaits_render(acid_plaits_t *p, const acid_plaits_params_t 
         out[i] = frames[i].out * (1.0f / 32768.0f);
     }
 }
+
+extern "C" float acid_plaits_test_rcp(float x) { return stmlib::EspRcp(x); }
+extern "C" float acid_plaits_test_rsqrt(float x) { return stmlib::EspRsqrt(x); }

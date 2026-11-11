@@ -27,6 +27,11 @@ void acid_plaits_init(acid_plaits_t *p);
 // n == ACID_PLAITS_BLOCK, выход примерно -1..1.
 void acid_plaits_render(acid_plaits_t *p, const acid_plaits_params_t *pp, float *out, int n);
 
+
+// Только для тестов: быстрые 1/x и 1/sqrt(x) (x > 0), которыми в Plaits заменены деление и корень.
+float acid_plaits_test_rcp(float x);
+float acid_plaits_test_rsqrt(float x);
+
 #ifdef __cplusplus
 }
 #endif

@@ -30,6 +30,7 @@
 #define STMLIB_DSP_PARAMETER_INTERPOLATOR_H_
 
 #include "stmlib/stmlib.h"
+#include "stmlib/dsp/dsp.h"
 
 namespace stmlib {
 
@@ -53,7 +54,7 @@ class ParameterInterpolator {
   inline void Init(float* state, float new_value, size_t size) {
     state_ = state;
     value_ = *state;
-    increment_ = (new_value - *state) / static_cast<float>(size);
+    increment_ = (new_value - *state) * EspRcp(static_cast<float>(size));  // acid: было деление
   }
 
   inline float Next() {

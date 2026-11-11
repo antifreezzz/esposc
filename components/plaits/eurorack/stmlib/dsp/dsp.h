@@ -98,8 +98,31 @@ inline float Crossfade(float a, float b, float fade) {
   return a + (b - a) * fade;
 }
 
+// acid: у FPU ESP32-S3 нет деления и корня: `/` - программный вызов (~46 тактов и вызов), sqrtf - libm.
+// 1/x и 1/sqrt(x) битовым трюком и тремя шагами Ньютона: точность float, только умножения. x > 0.
+inline float EspRcp(float x) {
+  union { float f; uint32_t i; } u = { x };
+  u.i = 0x7EF311C3u - u.i;
+  float y = u.f;
+  y = y * (2.0f - x * y);
+  y = y * (2.0f - x * y);
+  y = y * (2.0f - x * y);
+  return y;
+}
+
+inline float EspRsqrt(float x) {
+  union { float f; uint32_t i; } u = { x };
+  u.i = 0x5F375A86u - (u.i >> 1);
+  float y = u.f;
+  const float h = 0.5f * x;
+  y = y * (1.5f - h * y * y);
+  y = y * (1.5f - h * y * y);
+  y = y * (1.5f - h * y * y);
+  return y;
+}
+
 inline float SoftLimit(float x) {
-  return x * (27.0f + x * x) / (27.0f + 9.0f * x * x);
+  return x * (27.0f + x * x) * EspRcp(27.0f + 9.0f * x * x);  // acid: было деление
 }
 
 inline float SoftClip(float x) {
@@ -146,7 +169,7 @@ inline float SoftClip(float x) {
   
 #ifdef TEST
   inline float Sqrt(float x) {
-    return sqrtf(x);
+    return x * EspRsqrt(x);  // acid: было sqrtf; x >= 0, в нуле даёт 0
   }
 #else
   inline float Sqrt(float x) {

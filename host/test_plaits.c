@@ -143,11 +143,28 @@ TEST(test_plaits_dx7_retrigger_smooth)
     CHECK(worst < 0.1f);
 }
 
+TEST(test_plaits_fast_math_matches_division)
+{
+    // Плата делит float программно, корень - тоже вызов: в посэмпловых циклах Plaits стоят замены на умножениях.
+    // Они обязаны держать точность float на всём рабочем ходе.
+    float worst_r = 0.0f, worst_s = 0.0f;
+    for (int i = 0; i < 200000; i++) {
+        float x = 1e-6f * powf(1e12f, (float)i / 200000.0f); // 1e-6 .. 1e6
+        float e = fabsf(acid_plaits_test_rcp(x) * x - 1.0f);
+        worst_r = e > worst_r ? e : worst_r;
+        e = fabsf(acid_plaits_test_rsqrt(x) * sqrtf(x) - 1.0f);
+        worst_s = e > worst_s ? e : worst_s;
+    }
+    CHECK(worst_r < 4e-7f);
+    CHECK(worst_s < 4e-7f);
+}
+
 int main(void)
 {
     p = acid_plaits_create();
     RUN(test_plaits_all_models_sound);
     RUN(test_plaits_pitch);
+    RUN(test_plaits_fast_math_matches_division);
     RUN(test_plaits_gate_off_silences);
     RUN(test_plaits_dx7_retrigger_smooth);
     TEST_MAIN_END();
