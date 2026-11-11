@@ -505,6 +505,35 @@ TEST(test_chunk_freezes_under_guard)
     CHECK(m.m[0].phase != phase && m.m[1].stage == 1);
 }
 
+// Позиция для панели: у LFO - фаза 0..255, у огибающей - стадия (0 молчит, 1 атака, 2 спад).
+TEST(test_pos_byte)
+{
+    fresh();
+    acid_mod_set(&m, 0, ACID_MOD_SHAPE, ACID_SHAPE_SAW);
+    CHECK(acid_mod_pos(&m, 0) == 0);
+    int last = 0, wraps = 0;
+    for (int i = 0; i < 3000; i++) {
+        acid_mod_run(&m, 0, 0);
+        int p = acid_mod_pos(&m, 0);
+        CHECK(p >= 0 && p <= 255 && p == (int)(m.m[0].phase * 256.0f));
+        wraps += p < last;
+        last = p;
+    }
+    CHECK(wraps >= 1); // RATE 64 - ~1 Гц, 3000 кусков - 2 с
+    acid_mod_set(&m, 1, ACID_MOD_SHAPE, ACID_SHAPE_ENV);
+    acid_mod_set(&m, 1, ACID_MOD_TRIG, 1);
+    acid_mod_set(&m, 1, ACID_MOD_ATTACK, 64);
+    acid_mod_run(&m, 0, 0);
+    CHECK(acid_mod_pos(&m, 1) == 0);
+    acid_mod_run(&m, ACID_TRIG_NOTE1, 0);
+    CHECK(acid_mod_pos(&m, 1) == 1);
+    run_n(200, 0); // атака ~0.1 с (150 кусков) прошла, спад ещё идёт
+    CHECK(acid_mod_pos(&m, 1) == 2);
+    run_n(6000, 0);
+    CHECK(acid_mod_pos(&m, 1) == 0);
+    CHECK(acid_mod_pos(&m, -1) == 0 && acid_mod_pos(&m, ACID_MODS) == 0);
+}
+
 int main(void)
 {
     RUN(test_defaults);
@@ -522,5 +551,6 @@ int main(void)
     RUN(test_mod_step_and_type_change);
     RUN(test_smooth_matches_pick);
     RUN(test_chunk_freezes_under_guard);
+    RUN(test_pos_byte);
     TEST_MAIN_END();
 }

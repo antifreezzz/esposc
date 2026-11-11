@@ -35,7 +35,8 @@ _Static_assert(ACID_SEQ_REST == PL_SEQ_REST && ACID_SEQ_DEG == PL_SEQ_DEG && ACI
                    ACID_SEQ_SCALES == PL_SEQ_SCALES,
                "step sequencer byte format shared by synth and panel");
 _Static_assert(ACID_PAGE_MOD1 == PL_PAGE_MOD1 && ACID_BSP_MOD_FIRST == PL_BSP_MOD_FIRST &&
-                   ACID_MODS == PL_MOD_PAGES && ACID_MOD_TARGETS == PL_MOD_TARGETS && ACID_MOD_NONE == PL_NONE,
+                   ACID_MODS == PL_MOD_PAGES && ACID_MOD_TARGETS == PL_MOD_TARGETS && ACID_MOD_NONE == PL_NONE &&
+                   ACID_SHAPE_ENV == PL_MOD_SHAPE_ENV,
                "modulator numbers shared by synth and panel");
 
 _Static_assert(sizeof(pl_grids_pat_frame_t) == 2 + PL_GRIDS_PARTS * PL_GRIDS_STEPS && ACID_BEAT_STEPS * 2 == PL_GRIDS_STEPS,
@@ -397,11 +398,12 @@ static void link_task(void *arg)
         if (++mod_div >= 5) { // ~20 Гц при POLL_TICKS = 10 мс
             mod_div = 0;
             if (mod_pos_active()) {
-                int8_t mpos[PL_MOD_PAGES];
+                uint8_t mpos[PL_MOD_POS_LEN]; // выходы int8 и следом место в периоде
                 for (int k = 0; k < PL_MOD_PAGES; k++) {
                     float o = acid_mod_out(s_mod, k) * 127.0f;
                     int v = (int)(o + (o < 0.0f ? -0.5f : 0.5f));
-                    mpos[k] = (int8_t)(v < -127 ? -127 : v > 127 ? 127 : v);
+                    mpos[k] = (uint8_t)(int8_t)(v < -127 ? -127 : v > 127 ? 127 : v);
+                    mpos[PL_MOD_PAGES + k] = (uint8_t)acid_mod_pos(s_mod, k);
                 }
                 send(PL_MOD_POS, mpos, sizeof mpos);
             }

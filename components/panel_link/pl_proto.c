@@ -65,7 +65,7 @@ static int payload_len(uint8_t type)
     case PL_GRIDS_CELL: return 4;
     case PL_MOD: return (int)sizeof(pl_mod_t);
     case PL_MOD_EDIT: return (int)sizeof(pl_mod_edit_t);
-    case PL_MOD_POS: return PL_MOD_PAGES;
+    case PL_MOD_POS: return PL_MOD_POS_LEN;
     default: return -1;
     }
 }

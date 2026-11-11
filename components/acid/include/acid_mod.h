@@ -88,6 +88,8 @@ int acid_mod_target(acid_mod_t *m, int k, int idx, int page, int enc);
 // четверть; не меняется - клок стоит).
 void acid_mod_run(acid_mod_t *m, unsigned trig, uint32_t pos);
 float acid_mod_out(const acid_mod_t *m, int k);
+// Место в периоде для панели, байт: у LFO фаза 0..255, у огибающей стадия (0 молчит, 1 атака, 2 спад).
+int acid_mod_pos(const acid_mod_t *m, int k);
 // Сдвиг цели idx модулятора k в единицах ручки.
 int acid_mod_offset(const acid_mod_t *m, int k, int idx);
 // Сумма сдвигов всех модуляторов на ручку; *n - сколько целей на неё назначено (можно NULL).

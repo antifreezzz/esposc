@@ -55,7 +55,7 @@ TEST(test_value_lists_match_synth)
                                        "HAT",  "CLAP",    "PERC",    "BEAT",   "BAR",    "4 BARS", "STEP"};
     uint8_t raw[16] = {0};
     char buf[12];
-    CHECK(ACID_SHAPES == 8 && ACID_MOD_SYNCS == 9 && ACID_MOD_TRIGS == 14);
+    CHECK(ACID_SHAPES == 8 && ACID_MOD_SYNCS == 9 && ACID_MOD_TRIGS == 14 && ACID_SHAPE_ENV == PL_MOD_SHAPE_ENV);
     for (int v = 0; v < ACID_SHAPES; v++) {
         CHECK(!strcmp(pl_value_text(PL_PAGE_MOD1, ACID_MOD_SHAPE, v, raw, buf), SHAPE[v]));
     }
@@ -274,7 +274,7 @@ TEST(test_stale_output_expires)
     m.mod_knob[0][ACID_MOD_AMOUNT] = 127;
     m.mod_knob[0][ACID_MOD_DEPTH1] = 100;
     set_target(0, 0, 0, 2);
-    int8_t pos[PL_MOD_PAGES] = {100, -50, 0, 0};
+    int8_t pos[PL_MOD_POS_LEN] = {100, -50, 0, 0, 0, 0, 0, 0};
     pl_model_apply(&m, PL_MOD_POS, (const uint8_t *)pos, sizeof pos, 1000);
     CHECK(pl_mod_effective(&m, 0, 2) > 60);
     pl_model_mod_expire(&m, 1000 + PL_MOD_STALE_MS); // ровно на пороге ещё свежий
@@ -285,6 +285,36 @@ TEST(test_stale_output_expires)
     pl_model_apply(&m, PL_MOD_POS, (const uint8_t *)pos, sizeof pos, 5000);
     pl_model_mod_expire(&m, 4990);
     CHECK(m.mod_out[0] == 100);
+}
+
+// Точка на форме волны: по горизонтали 0..255. У LFO это фаза с синта, у огибающей место считается по стадии
+// и выходу - обратно той же кривой, которой панель рисует огибающую.
+TEST(test_dot_position)
+{
+    for (int shape = ACID_SHAPE_SIN; shape < ACID_SHAPE_ENV; shape++) {
+        CHECK(pl_mod_dot(shape, 50, 0, 64, 64) == 0 && pl_mod_dot(shape, -90, 200, 0, 127) == 200);
+    }
+    for (int a = 0; a <= 127; a += 127) {
+        for (int d = 0; d <= 127; d += 127) {
+            float split = pl_mod_env_split(a, d);
+            int top = (int)(split * 255.0f + 0.5f);
+            CHECK(split >= 0.08f && split <= 0.4f);
+            CHECK(pl_mod_dot(ACID_SHAPE_ENV, 99, 0, a, d) == 0); // молчит: в начале
+            CHECK(pl_mod_dot(ACID_SHAPE_ENV, 0, 1, a, d) == 0 && pl_mod_dot(ACID_SHAPE_ENV, 127, 1, a, d) == top);
+            CHECK(pl_mod_dot(ACID_SHAPE_ENV, 127, 2, a, d) == top);
+            int last = top;
+            for (int out = 126; out >= 0; out--) { // спад: чем тише, тем правее, до края
+                int x = pl_mod_dot(ACID_SHAPE_ENV, out, 2, a, d);
+                CHECK(x >= last && x <= 255);
+                last = x;
+            }
+            CHECK(last == 255);
+            // Точка лежит на нарисованной кривой: на спаде высота кривой в её месте - выход.
+            int x = pl_mod_dot(ACID_SHAPE_ENV, 64, 2, a, d);
+            float p = (float)x / 255.0f;
+            CHECK_NEAR(exp2f(-6.644f * (p - split) / (1.0f - split)), 64.0f / 127.0f, 0.03f);
+        }
+    }
 }
 
 TEST(test_edit_target)
@@ -323,6 +353,7 @@ int main(void)
     RUN(test_effective_matches_synth);
     RUN(test_effective_edges);
     RUN(test_stale_output_expires);
+    RUN(test_dot_position);
     RUN(test_edit_target);
     TEST_MAIN_END();
 }

@@ -1663,7 +1663,7 @@ void ui_step(pl_model_t *m, int down, int x, int y, uint32_t ms)
     } else if (show_grid) {
         draw_page(m);
         if (show_mod) {
-            um_draw(m, u.page, ms);
+            um_draw(m, u.page);
         }
     } else if (show_grids) {
         ug_draw(m);

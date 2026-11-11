@@ -18,8 +18,6 @@ static struct {
     lv_obj_t *wave, *targets, *label;
     int shape, out, attack, decay, dot_x, count;
     int drawn_shape, drawn_out, drawn_attack, drawn_decay, drawn_dot_x, drawn_count;
-    float phase;
-    uint32_t last_ms;
 } md;
 
 static float rnd01(int n)
@@ -47,7 +45,7 @@ static float shape_at(int shape, float p, int attack, int decay)
         return a + (b - a) * f;
     }
     default: {
-        float aw = 0.08f + 0.32f * (float)(attack + 1) / (float)(attack + decay + 2);
+        float aw = pl_mod_env_split(attack, decay); // та же доля, по которой pl_mod_dot ставит точку
         if (p < aw) {
             return p / aw;
         }
@@ -80,7 +78,7 @@ static void wave_draw(lv_event_t *e)
         lv_draw_fill(layer, &f, &a);
     }
 
-    float v = md.drawn_shape == 7 ? (float)md.drawn_out / 127.0f : (float)md.drawn_out / 127.0f;
+    float v = (float)md.drawn_out / 127.0f;
     int y = md.drawn_shape == 7 ? zero - (int)(v * (WAVE_H - 20)) : zero - (int)(v * (WAVE_H / 2 - 8));
     f.color = lv_color_hex(C_TEXT);
     f.radius = 5;
@@ -112,9 +110,6 @@ void um_show(int on)
 {
     ui_show(md.wave, on);
     ui_show(md.targets, on);
-    if (!on) {
-        md.last_ms = 0;
-    }
 }
 
 int um_targets_at(int x, int y)
@@ -122,7 +117,7 @@ int um_targets_at(int x, int y)
     return x >= TARGET_X && x < TARGET_X + TARGET_W && y >= WAVE_Y && y < WAVE_Y + WAVE_H;
 }
 
-void um_draw(const pl_model_t *m, int page, uint32_t ms)
+void um_draw(const pl_model_t *m, int page)
 {
     int k = page - PL_PAGE_MOD1;
     const uint8_t *raw = m->mod_knob[k];
@@ -132,25 +127,9 @@ void um_draw(const pl_model_t *m, int page, uint32_t ms)
     md.decay = raw[7];
     md.count = pl_mod_count(m, k);
 
-    if (!md.last_ms) {
-        md.last_ms = ms;
-    }
-    float dt = (float)(ms - md.last_ms) * 0.001f;
-    md.last_ms = ms;
-    static const uint16_t ticks[9] = {0, 6, 12, 24, 48, 96, 192, 384, 768};
-    int sync = raw[3] < 9 ? raw[3] : 0;
-    float hz = 0.05f * exp2f((float)raw[2] * (8.644f / 127.0f));
-    int bpm = (m->seq_have & 1) ? m->seq[0].bpm : (m->seq_have & 2) ? m->seq[1].bpm : 120;
-    if (bpm <= 0) {
-        bpm = m->seq_pos[0].bpm ? m->seq_pos[0].bpm : m->seq_pos[1].bpm;
-    }
-    if (bpm <= 0) {
-        bpm = 120;
-    }
-    float inc = sync ? dt * (float)bpm / ((float)ticks[sync] * 2.5f) : dt * hz;
-    md.phase += inc;
-    md.phase -= floorf(md.phase);
-    md.dot_x = 8 + (int)(md.phase * (WAVE_W - 16));
+    // По горизонтали - место в периоде с синта (PL_MOD_POS), не свой счётчик: точка идёт по кривой и при запусках,
+    // и при синхронизации с клоком.
+    md.dot_x = 8 + pl_mod_dot(md.shape, md.out, m->mod_phase[k], md.attack, md.decay) * (WAVE_W - 16) / 255;
 
     if (md.drawn_shape != md.shape || md.drawn_out != md.out || md.drawn_attack != md.attack ||
         md.drawn_decay != md.decay || md.drawn_dot_x != md.dot_x) {

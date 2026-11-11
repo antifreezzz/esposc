@@ -208,6 +208,19 @@ float acid_mod_out(const acid_mod_t *m, int k)
     return m->m[k].out;
 }
 
+int acid_mod_pos(const acid_mod_t *m, int k)
+{
+    if (k < 0 || k >= ACID_MODS) {
+        return 0;
+    }
+    const acid_mod_one_t *o = &m->m[k];
+    if (o->knob[ACID_MOD_SHAPE] == ACID_SHAPE_ENV) {
+        return o->stage;
+    }
+    int p = (int)(o->phase * 256.0f);
+    return p < 0 ? 0 : p > 255 ? 255 : p;
+}
+
 int acid_mod_offset(const acid_mod_t *m, int k, int idx)
 {
     const acid_mod_one_t *o = &m->m[k];

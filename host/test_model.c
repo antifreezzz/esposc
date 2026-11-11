@@ -427,12 +427,14 @@ TEST(test_mod_frame_wrong_skipped)
 TEST(test_mod_pos_applied)
 {
     pl_model_init(&m);
-    int8_t pos[4] = {-127, 0, 55, 127};
+    int8_t pos[PL_MOD_POS_LEN] = {-127, 0, 55, 127, 0, 64, -56, -1}; // выходы и позиции (байты 0, 64, 200, 255)
     pl_model_apply(&m, PL_MOD_POS, (const uint8_t *)pos, sizeof pos, 77);
     CHECK(m.mod_out[0] == -127 && m.mod_out[1] == 0 && m.mod_out[2] == 55 && m.mod_out[3] == 127);
+    CHECK(m.mod_phase[0] == 0 && m.mod_phase[1] == 64 && m.mod_phase[2] == 200 && m.mod_phase[3] == 255);
     CHECK(m.last_rx_ms == 77 && m.mod_pos_ms == 77);
     pos[0] = 9;
     pl_model_apply(&m, PL_MOD_POS, (const uint8_t *)pos, 3, 88); // длина не та
+    pl_model_apply(&m, PL_MOD_POS, (const uint8_t *)pos, PL_MOD_PAGES, 88); // кадр прежней прошивки синта
     CHECK(m.mod_out[0] == -127 && m.last_rx_ms == 77);
 }
 

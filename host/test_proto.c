@@ -238,7 +238,7 @@ TEST(test_mod_frames)
     CHECK(sizeof(pl_mod_edit_t) == 4);
     pl_mod_t m = {.mod = 2, .knob = {0, 3, 80}, .t = {{6, 2}, {PL_NONE, 0}, {PL_NONE, 0}, {PL_NONE, 0}}, .held = {0x05, 0}};
     pl_mod_edit_t ed = {.mod = 1, .idx = 3, .page = 8, .enc = 4};
-    int8_t pos[PL_MOD_PAGES] = {-127, 0, 64, 127};
+    uint8_t pos[PL_MOD_POS_LEN] = {0x81, 0, 64, 127, 0, 100, 200, 255}; // 4 выхода int8 и 4 позиции
     uint8_t f[PL_FRAME_MAX];
     start();
     feed(f, pl_encode(PL_MOD, &m, sizeof m, f));
@@ -250,6 +250,8 @@ TEST(test_mod_frames)
     start();
     feed(f, pl_encode(PL_MOD_POS, pos, 3, f));
     CHECK(frames == 0);
+    feed(f, pl_encode(PL_MOD_POS, pos, PL_MOD_PAGES, f)); // прежний кадр без позиций: не наш
+    CHECK(frames == 0 && PL_MOD_POS_LEN == 2 * PL_MOD_PAGES);
 }
 
 // Шаг Grids: 1 байт; заголовок с другой длиной - не кадр.

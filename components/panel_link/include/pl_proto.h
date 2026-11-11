@@ -28,6 +28,10 @@
 #define PL_PAGE_MOD1 (PL_PAGE_MIX_DRUMS + PL_MIX_PAGES) // 23
 #define PL_BSP_MOD_FIRST 19
 #define PL_MOD_TARGETS 4
+// Кадр PL_MOD_POS: выходы модуляторов и следом место каждого в периоде - у LFO фаза 0..255, у огибающей
+// (форма PL_MOD_SHAPE_ENV) стадия: 0 молчит, 1 атака, 2 спад.
+#define PL_MOD_POS_LEN (2 * PL_MOD_PAGES)
+#define PL_MOD_SHAPE_ENV 7
 #define PL_TARGETS 4
 #define PL_NONE 0xFF
 #define PL_TYPE_PETRI 25 // тип синта (энкодер 2 страниц 6-7): чашка Петри, у слоя не бывает
@@ -64,7 +68,7 @@ enum {
     PL_GRIDS_CELL = 28, // панель -> синт: клетка своего рисунка {slot, part, step, уровень}
     PL_MOD = 29,        // синт -> панель: ручки, цели и подхват одного модулятора (pl_mod_t)
     PL_MOD_EDIT = 30,   // панель -> синт: поставить или убрать цель модулятора (pl_mod_edit_t)
-    PL_MOD_POS = 31,    // синт -> панель: 4 байта out (int8, -127..127)
+    PL_MOD_POS = 31,    // синт -> панель: 4 байта out (int8, -127..127) и 4 байта места в периоде (PL_MOD_POS_LEN)
 };
 
 // Свой рисунок Grids в кадре: слот U1..U4 и рисунок (сетка и 96 уровней).

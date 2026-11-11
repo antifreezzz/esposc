@@ -44,6 +44,7 @@ typedef struct {
     uint8_t mod_knob[PL_MOD_PAGES][PL_KNOBS], mod_held[PL_MOD_PAGES][PL_KNOBS];
     pl_mod_target_t mod_t[PL_MOD_PAGES][PL_MOD_TARGETS];
     int8_t mod_out[PL_MOD_PAGES];
+    uint8_t mod_phase[PL_MOD_PAGES]; // место в периоде из PL_MOD_POS: фаза 0..255, у огибающей стадия
     int mod_have;         // бит модулятора: кадр PL_MOD пришёл
     uint32_t mod_pos_ms;  // когда пришёл последний PL_MOD_POS
 } pl_model_t;

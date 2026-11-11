@@ -154,8 +154,9 @@ void pl_model_apply(pl_model_t *m, uint8_t type, const uint8_t *payload, size_t 
         pl_mod_t f;
         memcpy(&f, payload, sizeof f);
         apply_mod(m, &f);
-    } else if (type == PL_MOD_POS && len == PL_MOD_PAGES) {
+    } else if (type == PL_MOD_POS && len == PL_MOD_POS_LEN) {
         memcpy(m->mod_out, payload, PL_MOD_PAGES);
+        memcpy(m->mod_phase, payload + PL_MOD_PAGES, PL_MOD_PAGES);
         m->mod_pos_ms = ms;
     } else if (type == PL_SCENE_STATE && len == sizeof(pl_scene_state_t)) {
         memcpy(&m->scene, payload, sizeof m->scene);

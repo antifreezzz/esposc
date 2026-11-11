@@ -1,5 +1,7 @@
 #include "pl_mod.h"
 
+#include <math.h>
+
 #include "pl_labels.h"
 #include "pl_pick.h"
 
@@ -82,4 +84,25 @@ int pl_mod_edit(pl_model_t *m, int k, int idx, int page, int enc, pl_mod_edit_t 
     m->mod_t[k][idx] = (pl_mod_target_t){(uint8_t)page, (uint8_t)enc};
     *out = (pl_mod_edit_t){(uint8_t)k, (uint8_t)idx, (uint8_t)page, (uint8_t)enc};
     return 1;
+}
+
+float pl_mod_env_split(int attack, int decay)
+{
+    return 0.08f + 0.32f * (float)(attack + 1) / (float)(attack + decay + 2);
+}
+
+int pl_mod_dot(int shape, int out, int pos, int attack, int decay)
+{
+    if (shape != PL_MOD_SHAPE_ENV) {
+        return pos < 0 ? 0 : pos > 255 ? 255 : pos;
+    }
+    float split = pl_mod_env_split(attack, decay), p = 0.0f;
+    float o = out <= 0 ? 0.0f : out >= 127 ? 1.0f : (float)out / 127.0f;
+    if (pos == 1) {
+        p = o * split;
+    } else if (pos == 2) {
+        float t = o > 0.0f ? -log2f(o) * (1.0f / 6.644f) : 1.0f; // доля спада: до 1 % за всю ширину
+        p = split + (1.0f - split) * (t > 1.0f ? 1.0f : t);
+    }
+    return (int)(p * 255.0f + 0.5f);
 }

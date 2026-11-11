@@ -22,6 +22,13 @@ int pl_mod_sum(const pl_model_t *m, int page, int enc, int *n);
 // Вне страниц и энкодеров 0. Выход приходит int8 (~20 Гц), поэтому у точки на дуге погрешность до единицы.
 int pl_mod_effective(const pl_model_t *m, int page, int enc);
 
+// Доля ширины картинки огибающей под атаку (остальное - спад): по ручкам ATTACK и DECAY, 0.08..0.4.
+float pl_mod_env_split(int attack, int decay);
+// Место точки на форме волны по горизонтали, 0..255. pos - байт места из PL_MOD_POS: у LFO фаза как есть, у
+// огибающей стадия - место считается по выходу out обратно кривой картинки (атака - прямая до pl_mod_env_split,
+// спад - 2^(-6.644 t), как у синта).
+int pl_mod_dot(int shape, int out, int pos, int attack, int decay);
+
 // На странице есть хоть одна ручка, которую можно сделать целью (TONAL, чашка и выключенный слой - нет).
 int pl_mod_page_has_target(const pl_model_t *m, int page);
 // Целей у модулятора k (0..3), 0 вне диапазона.
