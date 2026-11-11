@@ -101,6 +101,7 @@ enum { IDLE, PRESSED, SMEAR, HELD };
 
 int pl_press_step(pl_press_t *p, int down, int x, int y, uint32_t ms)
 {
+    p->began = 0;
     if (!down) {
         int was = p->state;
         p->state = IDLE;
@@ -113,6 +114,7 @@ int pl_press_step(pl_press_t *p, int down, int x, int y, uint32_t ms)
         p->x0 = x;
         p->y0 = y;
         p->t0 = ms;
+        p->began = 1;
         return PL_PRESS_NONE;
     }
     if (p->state == PRESSED) {
@@ -136,6 +138,11 @@ void pl_press_last(const pl_press_t *p, int *x, int *y)
 {
     *x = p->x1;
     *y = p->y1;
+}
+
+int pl_press_began(const pl_press_t *p)
+{
+    return p->began;
 }
 
 int pl_press_tap(int ev)

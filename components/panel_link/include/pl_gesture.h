@@ -40,6 +40,7 @@ typedef struct {
     int x0, y0;
     int x1, y1; // последняя точка пальца
     uint32_t t0;
+    int began; // этот опрос - первый с пальцем на экране
 } pl_press_t; // начальное состояние - нули
 
 // Каждый опрос тача: down 1 - палец на экране. TAP - отпущен быстро и без сдвига, HOLD - захват (один раз),
@@ -47,6 +48,8 @@ typedef struct {
 int pl_press_step(pl_press_t *p, int down, int x, int y, uint32_t ms);
 // Касание отпущено как нажатие кнопки или плитки: TAP, END и RELEASE после захвата (палец дольше PL_HOLD_MS).
 int pl_press_tap(int ev);
+// Касание началось этим опросом (один раз на касание): по нему срабатывает навигация, не дожидаясь отпускания.
+int pl_press_began(const pl_press_t *p);
 // Где начиналось касание.
 void pl_press_where(const pl_press_t *p, int *x, int *y);
 // Где палец был последним перед отпусканием.

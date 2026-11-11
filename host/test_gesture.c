@@ -223,6 +223,26 @@ TEST(test_press_tap_includes_long_press)
     CHECK(!pl_press_tap(PL_PRESS_NONE) && !pl_press_tap(PL_PRESS_HOLD));
 }
 
+TEST(test_press_began_once)
+{
+    // Навигация (док, вкладки) срабатывает в момент касания: «началось» - ровно один опрос на касание.
+    pl_press_t p = {0};
+    CHECK(!pl_press_began(&p));
+    pl_press_step(&p, 1, 100, 100, 1000);
+    CHECK(pl_press_began(&p));
+    int x, y;
+    pl_press_last(&p, &x, &y);
+    CHECK(x == 100 && y == 100); // в первый опрос последняя точка равна первой
+    pl_press_step(&p, 1, 100, 100, 1010);
+    CHECK(!pl_press_began(&p));
+    pl_press_step(&p, 0, 0, 0, 1020);
+    CHECK(!pl_press_began(&p));
+    pl_press_step(&p, 0, 0, 0, 1030);
+    CHECK(!pl_press_began(&p));
+    pl_press_step(&p, 1, 50, 50, 1040);
+    CHECK(pl_press_began(&p));
+}
+
 int main(void)
 {
     RUN(test_sector_clock);
@@ -239,5 +259,6 @@ int main(void)
     RUN(test_grid_cell);
     RUN(test_grid_rect);
     RUN(test_press_tap_includes_long_press);
+    RUN(test_press_began_once);
     TEST_MAIN_END();
 }

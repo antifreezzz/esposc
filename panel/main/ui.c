@@ -63,6 +63,7 @@ static struct {
     pl_edit_t ed;
     int sent;
     int play_touch, bpm_drag, bpm0;
+    int nav_touch; // касание переключило экран по нажатию: до отпускания оно больше ничего не делает
     uint8_t xy_view; // бит своей страницы: вместо сетки XY-пэд
     lv_obj_t *bar, *tabs, *dock, *grid, *pick;
     knob_t knob[KNOBS];
@@ -1400,6 +1401,12 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
     pl_press_where(&u.press, &x0, &y0);
     pl_press_last(&u.press, &x1, &y1);
     int tap = pl_press_tap(ev) && u.grab < 0;
+    int began = pl_press_began(&u.press) && u.grab < 0;
+    if (u.nav_touch) {
+        // Это касание уже переключило экран: его остаток и отпускание новому экрану не достаются.
+        u.nav_touch = down;
+        return;
+    }
     int bar = bar_kind();
     int nav = tap ? pl_nav_tap(bar, x0, y0, x1, y1) : PL_NAV_NONE;
 
@@ -1447,26 +1454,30 @@ static void input(pl_model_t *m, int down, int x, int y, uint32_t ms)
                 }
             }
         } else if (zone == PL_ZONE_DOCK) {
-            int g = tap ? pl_nav_dock_tap(x0, y0, x1, y1) : -1;
+            // Док и вкладки переключают экран в момент касания, не по отпусканию: палец лежит на кнопке ~100 мс,
+            // и это была заметная доля задержки. Жестов с протяжкой в этих полосах нет.
+            int g = began ? pl_nav_dock_tap(x0, y0, x1, y1) : -1;
             if (g >= 0) {
                 select_tab(m, g, u.tab[g], ms, 0);
+                u.nav_touch = 1;
             }
         } else if (zone == PL_ZONE_TABS) {
-            if (tap) {
-                int t = pl_nav_tab_tap(u.group, x0, y0, x1, y1);
+            int t = began ? pl_nav_tab_tap(u.group, x0, y0, x1, y1) : -1;
+            if (t >= 0) {
+                u.nav_touch = 1;
+                const pl_tab_t *tab = pl_ia_tab(u.group, t);
+                if (t == u.tab[u.group] && tab && tab->kind == PL_TAB_USER) {
+                    release_all(m);
+                    u.overlay = OVL_USER;
+                } else {
+                    select_tab(m, u.group, t, ms, 0);
+                }
+            } else if (tap && pl_nav_tab_tap(u.group, x0, y0, x1, y1) < 0) {
                 const char *acts[2];
                 int act_on[2];
                 int n_acts = tab_actions(m, acts, act_on);
                 int a = pl_nav_act_tap(u.group, n_acts, x0, y0, x1, y1);
-                if (t >= 0) {
-                    const pl_tab_t *tab = pl_ia_tab(u.group, t);
-                    if (t == u.tab[u.group] && tab && tab->kind == PL_TAB_USER) {
-                        release_all(m);
-                        u.overlay = OVL_USER;
-                    } else {
-                        select_tab(m, u.group, t, ms, 0);
-                    }
-                } else if (a >= 0) {
+                if (a >= 0) {
                     if (!strcmp(acts[a], "XY")) {
                         uc_xy_release(m);
                         u.grab = -1;
