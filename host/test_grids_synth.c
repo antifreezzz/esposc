@@ -152,10 +152,50 @@ TEST(test_user_patterns)
     CHECK(s.grids_hits == 8);
 }
 
+// Свинг крутят на ходу: нечётный шаг играет ровно один раз, новое значение действует со следующего шага.
+TEST(test_swing_change_mid_step)
+{
+    static pl_grids_pat_t u[PL_GRIDS_USER];
+    pl_grids_user_init(u);
+    for (int st = 0; st < 32; st++) {
+        u[0].lv[st] = PL_GRIDS_LV_ACC; // бочка на каждом шаге: удар на шаг
+    }
+    // Подняли свинг, когда нечётный шаг уже сыграл: второй раз он не играет.
+    acid_synth_init(&s, SR);
+    acid_synth_use_grids(&s, u);
+    grids_on();
+    acid_synth_set_knob(&s, ACID_PAGE_GRIDS, DRM_SRC, PL_GRIDS_SRC_USER);
+    acid_synth_set_knob(&s, ACID_PAGE_GRIDS, DRM_FILL_EVERY, 0);
+    ev(ACID_MIDI_START, 0, 0, 0);
+    ticks(8); // шаг 1 начался и сыграл на своём первом тике
+    CHECK(s.grids_hits == 2 && s.grids_step == 1);
+    acid_synth_set_knob(&s, ACID_PAGE_GRIDS, DRM_SWING, 3);
+    ticks(4); // до конца шага 1
+    CHECK(s.grids_hits == 2);
+    ticks(84);
+    CHECK(s.grids_hits == 16);
+    // Убрали свинг, когда нечётный шаг ещё ждал своего тика: он не пропадает.
+    acid_synth_init(&s, SR);
+    acid_synth_use_grids(&s, u);
+    grids_on();
+    acid_synth_set_knob(&s, ACID_PAGE_GRIDS, DRM_SRC, PL_GRIDS_SRC_USER);
+    acid_synth_set_knob(&s, ACID_PAGE_GRIDS, DRM_FILL_EVERY, 0);
+    acid_synth_set_knob(&s, ACID_PAGE_GRIDS, DRM_SWING, 3);
+    ev(ACID_MIDI_START, 0, 0, 0);
+    ticks(8); // шаг 1 начался, сыграет на 4-м тике
+    CHECK(s.grids_hits == 1 && s.grids_step == 0);
+    acid_synth_set_knob(&s, ACID_PAGE_GRIDS, DRM_SWING, 0);
+    ticks(4);
+    CHECK(s.grids_hits == 2 && s.grids_step == 1);
+    ticks(84);
+    CHECK(s.grids_hits == 16);
+}
+
 int main(void)
 {
     RUN(test_user_patterns);
     RUN(test_swing_and_triplets);
+    RUN(test_swing_change_mid_step);
     RUN(test_pages);
     RUN(test_knob_mirror);
     RUN(test_plays_on_clock);

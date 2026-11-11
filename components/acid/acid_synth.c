@@ -242,6 +242,7 @@ void acid_synth_init(acid_synth_t *s, float sr)
     memcpy(s->raw[ACID_PAGE_GRIDS], s->drummer.knob, ACID_KNOBS);
     s->grids_step = -1;
     s->grids_hits = 0;
+    s->grids_swing = 0;
     s->page = PAGE_SYNTH1;
     memset(s->mod_base, KNOB_NONE, sizeof s->mod_base);
     memset(s->mod_mask, 0, sizeof s->mod_mask);
@@ -1337,6 +1338,7 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
         int beat_step = -1;
         if (acid_beat_tick(&s->beat)) {
             beat_step = s->beat.step;
+            s->grids_swing = s->drummer.knob[DRM_SWING];
             s->trig |= ACID_TRIG_STEP;
             if ((beat_step & 3) == 0) {
                 s->trig |= ACID_TRIG_BEAT;
@@ -1346,7 +1348,7 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
             }
         }
         // Шаг Grids - свой: свинг задерживает нечётные шестнадцатые, триольный рисунок идёт 12 шагами в такте.
-        int grid_step = acid_beat_grid_due(&s->beat, acid_drummer_grid(&s->drummer), s->drummer.knob[DRM_SWING]);
+        int grid_step = acid_beat_grid_due(&s->beat, acid_drummer_grid(&s->drummer), s->grids_swing);
         if (grid_step >= 0) {
             grids_play(s, grid_step);
         }
