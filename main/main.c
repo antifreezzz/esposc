@@ -723,11 +723,19 @@ static void stats_task(void *arg)
     }
 }
 
+#ifdef ESPOSC_MODEL_BENCH
+void model_bench_start(void);
+#endif
+
 void app_main(void)
 {
     ESP_ERROR_CHECK(store_start());
     boot_count();
     ESP_LOGI(TAG, "%s", s_boot_str);
+#ifdef ESPOSC_MODEL_BENCH
+    model_bench_start(); // стенд цены голосов: без звука, MIDI и панели
+    return;
+#endif
     load_user_data();
     usb_host_start();
     ESP_ERROR_CHECK(midi_in_start());
