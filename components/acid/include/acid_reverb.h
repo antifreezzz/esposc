@@ -35,7 +35,8 @@ typedef struct {
     float krt, damp; // обратная связь петли и коэффициент ФНЧ
     float hp, lp1, lp2;
     float ph1, ph2;  // фазы плавания 0..1
-    float y[2][ACID_REVERB_FRAME]; // выход прошлого кадра
+    float y[2][ACID_REVERB_FRAME]; // выход веток, если кадр лёг на шов линии (иначе читается прямо из линии)
+    const float *ysrc[2];          // выход веток прошлого кадра, без громкости
     float yp[2];     // последний отданный тик (для середины)
     float in[ACID_REVERB_FRAME];
     float hold;      // первый сэмпл пары
