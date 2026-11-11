@@ -1,6 +1,6 @@
 # esposc: заметки для агента
 
-Что это и как устроено - в `README.md`. Ручки BSP - в `README.md` и `docs/controls.html`.
+Что это и как устроено - в `README.ru.md`. Ручки BSP - в `README.ru.md` и `docs/controls.html`.
 
 ## Правила проекта
 
@@ -18,12 +18,12 @@
   (`pl_grids_src_level`), ручки PATTERN (enc 13) и SWING (enc 14). Источник MAP играет как оригинал Mutable: гостов
   нет, эталон в `test_drummer` (`test_map_golden`). Уровни банка: канон не ниже 120 (звучит при умолчаниях
   плотности 70-90), украшения - 64 (с плотности 96). Меняешь банк - обнови имена в `pl_labels.c` (`GRIDS_SRC`,
-  не длиннее 10 знаков) и таблицы в `README.md` и `docs/controls.html`. Свои рисунки живут вне `acid_synth_t`
+  не длиннее 10 знаков) и таблицы в `README.ru.md` и `docs/controls.html`. Свои рисунки живут вне `acid_synth_t`
   (`acid_synth_use_grids`), кадры `PL_GRIDS_PAT` 27 и `PL_GRIDS_CELL` 28, blob `"grids"` - магия `GP1` версии 1.
   Свинг и триольная сетка - только у Grids (`acid_beat_grid_due`), секвенсер синтов идёт ровно.
 - Бочка: `acid_kick_trigger_vel` (сила -> щелчок, разброс тона +-0.5 % и глубины +-5 % на удар) и две ноги
   барабанщика меняют звук демо относительно сборок до 2026-11-10: сравнение с ними - окнами громкости.
-- Меняешь ручки, страницы или MIDI - обнови `README.md` (таблица ручек), `docs/controls.html`
+- Меняешь ручки, страницы или MIDI - обнови `README.ru.md` (таблица ручек), `docs/controls.html`
   (массивы `PAGES`, `K303`, `KPETRI`, `MODELS` и тексты карточек), подписи панели `components/panel_link/pl_labels.c`
   и спеку этапа.
 - В рендере (всё, что зовётся из `acid_synth_render*`) никаких локов, аллокаций и логов. И в цикле `synth_task` регулярных
@@ -57,7 +57,7 @@ cmake -S host -B host/build && cmake --build host/build && ctest --test-dir host
 idf.py -B build-uac -DESPOSC_UAC=1 -p /dev/ttyACM0 flash
 # проверка ЦАПа без синта: тон по кругу L, R, оба, тишина; в логе тест замыкания пинов 4/5/6 и проба их переключений
 idf.py -B build-i2s-tone -DESPOSC_I2S_TONE=1 -p /dev/ttyACM0 flash
-# образ тарелок (раздел samples, idf.py flash его не трогает; сборка - в README)
+# образ тарелок (раздел samples, idf.py flash его не трогает; сборка - в README.ru.md)
 esptool.py --chip esp32s3 -p /dev/ttyACM0 write_flash 0x210000 cymbals.bin
 # прошивка тач-панели (её USB-C, CH340)
 idf.py -C panel -p /dev/ttyUSB0 -b 460800 flash
