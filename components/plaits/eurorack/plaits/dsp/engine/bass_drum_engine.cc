@@ -77,20 +77,7 @@ void BassDrumEngine::Render(
       out,
       size);
 
-  synthetic_bass_drum_.Render(
-      sustain,
-      parameters.trigger & TRIGGER_RISING_EDGE,
-      parameters.accent,
-      f0,
-      parameters.timbre,
-      parameters.morph,
-      sustain
-          ? parameters.harmonics
-          : 0.4f - 0.25f * parameters.morph * parameters.morph,
-      min(parameters.harmonics * 2.0f, 1.0f),
-      max(parameters.harmonics * 2.0f - 1.0f, 0.0f),
-      aux,
-      size);
+  // acid: AUX is never read (acid_plaits.cc takes frames[].out only): the synthetic bass drum is not rendered.
 }
 
 }  // namespace plaits

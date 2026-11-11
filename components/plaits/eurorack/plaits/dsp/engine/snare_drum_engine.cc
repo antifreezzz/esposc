@@ -63,16 +63,7 @@ void SnareDrumEngine::Render(
       out,
       size);
   
-  synthetic_snare_drum_.Render(
-      parameters.trigger & TRIGGER_UNPATCHED,
-      parameters.trigger & TRIGGER_RISING_EDGE,
-      parameters.accent,
-      f0,
-      parameters.timbre,
-      parameters.morph,
-      parameters.harmonics,
-      aux,
-      size);
+  // acid: AUX is never read (acid_plaits.cc takes frames[].out only): the synthetic snare drum is not rendered.
 }
 
 }  // namespace plaits

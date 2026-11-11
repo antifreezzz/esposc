@@ -66,7 +66,6 @@ void SwarmEngine::Render(
   const bool start_burst = parameters.trigger & TRIGGER_RISING_EDGE;
 
   fill(&out[0], &out[size], 0.0f);
-  fill(&aux[0], &aux[size], 0.0f);
   
   for (int i = 0; i < kNumSwarmVoices; ++i) {
     swarm_voice_[i].Render(

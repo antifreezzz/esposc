@@ -64,18 +64,7 @@ void HiHatEngine::Render(
       out,
       size);
   
-  hi_hat_2_.Render(
-      parameters.trigger & TRIGGER_UNPATCHED,
-      parameters.trigger & TRIGGER_RISING_EDGE,
-      parameters.accent,
-      f0,
-      parameters.timbre,
-      parameters.morph,
-      parameters.harmonics,
-      temp_buffer_,
-      temp_buffer_ + size,
-      aux,
-      size);
+  // acid: AUX is never read (acid_plaits.cc takes frames[].out only): the second hi-hat is not rendered.
 }
 
 }  // namespace plaits

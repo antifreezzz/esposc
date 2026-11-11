@@ -220,7 +220,7 @@ class SwarmVoice {
     f0 *= 1.0f + linear_amount;
 
     saw_.Render(f0, amplitude, saw, size);
-    sine_.Render(f0, amplitude, sine, size);
+    // acid: AUX (sine swarm) is never read.
   };
   
  private:
