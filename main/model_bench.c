@@ -4,6 +4,8 @@
 #include <stdio.h>
 
 #include "acid.h"
+#include "acid_mem.h"
+#include "acid_reverb.h"
 #include "esp_cpu.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -85,6 +87,32 @@ static uint32_t bench_pcm(void)
     return (uint32_t)(cycles / 2000 / CPU_MHZ);
 }
 
+// Ревёрб кусками по 32 сэмпла: удар шума 50 мс раз в 250 мс, длинный хвост - не спит. Память - из кучи, как в синте.
+static uint32_t bench_reverb(void)
+{
+    static acid_reverb_t rv;
+    static float *mem;
+    static float send[32], wl[32], wr[32];
+    if (!mem) {
+        mem = acid_mem_big(ACID_REVERB_MEM * sizeof *mem, 1);
+    }
+    acid_reverb_init(&rv, mem);
+    acid_reverb_set(&rv, 110, 40);
+    uint64_t cycles = 0;
+    uint32_t rnd = 1;
+    int n = SR * SECONDS;
+    for (int i = 0; i + 32 <= n; i += 32) {
+        for (int k = 0; k < 32; k++) {
+            rnd = rnd * 1664525u + 1013904223u;
+            send[k] = i % 12000 < 2400 ? (float)(int32_t)rnd * (1.0f / 2147483648.0f) : 0.0f;
+        }
+        uint32_t t = esp_cpu_get_cycle_count();
+        acid_reverb_run(&rv, send, wl, wr, 32);
+        cycles += esp_cpu_get_cycle_count() - t;
+    }
+    return us_per_block(cycles, n);
+}
+
 static void bench_task(void *arg)
 {
     (void)arg;
@@ -103,8 +131,9 @@ static void bench_task(void *arg)
         vTaskDelay(1);
         uint32_t fm = bench_slot(11, 0);
         vTaskDelay(1);
-        ESP_LOGI(TAG, "pass %d slot us/block: 303 %lu, 303+drive %lu, fm2 slot %lu; pcm %lu", pass, (unsigned long)v303,
-                 (unsigned long)v303d, (unsigned long)fm, (unsigned long)bench_pcm());
+        ESP_LOGI(TAG, "pass %d slot us/block: 303 %lu, 303+drive %lu, fm2 slot %lu; pcm %lu; reverb %lu", pass,
+                 (unsigned long)v303, (unsigned long)v303d, (unsigned long)fm, (unsigned long)bench_pcm(),
+                 (unsigned long)bench_reverb());
         vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
