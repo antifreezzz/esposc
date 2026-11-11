@@ -12,15 +12,16 @@
 #include "esp_lcd_touch_gt911.h"
 #include "esp_lvgl_port.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 // Пины и тайминги Guition ESP32-4848S040 (проверены в minimaxdumbtest).
 #define LCD_W 480
 #define LCD_H 480
-// Кадр идёт на экран из PSRAM, и развёртка сама занимает шину PSRAM: при 12 МГц (42 кадра/с, 19 МБ/с) - около
-// половины. Когда LVGL на другом ядре пишет в кадр большой кусок, копия для экрана (замер 2026-11-11: 9600 байт
-// холодными 110-240 мкс из 457 мкс периода) не успевала, и экран на кадр показывал сдвинутые полосы. 8 МГц - 28
-// кадров/с и на треть меньше нагрузка на шину. Перезапуск по кадровому импульсу (LCD_RGB_RESTART_IN_VSYNC) не
-// включать: его опоздавшее прерывание само сдвигает кадр, а потерянные прерывания драйвер и так ловит.
+// 8 МГц - 28 кадров/с: развёртка читает кадр из PSRAM, и чем она медленнее, тем больше запас у копии в буфер
+// экрана (замер 2026-11-11 в display_scan_stats: опоздание копии до 0.3 мс из 1.4 мс). Перезапуск по кадровому
+// импульсу (LCD_RGB_RESTART_IN_VSYNC) не включать: его опоздавшее прерывание само сдвигает кадр, а потерянные
+// прерывания драйвер и так ловит.
 #define PCLK_HZ (8 * 1000 * 1000)
 #define PIN_DE 18
 #define PIN_VSYNC 17
@@ -55,6 +56,55 @@ static void refr_cb(lv_event_t *e)
         s_refr_max = dt > s_refr_max ? dt : s_refr_max;
         s_frames++;
     }
+}
+
+// Диагностика развёртки: интервалы между прерываниями кадрового импульса (чистая задержка прерывания) и между
+// «кадр скопирован целиком» (задержка плюс время копии из PSRAM). Опоздание - интервал длиннее самого короткого
+// с загрузки; запас буфера экрана - 20 строк, ~1.4 мс. Счётчики не сбрасываются: читаются в любой момент.
+typedef struct {
+    int64_t last;
+    int min, worst, late; // мкс: самый короткий интервал, худшее опоздание, сколько раз опоздали больше 300 мкс
+    int win;              // худшее опоздание за окно статистики
+} scan_t;
+static scan_t s_vs, s_fb;
+
+static void IRAM_ATTR scan_mark(scan_t *s)
+{
+    int64_t now = esp_timer_get_time();
+    if (s->last) {
+        int dt = (int)(now - s->last);
+        if (!s->min || dt < s->min) {
+            s->min = dt;
+        }
+        int over = dt - s->min;
+        s->worst = over > s->worst ? over : s->worst;
+        s->win = over > s->win ? over : s->win;
+        s->late += over > 300;
+    }
+    s->last = now;
+}
+
+static bool IRAM_ATTR scan_vsync(esp_lcd_panel_handle_t panel, const esp_lcd_rgb_panel_event_data_t *e, void *ctx)
+{
+    (void)panel, (void)e, (void)ctx;
+    scan_mark(&s_vs);
+    return false;
+}
+
+static bool IRAM_ATTR scan_frame(esp_lcd_panel_handle_t panel, const esp_lcd_rgb_panel_event_data_t *e, void *ctx)
+{
+    (void)panel, (void)e, (void)ctx;
+    scan_mark(&s_fb);
+    return false;
+}
+
+void display_scan_stats(int out[8])
+{
+    int v[8] = {s_vs.min, s_vs.win, s_vs.worst, s_vs.late, s_fb.min, s_fb.win, s_fb.worst, s_fb.late};
+    for (int i = 0; i < 8; i++) {
+        out[i] = v[i];
+    }
+    s_vs.win = s_fb.win = 0;
 }
 
 void display_stats(int *frames, int *mean_us, int *max_us)
@@ -146,7 +196,7 @@ int display_touch(int *x, int *y)
     return 1;
 }
 
-esp_err_t display_start(void)
+static esp_err_t screen_start(void)
 {
     backlight(0);
     spi_line_config_t line = {.cs_io_type = IO_TYPE_GPIO, .cs_gpio_num = PIN_SPI_CS,
@@ -200,10 +250,40 @@ esp_err_t display_start(void)
     if (!d) {
         return ESP_FAIL;
     }
+    // Вместо обратных вызовов порта LVGL: ему они нужны только в режимах без разрывов (у нас выдача синхронная).
+    const esp_lcd_rgb_panel_event_callbacks_t scan_cbs = {.on_vsync = scan_vsync, .on_frame_buf_complete = scan_frame};
+    ESP_RETURN_ON_ERROR(esp_lcd_rgb_panel_register_event_callbacks(panel, &scan_cbs, NULL), TAG, "scan callbacks");
     lvgl_port_lock(0);
     lv_display_add_event_cb(d, refr_cb, LV_EVENT_REFR_START, NULL);
     lv_display_add_event_cb(d, refr_cb, LV_EVENT_REFR_READY, NULL);
     lvgl_port_unlock();
+    return ESP_OK;
+}
+
+static TaskHandle_t s_starter;
+static esp_err_t s_screen_err;
+
+static void screen_task(void *arg)
+{
+    (void)arg;
+    s_screen_err = screen_start();
+    xTaskNotifyGive(s_starter);
+    vTaskDelete(NULL);
+}
+
+// Экран поднимает задача на ядре 1: прерывания драйвера RGB садятся на ядро, где его создали, а копия кадра из
+// PSRAM в буфер экрана должна прерывать запись LVGL в кадр, а не идти с ней одновременно с другого ядра (вдвоём
+// они делят шину PSRAM). Замер 2026-11-11 с работающей чашкой: с ядра 0 копия опаздывала до 0.6 мс, с ядра 1 - до
+// 0.3 мс из запаса 1.4 мс. Сдвинутые полосы на кадр давал сторож задач: его печать из прерывания останавливает
+// ядро на десятки мс (проверка простоя ядра 1 выключена в sdkconfig.defaults).
+esp_err_t display_start(void)
+{
+    s_starter = xTaskGetCurrentTaskHandle();
+    if (xTaskCreatePinnedToCore(screen_task, "screen", 8192, NULL, 5, NULL, 1) != pdPASS) {
+        return ESP_ERR_NO_MEM;
+    }
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    ESP_RETURN_ON_ERROR(s_screen_err, TAG, "screen");
     ESP_RETURN_ON_ERROR(touch_start(), TAG, "touch");
     backlight(200);
     return ESP_OK;

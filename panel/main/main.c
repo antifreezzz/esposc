@@ -44,6 +44,10 @@ void app_main(void)
             display_stats(&f, &mean, &worst);
             ESP_LOGI("panel", "10 s: frames %d, redraw mean %d worst %d us; ui step mean %lld worst %lld us; touch %d",
                      f, mean, worst, step_us / steps, step_max, down);
+            int sc[8];
+            display_scan_stats(sc);
+            ESP_LOGI("panel", "scan: vsync period %d us, late %d (worst %d, over 300 us: %d); frame copy period %d us, "
+                     "late %d (worst %d, over 300 us: %d)", sc[0], sc[1], sc[2], sc[3], sc[4], sc[5], sc[6], sc[7]);
             stats_ms = ms;
             step_us = step_max = 0;
             steps = 0;

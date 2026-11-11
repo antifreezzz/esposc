@@ -13,6 +13,9 @@ CONFIG_ESP32S3_DATA_CACHE_64KB=y
 CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
 CONFIG_SPIRAM_FETCH_INSTRUCTIONS=y
 CONFIG_SPIRAM_RODATA=y
+# Ядро 1 занято отрисовкой и чашкой Петри целиком, это штатно. Сторож задач раз в 5 с печатал трассировку из
+# прерывания и останавливал ядро: экран в этот момент терял кадры (сдвинутые полосы).
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1=n
 CONFIG_LV_COLOR_DEPTH_16=y
 CONFIG_LV_FONT_MONTSERRAT_14=y
 # LVGL: куча на все объекты экрана (меню, свои страницы, сцены, редактор, Grids); 96 КБ не хватило экрану Grids
