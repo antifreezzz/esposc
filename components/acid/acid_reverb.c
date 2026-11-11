@@ -7,7 +7,7 @@
 #define NF ACID_REVERB_FRAME
 #define G ACID_REVERB_AP
 #define QUIET_FRAMES 750  // 0.5 с тишины на входе и в петле - сон
-#define QUIET_LEVEL 1e-6f // -120 дБ в петле
+#define QUIET_LEVEL 1e-6f // -120 дБ: в петле и на входе
 #define CLEAR_SLAB 1024   // float за вызов: чистка памяти после засыпания размазана
 
 static const int16_t LEN[10] = {ACID_REVERB_IN1, ACID_REVERB_IN2, ACID_REVERB_IN3, ACID_REVERB_IN4, ACID_REVERB_A1,
@@ -87,12 +87,23 @@ static inline __attribute__((always_inline)) void ap_frame(float *buf, int len, 
         *pp = p == len ? 0 : p;
         return;
     }
-    for (int i = 0; i < NF; i++) { // кадр на шве линии
-        float d = buf[p];
-        float t = x[i] - G * d;
-        buf[p] = t;
-        o[i] = d + G * t;
-        p = p + 1 == len ? 0 : p + 1;
+    for (int i = 0; i < NF; i += 4) { // кадр на шве линии: по одному идёт только четвёрка на самом шве
+        if (p + 4 <= len) {
+            float *b = buf + p;
+            float d0 = b[0], d1 = b[1], d2 = b[2], d3 = b[3];
+            float t0 = x[i] - G * d0, t1 = x[i + 1] - G * d1, t2 = x[i + 2] - G * d2, t3 = x[i + 3] - G * d3;
+            b[0] = t0, b[1] = t1, b[2] = t2, b[3] = t3;
+            o[i] = d0 + G * t0, o[i + 1] = d1 + G * t1, o[i + 2] = d2 + G * t2, o[i + 3] = d3 + G * t3;
+            p = p + 4 == len ? 0 : p + 4;
+            continue;
+        }
+        for (int k = i; k < i + 4; k++) {
+            float d = buf[p];
+            float t = x[k] - G * d;
+            buf[p] = t;
+            o[k] = d + G * t;
+            p = p + 1 == len ? 0 : p + 1;
+        }
     }
     *pp = p;
 }
@@ -168,27 +179,8 @@ static __attribute__((noinline)) void frame(acid_reverb_t *rv)
     float x[NF], a[NF], b[NF], r1[NF], r2[NF];
     float **ln = rv->line;
     int *p = rv->p;
-    {
-        // ФВЧ посыла: цепочка hp идёт по тикам, остальное считается по 4 в стороне от неё.
-        float hp = rv->hp;
-        const float c = ACID_REVERB_LOWCUT, c1 = 1.0f - ACID_REVERB_LOWCUT;
-        const float *in = rv->in;
-        for (int i = 0; i < NF; i += 4) {
-            float i0 = in[i], i1 = in[i + 1], i2 = in[i + 2], i3 = in[i + 3];
-            float m0 = c * i0, m1 = c * i1, m2 = c * i2, m3 = c * i3;
-            float h1 = hp * c1 + m0;
-            float x0 = i0 - hp;
-            float h2 = h1 * c1 + m1;
-            float x1 = i1 - h1;
-            float h3 = h2 * c1 + m2;
-            float x2 = i2 - h2;
-            hp = h3 * c1 + m3;
-            float x3 = i3 - h3;
-            x[i] = x0, x[i + 1] = x1, x[i + 2] = x2, x[i + 3] = x3;
-        }
-        rv->hp = hp;
-    }
-    ap_frame(ln[0], ACID_REVERB_IN1, &p[0], x, x);
+    const float *x0 = rv->in; // уже после ФВЧ
+    ap_frame(ln[0], ACID_REVERB_IN1, &p[0], x0, x);
     ap_frame(ln[1], ACID_REVERB_IN2, &p[1], x, x);
     ap_frame(ln[2], ACID_REVERB_IN3, &p[2], x, x);
     ap_frame(ln[3], ACID_REVERB_IN4, &p[3], x, x);
@@ -199,16 +191,17 @@ static __attribute__((noinline)) void frame(acid_reverb_t *rv)
     mod_step(&rv->ph2, ACID_REVERB_LFO2, ACID_REVERB_D2, &di, &fr);
     tap_frame(ln[9], ACID_REVERB_D2, p[9], di, fr, r2);
     {
-        // Восьмёрка: в ветку 1 идёт хвост линии 2 и наоборот. Цепочки двух ФНЧ независимы и идут вперемежку.
+        // Восьмёрка: в ветку 1 идёт хвост линии 2 и наоборот. ФНЧ lp = lp * c1 + c * (x + krt * r) развёрнут на
+        // 2 тика: по цепочке от кадра к кадру идёт одно умножение-сложение на пару тиков, остальное в стороне.
         float lp1 = rv->lp1, lp2 = rv->lp2;
-        const float krt = rv->krt, c = rv->damp, c1 = 1.0f - rv->damp;
+        const float c = rv->damp, ck = rv->damp * rv->krt, c1 = 1.0f - rv->damp, c2 = c1 * c1;
         for (int i = 0; i < NF; i += 2) {
-            float x0 = x[i], x1 = x[i + 1];
-            float v10 = x0 + krt * r2[i], v20 = x0 + krt * r1[i];
-            float v11 = x1 + krt * r2[i + 1], v21 = x1 + krt * r1[i + 1];
-            v10 *= c, v20 *= c, v11 *= c, v21 *= c;
-            float a0 = lp1 * c1 + v10, b0 = lp2 * c1 + v20;
-            lp1 = a0 * c1 + v11, lp2 = b0 * c1 + v21;
+            float cx0 = c * x[i], cx1 = c * x[i + 1];
+            float v10 = cx0 + ck * r2[i], v20 = cx0 + ck * r1[i];
+            float v11 = cx1 + ck * r2[i + 1], v21 = cx1 + ck * r1[i + 1];
+            float u1 = v11 + c1 * v10, u2 = v21 + c1 * v20;
+            float a0 = v10 + c1 * lp1, b0 = v20 + c1 * lp2;
+            lp1 = u1 + c2 * lp1, lp2 = u2 + c2 * lp2;
             a[i] = a0, b[i] = b0;
             a[i + 1] = lp1, b[i + 1] = lp2;
         }
@@ -228,7 +221,7 @@ static __attribute__((noinline)) void frame(acid_reverb_t *rv)
         return;
     }
     for (int i = 0; i < NF; i++) { // вход смотрим, только когда петля уже тихая
-        if (rv->in[i] != 0.0f) {
+        if (rv->in[i] >= QUIET_LEVEL || rv->in[i] <= -QUIET_LEVEL) {
             rv->quiet = 0;
             return;
         }
@@ -259,7 +252,7 @@ int acid_reverb_run(acid_reverb_t *rv, const float *send, float *wl, float *wr, 
     while (i < n) {
         if (rv->state != 1) {
             int j = i;
-            while (j < n && send[j] == 0.0f) {
+            while (j < n && send[j] < QUIET_LEVEL && send[j] > -QUIET_LEVEL) { // тише -120 дБ не будит
                 j++;
             }
             if (j == n && !any) {
@@ -280,26 +273,32 @@ int acid_reverb_run(acid_reverb_t *rv, const float *send, float *wl, float *wr, 
             rv->state = 1;
             any = 1;
         }
-        const float hg = 0.5f * ACID_REVERB_GAIN, g = ACID_REVERB_GAIN;
+        // Громкость wet и половина пары сложены во вход: нечётный сэмпл выхода - копия тика без умножения.
+        const float gi = 0.5f * ACID_REVERB_GAIN, c = ACID_REVERB_LOWCUT, c1 = 1.0f - ACID_REVERB_LOWCUT;
         if (rv->pos == 0 && n - i >= 2 * NF) {
-            // целый кадр: выход прошлого кадра с серединами, вход парами; по 2 тика, сначала все чтения
+            // целый кадр: выход прошлого кадра с серединами, вход парами и через ФВЧ; по 2 тика, сначала чтения
             const float *sl = rv->ysrc[0], *sr = rv->ysrc[1], *s = send + i;
             float *ol = wl + i, *or_ = wr + i, *in = rv->in;
-            float pl = rv->yp[0], pr = rv->yp[1];
+            float pl = rv->yp[0], pr = rv->yp[1], hp = rv->hp;
             for (int k = 0; k < NF; k += 2) {
                 float l0 = sl[k], l1 = sl[k + 1], r0 = sr[k], r1 = sr[k + 1];
                 float s0 = s[2 * k], s1 = s[2 * k + 1], s2 = s[2 * k + 2], s3 = s[2 * k + 3];
                 float ml0 = pl + l0, mr0 = pr + r0, ml1 = l0 + l1, mr1 = r0 + r1;
                 s0 += s1, s2 += s3;
-                ol[2 * k] = hg * ml0, or_[2 * k] = hg * mr0;
-                ol[2 * k + 1] = g * l0, or_[2 * k + 1] = g * r0;
-                ol[2 * k + 2] = hg * ml1, or_[2 * k + 2] = hg * mr1;
-                ol[2 * k + 3] = g * l1, or_[2 * k + 3] = g * r1;
-                in[k] = 0.5f * s0, in[k + 1] = 0.5f * s2;
+                ol[2 * k + 1] = l0, or_[2 * k + 1] = r0;
+                ol[2 * k + 3] = l1, or_[2 * k + 3] = r1;
+                s0 *= gi, s2 *= gi;
+                ol[2 * k] = 0.5f * ml0, or_[2 * k] = 0.5f * mr0;
+                ol[2 * k + 2] = 0.5f * ml1, or_[2 * k + 2] = 0.5f * mr1;
+                float h1 = hp * c1 + c * s0;
+                in[k] = s0 - hp;
+                hp = h1 * c1 + c * s2;
+                in[k + 1] = s2 - h1;
                 pl = l1, pr = r1;
             }
             rv->yp[0] = pl;
             rv->yp[1] = pr;
+            rv->hp = hp;
             i += 2 * NF;
             frame(rv);
             continue;
@@ -307,14 +306,16 @@ int acid_reverb_run(acid_reverb_t *rv, const float *send, float *wl, float *wr, 
         int k = rv->pos >> 1;
         float yl = rv->ysrc[0][k], yr = rv->ysrc[1][k];
         if (rv->pos & 1) {
-            wl[i] = g * yl;
-            wr[i] = g * yr;
+            wl[i] = yl;
+            wr[i] = yr;
             rv->yp[0] = yl;
             rv->yp[1] = yr;
-            rv->in[k] = 0.5f * (rv->hold + send[i]);
+            float t = gi * (rv->hold + send[i]);
+            rv->in[k] = t - rv->hp;
+            rv->hp = rv->hp * c1 + c * t;
         } else {
-            wl[i] = hg * (rv->yp[0] + yl);
-            wr[i] = hg * (rv->yp[1] + yr);
+            wl[i] = 0.5f * (rv->yp[0] + yl);
+            wr[i] = 0.5f * (rv->yp[1] + yr);
             rv->hold = send[i];
         }
         i++;
