@@ -89,8 +89,8 @@ class VariableSawOscillator {
       const float waveshape = waveshape_modulation.Next();
       const float triangle_amount = waveshape;
       const float notch_amount = 1.0f - waveshape;
-      const float slope_up = 1.0f / (pw);
-      const float slope_down = 1.0f / (1.0f - pw);
+      const float slope_up = stmlib::EspRcp(pw);  // acid: было деление (на ESP32-S3 - программный вызов на каждом сэмпле)
+      const float slope_down = stmlib::EspRcp(1.0f - pw);
 
       phase_ += frequency;
       
@@ -124,7 +124,8 @@ class VariableSawOscillator {
           notch_amount);
       previous_pw_ = pw;
 
-      *out++ = (2.0f * this_sample - 1.0f) / (1.0f + kVariableSawNotchDepth);
+      // acid: деление на константу - умножением.
+      *out++ = (2.0f * this_sample - 1.0f) * (1.0f / (1.0f + kVariableSawNotchDepth));
     }
     
     next_sample_ = next_sample;

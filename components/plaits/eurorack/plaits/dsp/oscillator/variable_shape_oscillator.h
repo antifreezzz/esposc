@@ -137,8 +137,8 @@ class VariableShapeOscillator {
       const float square_amount = std::max(waveshape - 0.5f, 0.0f) * 2.0f;
       const float triangle_amount = std::max(1.0f - waveshape * 2.0f, 0.0f);
       
-      const float slope_up = 1.0f / (pw);
-      const float slope_down = 1.0f / (1.0f - pw);
+      const float slope_up = stmlib::EspRcp(pw);  // acid: было деление (на ESP32-S3 - программный вызов на каждом сэмпле)
+      const float slope_down = stmlib::EspRcp(1.0f - pw);
 
       if (enable_sync) {
         master_phase_ += master_frequency;
