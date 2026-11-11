@@ -32,7 +32,7 @@ static int play_differs(acid_synth_t *dry, acid_synth_t *wet, int ch, int n)
 
 static void only_send(acid_synth_t *s, int enc)
 {
-    acid_synth_set_knob(s, 8, 14, 127);
+    acid_synth_set_knob(s, 8, 15, 127);
     for (int e = 0; e < 3; e++) {
         acid_synth_set_knob(s, ACID_PAGE_REVERB, e + 1, e + 1 == enc ? 64 : 0);
     }
@@ -48,14 +48,14 @@ TEST(test_reverb_defaults_and_off_bit_exact)
     for (int e = 0; e < ACID_REVERB_KNOBS; e++) {
         CHECK(acid_synth_knob(&a, ACID_PAGE_REVERB, e + 1) == def[e]);
     }
-    CHECK(acid_synth_knob(&a, 8, 14) == 0);
+    CHECK(acid_synth_knob(&a, 8, 15) == 0);
     CHECK(acid_reverb_active(&a.reverb) == 0);
     CHECK(!play_differs(&a, &b, 1, 42));
     acid_synth_init(&a, SR);
     acid_synth_init(&b, SR);
-    acid_synth_set_knob(&b, 8, 14, 127);
+    acid_synth_set_knob(&b, 8, 15, 127);
     CHECK(play_differs(&a, &b, 1, 42));
-    acid_synth_set_knob(&b, 8, 14, 0);
+    acid_synth_set_knob(&b, 8, 15, 0);
     CHECK(acid_reverb_active(&b.reverb) == 0);
 }
 
@@ -65,7 +65,7 @@ TEST(test_reverb_kick_not_sent)
     memset(&b, 0, sizeof b);
     acid_synth_init(&a, SR);
     acid_synth_init(&b, SR);
-    acid_synth_set_knob(&b, 8, 14, 127);
+    acid_synth_set_knob(&b, 8, 15, 127);
     CHECK(!play_differs(&a, &b, 1, 36));
     CHECK(acid_reverb_active(&b.reverb) == 0);
 }
@@ -85,7 +85,7 @@ TEST(test_reverb_each_send)
     }
 }
 
-TEST(test_reverb_blob_v5_import_and_v6_roundtrip)
+TEST(test_reverb_blob_import_and_roundtrip)
 {
     memset(&a, 0, sizeof a);
     memset(&b, 0, sizeof b);
@@ -97,7 +97,7 @@ TEST(test_reverb_blob_v5_import_and_v6_roundtrip)
     }
     uint8_t blob[ACID_SYNTH_BLOB];
     CHECK(acid_synth_export(&a, blob, sizeof blob) == ACID_SYNTH_BLOB);
-    CHECK(blob[3] == 6);
+    CHECK(blob[3] == 7);
     CHECK(acid_synth_import(&b, blob, sizeof blob));
     for (int e = 0; e < ACID_REVERB_KNOBS; e++) {
         CHECK(acid_synth_knob(&b, ACID_PAGE_REVERB, e + 1) == val[e]);
@@ -110,14 +110,25 @@ TEST(test_reverb_blob_v5_import_and_v6_roundtrip)
         CHECK(acid_synth_knob(&b, ACID_PAGE_REVERB, e + 1) == def[e]);
     }
     CHECK(acid_synth_export(&b, blob, sizeof blob) == ACID_SYNTH_BLOB);
-    CHECK(blob[3] == 6);
+    CHECK(blob[3] == 7);
+    // Версия 6 (сборка одного дня): wet лежал на месте LYR HALF (FX 15). Переезжает на FX 16, LYR HALF выключен.
+    acid_synth_init(&a, SR);
+    acid_synth_set_knob(&a, 8, 14, 0);
+    acid_synth_set_knob(&a, 8, 15, 0);
+    CHECK(acid_synth_export(&a, blob, sizeof blob) == ACID_SYNTH_BLOB);
+    blob[3] = 6;
+    blob[ACID_SYNTH_BLOB_V4 + 6 * ACID_KNOBS + 14] = 90; // эффекты - седьмая из сохраняемых страниц
+    acid_synth_init(&b, SR);
+    CHECK(acid_synth_import(&b, blob, sizeof blob));
+    CHECK(acid_synth_knob(&b, 8, 15) == 90);
+    CHECK(acid_synth_knob(&b, 8, 14) == 0 && !b.layer_half);
 }
 
 TEST(test_reverb_load_duck_and_sleep)
 {
     memset(&a, 0, sizeof a);
     acid_synth_init(&a, SR);
-    acid_synth_set_knob(&a, 8, 14, 127);
+    acid_synth_set_knob(&a, 8, 15, 127);
     note(&a, 1, 42);
     float l[CH], r[CH];
     for (int k = 0; k < 8; k++) {
@@ -145,7 +156,7 @@ int main(void)
     RUN(test_reverb_defaults_and_off_bit_exact);
     RUN(test_reverb_kick_not_sent);
     RUN(test_reverb_each_send);
-    RUN(test_reverb_blob_v5_import_and_v6_roundtrip);
+    RUN(test_reverb_blob_import_and_roundtrip);
     RUN(test_reverb_load_duck_and_sleep);
     TEST_MAIN_END();
 }

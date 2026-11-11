@@ -161,7 +161,7 @@ TEST(test_can_target_examples)
     model_from_synth();
     CHECK(pl_mod_can_target(&m, 0, 2) && pl_mod_can_target(&m, 1, 1) && pl_mod_can_target(&m, 12, 2));
     CHECK(!pl_mod_can_target(&m, 0, 0) && !pl_mod_can_target(&m, 0, 16) && !pl_mod_can_target(&m, 0, 15)); // пустой слот
-    CHECK(!pl_mod_can_target(&m, 6, 1) && pl_mod_can_target(&m, 8, 14) && !pl_mod_can_target(&m, 12, 12));
+    CHECK(!pl_mod_can_target(&m, 6, 1) && !pl_mod_can_target(&m, 8, 14) && pl_mod_can_target(&m, 8, 15) && !pl_mod_can_target(&m, 12, 12));
     CHECK(!pl_mod_can_target(&m, 9, 2) && !pl_mod_can_target(&m, PL_PAGE_PETRI, 2)); // TONAL, чашка
     CHECK(!pl_mod_can_target(&m, 14, 2) && !pl_mod_can_target(&m, PL_PAGE_MIX_DRUMS, 2) && !pl_mod_can_target(&m, PL_PAGE_MOD1, 9));
     CHECK(!pl_mod_can_target(&m, -1, 2) && !pl_mod_can_target(&m, 99, 2));

@@ -43,7 +43,6 @@ typedef struct {
 #define ACID_DEMO_PICK 0xFF
 // Страница Grids в ручке демо: номера на BSP у неё нет, ручки идут событием ACID_MIDI_KNOB.
 #define ACID_DEMO_GRIDS 100
-#define ACID_DEMO_LAYER_HALF 101 // служебная ручка демо, не страница BSP или панели
 #define ACID_DEMO_KNOBS 48 // ручек в части не больше
 typedef struct {
     uint8_t page, enc, from, to, vary;

@@ -17,7 +17,7 @@ static int empty(int page, int enc, int type)
     case 7: return type == 0 && enc >= 10 && enc <= 12;
     case 10:
     case 11: return type == 26 ? enc >= 2 : type == 0 && enc >= 10 && enc <= 12; // слой: как синт, OFF (26) - пусто
-    case 8: return enc >= 15;
+    case 8: return 0; // FX: все 15, последняя - REVERB
     case 12: return enc >= 15; // Grids: 13 PATTERN, 14 SWING
     default: return 0;
     }
@@ -271,12 +271,14 @@ TEST(test_fx_reverb_labels)
     uint8_t raw[16] = {0};
     CHECK(strcmp(pl_knob_label(8, 12, raw), "LYR1 VOL") == 0);
     CHECK(strcmp(pl_knob_label(8, 13, raw), "LYR2 VOL") == 0);
-    CHECK(strcmp(pl_knob_label(8, 14, raw), "REVERB") == 0);
-    CHECK(pl_knob_label(8, 15, raw) == NULL);
+    CHECK(strcmp(pl_knob_label(8, 14, raw), "LYR HALF") == 0);
+    CHECK(strcmp(pl_knob_label(8, 15, raw), "REVERB") == 0);
     char buf[12];
-    CHECK(strcmp(pl_value_text(8, 14, 0, raw, buf), "0") == 0);
-    CHECK(strcmp(pl_value_text(8, 14, 64, raw, buf), "64") == 0);
-    CHECK(strcmp(pl_value_text(8, 14, 127, raw, buf), "127") == 0);
+    CHECK(strcmp(pl_value_text(8, 14, 63, raw, buf), "OFF") == 0); // переключатель: порог 64
+    CHECK(strcmp(pl_value_text(8, 14, 64, raw, buf), "ON") == 0);
+    CHECK(strcmp(pl_value_text(8, 15, 0, raw, buf), "0") == 0);
+    CHECK(strcmp(pl_value_text(8, 15, 64, raw, buf), "64") == 0);
+    CHECK(strcmp(pl_value_text(8, 15, 127, raw, buf), "127") == 0);
     static const char *const name[5] = {"RVB S1", "RVB S2", "RVB DRUMS", "DECAY", "DAMP"};
     CHECK(strcmp(pl_page_name(PL_PAGE_REVERB), "REVERB") == 0);
     CHECK(pl_page_color(PL_PAGE_REVERB) == pl_page_color(8));

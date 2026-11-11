@@ -64,8 +64,8 @@ static const uint8_t PAN_DEFAULT[ACID_PANS] = {64, 64, 80, 48, 64};
 #define DRIVE_TONE 64  // тон и вой, пока их не трогали
 #define TYPE_ENC 1       // энкодер 2 на странице синта
 // 2: + ручки слоя тональности, 3: + слои синтов, 4: + PETRI, 5: + страницы микса, ударки, эффектов, Grids, чашки,
-// 6: + пять ручек реверба.
-static const uint8_t BLOB_MAGIC[4] = {'A', 'S', '5', 6};
+// 6: + пять ручек реверба (wet на FX 15 вместо LYR HALF), 7: LYR HALF на FX 15, wet на FX 16.
+static const uint8_t BLOB_MAGIC[4] = {'A', 'S', '5', 7};
 static const uint8_t RV_DEFAULT[ACID_REVERB_KNOBS] = {64, 64, 64, 64, 50};
 #define OLD_TYPES 25 // версии 2-3: без PETRI, у слоя «выкл» = 25
 #define BLOB_OLD(slots) (4 + (slots) * (1 + OLD_TYPES * ACID_KNOBS) + ACID_TONAL_KNOBS)
@@ -819,7 +819,8 @@ static void page_fx(acid_synth_t *s, int slot, int v)
     case 11: acid_delay_set_motion(&s->delay, s->delay.motion, v); break;
     case 12:
     case 13: s->layer_gain[slot - 12] = lin(v, 0.0f, 1.0f); break;
-    case 14:
+    case 14: s->layer_half = v >= 64; break;
+    case 15:
         s->rv_wet = lin(v, 0.0f, 1.0f);
         if (v == 0) {
             acid_reverb_init(&s->reverb, s->rv_mem);
@@ -1129,7 +1130,7 @@ int acid_synth_knob_smooth(const acid_synth_t *s, int page, int enc)
     case PAGE_TOMS: return enc >= 2;
     case PAGE_TOMS + 1:
     case PAGE_COW: return enc >= 2 && enc <= 13;
-    case PAGE_FX: return enc != 6 && enc != 9 && enc != 10 && enc <= 14;
+    case PAGE_FX: return enc != 6 && enc != 9 && enc != 10 && enc != 14;
     case ACID_PAGE_GRIDS: return enc >= 2 && enc <= 7;
     default: {
         int idx = synth_page_idx(page);
@@ -1368,9 +1369,6 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
         break;
     case ACID_MIDI_KNOB:
         acid_synth_set_knob(s, ev->ch, ev->d1, ev->d2);
-        break;
-    case ACID_MIDI_LAYER_HALF:
-        s->layer_half = ev->d2 >= 64;
         break;
     case ACID_MIDI_CLOCK: {
         float spb = acid_clock_spb(&s->clock);
@@ -1955,7 +1953,8 @@ int acid_synth_import(acid_synth_t *s, const void *buf, size_t len)
 {
     const uint8_t *b = buf;
     // Версия 2 (до слоёв) - только синты; 2-3 - по 25 типов (без PETRI), у слоя «выкл» = 25.
-    int ver = len == ACID_SYNTH_BLOB && memcmp(b, BLOB_MAGIC, sizeof BLOB_MAGIC) == 0       ? 6
+    int ver = len == ACID_SYNTH_BLOB && memcmp(b, BLOB_MAGIC, sizeof BLOB_MAGIC) == 0       ? 7
+              : len == ACID_SYNTH_BLOB && memcmp(b, "AS5\x06", 4) == 0                  ? 6
               : len == ACID_SYNTH_BLOB_V5 && memcmp(b, "AS5\x05", 4) == 0               ? 5
               : len == ACID_SYNTH_BLOB_V4 && memcmp(b, "AS5\x04", 4) == 0               ? 4
               : len == BLOB_OLD(2 * ACID_SLOTS) && memcmp(b, "AS5\x03", 4) == 0 ? 3
@@ -1992,12 +1991,16 @@ int acid_synth_import(acid_synth_t *s, const void *buf, size_t len)
     b += ACID_TONAL_KNOBS;
     for (int i = 0; ver >= 5 && i < ACID_SAVED_PAGES; i++, b += ACID_KNOBS) {
         for (int e = 1; e < ACID_KNOBS; e++) {
-            if (!performance_knob(SAVED_PAGES[i], e) && b[e] <= 127) {
-                apply_page(s, SAVED_PAGES[i], e, b[e]);
+            int v = b[e];
+            if (ver == 6 && SAVED_PAGES[i] == PAGE_FX && e >= 14) {
+                v = e == 14 ? 0 : b[14]; // wet стоял на месте LYR HALF
+            }
+            if (!performance_knob(SAVED_PAGES[i], e) && v <= 127) {
+                apply_page(s, SAVED_PAGES[i], e, v);
             }
         }
     }
-    for (int e = 0; ver == 6 && e < ACID_REVERB_KNOBS; e++) {
+    for (int e = 0; ver >= 6 && e < ACID_REVERB_KNOBS; e++) {
         if (b[e] <= 127) {
             apply_page(s, ACID_PAGE_REVERB, e + 1, b[e]);
         }

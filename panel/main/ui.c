@@ -1244,12 +1244,13 @@ void ui_open_pick(int page, int enc)
 static void card_tap(pl_model_t *m, int cell, uint32_t ms)
 {
     int enc = cell + 1, tp, te;
-    if (u.page == 8 && enc == 14) {
+    int kind = pl_pick_view(m, u.page, enc, &tp, &te);
+    if (pl_pick_sub(tp, te) == PL_PAGE_REVERB) {
         u.grab = -1;
         u.overlay = OVL_REVERB;
         return;
     }
-    switch (pl_pick_view(m, u.page, enc, &tp, &te)) {
+    switch (kind) {
     case PL_PICK_GRID:
         u.pick_page = u.page, u.pick_enc = enc, u.pick_tp = tp, u.pick_te = te;
         u.overlay = OVL_VAL;
@@ -1281,7 +1282,7 @@ static void knob_input(pl_model_t *m, int ev, int down, int x, int y, int x0, in
         pl_cell_t cell;
         pl_view_cell(m, page, i + 1, &cell);
         int kind = pl_pick_view(m, page, i + 1, &tp, &te);
-        int can = kind == PL_PICK_NONE || pl_pick_grab(tp, te, pl_model_raw(m, tp), !drag);
+        int can = kind == PL_PICK_NONE && pl_pick_sub(tp, te) < 0 ? 1 : pl_pick_grab(tp, te, pl_model_raw(m, tp), !drag);
         if (i >= 0 && i < KNOBS && cell.label && m->have && can) {
             pl_turn_begin(&u.turn, x, y - RING_DY, cell.v, cell.lo, cell.hi);
             pl_turn_skip(&u.turn, cell.skip);

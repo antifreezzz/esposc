@@ -23,8 +23,8 @@ static int same_as_whole(const acid_demo_song_t *song, int seconds)
     float la[CH], ra[CH], lb[CH], rb[CH], s1[CH];
     acid_synth_init(&a, SR);
     acid_synth_init(&b, SR);
-    acid_synth_set_knob(&a, 8, 14, 127);
-    acid_synth_set_knob(&b, 8, 14, 127);
+    acid_synth_set_knob(&a, 8, 15, 127);
+    acid_synth_set_knob(&b, 8, 15, 127);
     memset(rv_send, 0, sizeof rv_send);
     acid_demo_init(&da, song);
     acid_demo_init(&db, song);

@@ -46,7 +46,18 @@ TEST(test_kind_other_pages)
     CHECK(kind(8, 6) == PL_PICK_GRID);  // DLY TIME
     CHECK(kind(8, 9) == PL_PICK_GRID);  // STUTTER
     CHECK(kind(8, 10) == PL_PICK_GRID); // MOTION
-    CHECK(kind(8, 14) == PL_PICK_NONE); // REVERB: тап открывает подэкран в ui.c
+    CHECK(kind(8, 14) == PL_PICK_TOGGLE); // LYR HALF
+    CHECK(pl_pick_next(8, 14, raw, 0) == 127); // порог 64
+    CHECK(pl_pick_next(8, 14, raw, 63) == 127);
+    CHECK(pl_pick_next(8, 14, raw, 64) == 0);
+    // REVERB: крутилка, но тап открывает подэкран. Захват только сдвигом пальца, как у списков:
+    // удержание без сдвига остаётся тапом, иначе дрожание пальца крутит ручку вместо входа.
+    CHECK(kind(8, 15) == PL_PICK_NONE);
+    CHECK(pl_pick_sub(8, 15) == PL_PAGE_REVERB);
+    CHECK(pl_pick_grab(8, 15, raw, 0) == 1);
+    CHECK(pl_pick_grab(8, 15, raw, 1) == 0);
+    CHECK(pl_pick_sub(8, 14) == -1 && pl_pick_sub(0, 15) == -1 && pl_pick_sub(PL_PAGE_REVERB, 1) == -1);
+    CHECK(pl_pick_grab(0, 5, raw, 1) == 1);
     CHECK(kind(8, 11) == PL_PICK_NONE); // WIDTH
     for (int e = 1; e <= 5; e++) {
         CHECK(kind(PL_PAGE_REVERB, e) == PL_PICK_NONE);

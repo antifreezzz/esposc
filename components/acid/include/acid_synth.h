@@ -117,7 +117,7 @@ typedef struct acid_synth {
     acid_petri_t petri[ACID_SLOTS]; // голоса чашки Петри синтов 1 и 2
     float petri_depth[3];           // маршруты: пожиратели -> срез, мутаген -> резонанс, вихрь и прыжок -> огибающая
     float layer_gain[ACID_SLOTS]; // FX энкодеры 13-14
-    int layer_half;    // служебное событие демо: слои на половинной частоте
+    int layer_half;    // FX энкодер 15 (64 и выше): слои на половинной частоте
     acid_kick_t kick;
     acid_hat_t hat;
     acid_clap_t clap;

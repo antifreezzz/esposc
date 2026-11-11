@@ -18,10 +18,15 @@ static int is_synth(int page)
     return page == PL_PAGE_SYNTH1 || page == PL_PAGE_SYNTH1 + 1 || page == PL_PAGE_LAYER1 || page == PL_PAGE_LAYER1 + 1;
 }
 
-// Переключатель 0..127 с порогом 64: FREEZE.
+// Переключатели 0..127 с порогом 64: LYR HALF, FREEZE.
 static int half_toggle(int page, int enc)
 {
-    return page == PL_PAGE_PETRI && enc == 14;
+    return (page == FX || page == PL_PAGE_PETRI) && enc == 14;
+}
+
+int pl_pick_sub(int page, int enc)
+{
+    return page == FX && enc == 15 ? PL_PAGE_REVERB : -1;
 }
 
 // Синт ловит фронт 0 -> 1: RESEED чашки, FILL Grids.
@@ -134,7 +139,7 @@ int pl_pick_grab(int page, int enc, const uint8_t raw[16], int hold)
 {
     int k = pl_pick_kind(page, enc, raw);
     if (k == PL_PICK_NONE) {
-        return 1;
+        return pl_pick_sub(page, enc) < 0 || !hold;
     }
     return k == PL_PICK_GRID && !hold && !(is_synth(page) && enc == 1);
 }

@@ -1,5 +1,4 @@
 #include "acid_demo.h"
-#include "acid_synth.h"
 #include "test.h"
 
 #include <string.h>
@@ -196,29 +195,6 @@ TEST(test_demo_grids_knob)
     CHECK(on >= 0 && x >= 0);
 }
 
-static const acid_demo_knob_t half_knobs[] = {{ACID_DEMO_LAYER_HALF, 1, 127, 127, 0}};
-static const acid_demo_part_t half_parts[] = {{.bars = 1, .knobs = half_knobs, .nknobs = 1}};
-static const acid_demo_song_t half_song = {half_parts, 1, 0};
-
-TEST(test_demo_layer_half)
-{
-    acid_demo_init(&d, &half_song);
-    int n = chunk();
-    int i = find(n, ACID_MIDI_LAYER_HALF, -1, -1);
-    CHECK(i >= 0);
-    if (i < 0) {
-        return;
-    }
-    CHECK(ev[i].d2 == 127);
-    static acid_synth_t s;
-    acid_synth_init(&s, 48000.0f);
-    acid_synth_midi(&s, &ev[i]);
-    CHECK(s.layer_half);
-    ev[i].d2 = 0;
-    acid_synth_midi(&s, &ev[i]);
-    CHECK(!s.layer_half);
-}
-
 TEST(test_demo_loop_seam)
 {
     acid_demo_init(&d, &song);
@@ -383,7 +359,6 @@ int main(void)
     RUN(test_demo_knob_ramp);
     RUN(test_demo_page_before_enc);
     RUN(test_demo_grids_knob);
-    RUN(test_demo_layer_half);
     RUN(test_demo_loop_seam);
     RUN(test_demo_vary_bounds);
     RUN(test_demo_deterministic);

@@ -36,7 +36,8 @@ static const char *const RESEED[2] = {"-", "RESEED"};
 static const char *const RELIEF[4] = {"HEIGHT", "EDGE", "FOLD", "VOID"};
 static const char *const ORBIT[5] = {"CIRCLE", "EIGHT", "LISS 3:2", "ROSE", "EPI"};
 static const char *const FX[16] = {NULL, "CRUSH BITS", "CRUSH RATE", "DLY S1", "DLY S2", "DLY DRUMS", "DLY TIME",
-                                   "DLY FB", "DLY TONE", "STUTTER", "MOTION", "WIDTH", "LYR1 VOL", "LYR2 VOL", "REVERB"};
+                                   "DLY FB", "DLY TONE", "STUTTER", "MOTION", "WIDTH", "LYR1 VOL", "LYR2 VOL", "LYR HALF",
+                                   "REVERB"};
 static const char *const REVERB[16] = {NULL, "RVB S1", "RVB S2", "RVB DRUMS", "DECAY", "DAMP"};
 static const char *const GRIDS[16] = {NULL, "ON", "X", "Y", "KICK", "SNARE", "HAT", "CHAOS", "HAT MODE",
                                       "TIME", "EVERY", "FILL LEN", "FILL", "PATTERN", "SWING", NULL};
@@ -305,8 +306,8 @@ const char *pl_value_text(int page, int enc, int v, const uint8_t page_raw[16], 
     if ((as_synth(page) == 6 || as_synth(page) == 7) && synth_kind(page_raw) == KPETRI && enc == 12 && v == 127) {
         return "FOLLOW"; // центр орбиты едет за пожирателем
     }
-    if (page == PETRI_PG && enc == 14) {
-        return v >= 64 ? "ON" : "OFF"; // FREEZE: переключатель
+    if ((page == 8 || page == PETRI_PG) && enc == 14) {
+        return v >= 64 ? "ON" : "OFF"; // LYR HALF, FREEZE: переключатели
     }
     snprintf(buf, 12, "%d", v);
     return buf;

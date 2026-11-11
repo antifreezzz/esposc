@@ -230,7 +230,7 @@ TEST(test_guard_skips_half_when_knob_on)
 {
     init2();
     acid_synth_set_knob(&b, ACID_PAGE_LAYER1, 1, 0);
-    b.layer_half = 1;
+    acid_synth_set_knob(&b, 8, 14, 127);
     load_n(&b, 1.0f, 30 + ACID_LOAD_STEP);
     CHECK(b.tight == 3);
 }
