@@ -14,6 +14,7 @@
 #define PL_PAGE_LAYER1 10
 #define PL_PAGE_GRIDS 12
 #define PL_PAGE_PETRI 13 // на BSP 18
+#define PL_PAGE_REVERB 27 // подэкран FX, на BSP номера нет
 #define PL_KNOBS 16
 #define PL_PAYLOAD_MAX 255
 #define PL_FRAME_MAX (PL_PAYLOAD_MAX + 4)
@@ -140,6 +141,7 @@ typedef struct {
 typedef struct {
     uint8_t bsp_pos[PL_KNOBS];                // 0xFF - энкодер не крутили
     uint8_t held[(PL_PAGES * PL_KNOBS) / 8]; // бит page * 16 + enc: ручка ждёт подхвата BSP
+    uint8_t reverb[5];                       // посылы S1, S2, ударки, DECAY, DAMP
 } pl_snapshot2_t;
 
 typedef struct {

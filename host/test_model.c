@@ -32,10 +32,16 @@ TEST(test_model_snapshot_replaces_all)
     memset(&s2, 0, sizeof s2);
     s2.bsp_pos[2] = 55;
     s2.held[(6 * 16 + 2) / 8] = (uint8_t)(1 << ((6 * 16 + 2) % 8));
+    for (int e = 1; e <= 5; e++) {
+        s2.reverb[e - 1] = (uint8_t)(20 + e);
+    }
     pl_model_apply(&m, PL_SNAPSHOT2, (const uint8_t *)&s2, sizeof s2, 20);
     CHECK(m.have && m.mode == 1 && m.bsp_page == 3);
     CHECK(m.demo == 1);
     CHECK(m.raw[6][2] == 62 && m.raw[9][15] == 105);
+    for (int e = 1; e <= 5; e++) {
+        CHECK(m.reverb[e] == 20 + e);
+    }
     CHECK(m.bsp_pos[2] == 55);
     CHECK(m.held[6][2] == 1 && m.held[6][3] == 0);
     pl_model_apply(&m, PL_SNAPSHOT, (const uint8_t *)&s, sizeof s - 1, 30); // короткий - мусор
@@ -109,6 +115,22 @@ TEST(test_local_set)
     CHECK(pl_model_local_set(&m, 6, 3, 30) == 1);
     CHECK(m.raw[6][3] == 30 && m.held[6][3] == 1);
     CHECK(pl_model_local_set(&m, 6, 0, 30) == 0); // энкодер 1 - страница, не ручка
+}
+
+TEST(test_reverb_local_set)
+{
+    pl_model_init(&m);
+    CHECK(pl_model_local_set(&m, PL_PAGE_REVERB, 2, 40) == 0);
+    knob(PL_PAGE_REVERB, 2, 33, 2, 0xFF, 1, 10);
+    CHECK(m.reverb[2] == 33 && m.reverb_held[2] == 1);
+    CHECK(m.raw[8][2] == 0 && m.mod_knob[0][2] == 0);
+    static pl_snapshot_t s;
+    pl_model_apply(&m, PL_SNAPSHOT, (const uint8_t *)&s, sizeof s, 20);
+    CHECK(pl_model_local_set(&m, PL_PAGE_REVERB, 2, 40) == 1);
+    CHECK(m.reverb[2] == 40 && m.reverb_held[2] == 1);
+    CHECK(m.raw[8][2] == 0 && m.mod_knob[0][2] == 0);
+    CHECK(pl_model_local_set(&m, PL_PAGE_REVERB, 0, 40) == 0);
+    CHECK(pl_model_local_set(&m, PL_PAGE_REVERB, 6, 40) == 0);
 }
 
 TEST(test_toast_skips_empty_knob)
@@ -473,7 +495,7 @@ TEST(test_mod_local_set)
     CHECK(m.mod_knob[0][5] == 50 && m.mod_held[0][5] == 1);
     CHECK(!pl_model_local_set(&m, PL_PAGE_MOD1 + 1, 5, 50)); // этот кадр не приходил
     CHECK(!pl_model_local_set(&m, PL_PAGE_MOD1, 0, 50) && !pl_model_local_set(&m, PL_PAGE_MOD1, 16, 50));
-    CHECK(!pl_model_local_set(&m, PL_PAGE_MOD1 + PL_MOD_PAGES, 5, 50));
+    CHECK(!pl_model_local_set(&m, PL_PAGE_REVERB + 1, 5, 50));
 }
 
 int main(void)
@@ -494,6 +516,7 @@ int main(void)
     RUN(test_mix_bsp_pos_goes_to_slot);
     RUN(test_need_hello);
     RUN(test_local_set);
+    RUN(test_reverb_local_set);
     RUN(test_toast_skips_empty_knob);
     RUN(test_page_choice_beats_bsp);
     RUN(test_follow_bsp_page);
