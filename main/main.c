@@ -140,7 +140,8 @@ static void slot1_task(void *arg)
         int64_t t0 = esp_timer_get_time();
         acid_synth_render_side(&s_synth, &s_side, CHUNK);
         int mix = s_slot1_next ^ 1;
-        acid_synth_render_reverb(&s_synth, s_rv_send[mix], s_rv_wet_l[mix], s_rv_wet_r[mix], CHUNK);
+        // Посыл прошлого куска лежит в соседнем буфере: свой буфер этого куска ядро 1 ещё только заполнит.
+        acid_synth_render_reverb(&s_synth, s_rv_send[mix ^ 1], s_rv_wet_l[mix], s_rv_wet_r[mix], CHUNK);
         xTaskNotifyGive(s_synth_task);
         acid_synth_render_slot(&s_synth, 1, s_slot1[s_slot1_next], CHUNK);
         acid_synth_render_layer(&s_synth, 0, s_layer0[s_slot1_next], CHUNK);
