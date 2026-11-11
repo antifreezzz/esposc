@@ -40,3 +40,8 @@ target_link_libraries(acid_render plaits m)
 add_executable(petri_bake ${CMAKE_CURRENT_SOURCE_DIR}/../tools/petri_bake/petri_bake.c ${PETRI_SRCS} ${PL_DIR}/pl_proto.c)
 target_include_directories(petri_bake PRIVATE ${PETRI_DIR}/include ${PL_DIR}/include)
 target_link_libraries(petri_bake m)
+
+# Прослушка ревёрба на демо-треке: host/build/reverb_wav --song metal out.wav 40 64 50 0.3 [bank.bin]
+add_executable(reverb_wav reverb_wav.c wav.c bank_fixture.c ${ACID_SRCS} ${PL_SRCS} ${PETRI_SRCS})
+target_include_directories(reverb_wav PRIVATE ${ACID_DIR}/include ${PL_DIR}/include ${PETRI_DIR}/include)
+target_link_libraries(reverb_wav plaits m)
