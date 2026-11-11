@@ -65,3 +65,13 @@ static inline float acid_tan(float x)
     float x2 = x * x;
     return x * (15.0f - x2) / (15.0f - 6.0f * x2);
 }
+
+// tan(x) с точностью float для 0 <= x < 1.42: Паде 5/6 (ошибка ~4e-7) и acid_rcp вместо деления. Для срезов на
+// управляющей частоте, где 3% у acid_tan слышны как сдвиг среза.
+static inline float acid_tan_fine(float x)
+{
+    float x2 = x * x;
+    float num = x * (10395.0f + x2 * (-1260.0f + 21.0f * x2));
+    float den = 10395.0f + x2 * (-4725.0f + x2 * (210.0f - x2));
+    return num * acid_rcp(den);
+}

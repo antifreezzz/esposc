@@ -123,6 +123,7 @@ static void slot_init(acid_slot_t *v, float sr, int type)
     v->accented = 0;
     v->idle = IDLE_BLOCKS;
     v->osc = (acid_osc_t){0};
+    v->ctl_log2 = NAN; // первый пересчёт считает частоту
     acid_ladder_reset(&v->flt);
     acid_drive_init(&v->drv, sr);
     acid_decay_init(&v->fenv, FENV_NORMAL_S, sr);
@@ -1397,7 +1398,12 @@ static inline float slot_sr(const acid_synth_t *s, const acid_slot_t *v)
 // Пересчёт дорогих величин раз в CTRL_BLOCK сэмплов.
 static float control_update(acid_synth_t *s, acid_slot_t *v)
 {
-    float hz = exp2f(v->pitch_log2);
+    // exp2f из libm - сотни тактов на плате: пока высота стоит (нет слайда), берём прошлую частоту.
+    if (v->pitch_log2 != v->ctl_log2) {
+        v->ctl_log2 = v->pitch_log2;
+        v->ctl_hz = exp2f(v->pitch_log2);
+    }
+    float hz = v->ctl_hz;
     acid_osc_set_freq(&v->osc, hz, slot_sr(s, v));
     if (acid_drive_on(&v->drv)) {
         acid_drive_pitch(&v->drv, hz);

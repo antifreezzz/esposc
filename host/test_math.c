@@ -56,6 +56,19 @@ TEST(test_fast_sin_exact_enough)
 }
 
 // Кэш коэффициентов SVF: бит в бит как пересчёт на каждом сэмпле, и при смене g, k, и с нуля.
+TEST(test_fine_tan_matches_libm)
+{
+    // Коэффициент ladder на управляющей частоте: tanf из libm на плате - сотни тактов. Замена обязана держать
+    // точность float на всём ходе среза (до 0.45 частоты выборки).
+    float worst = 0.0f;
+    for (int i = 1; i <= 20000; i++) {
+        float x = 1.41372f * (float)i / 20000.0f;
+        float e = fabsf(acid_tan_fine(x) / tanf(x) - 1.0f);
+        worst = e > worst ? e : worst;
+    }
+    CHECK(worst < 2e-6f);
+}
+
 TEST(test_svf_cached_coefs_bit_exact)
 {
     acid_svf_t f = {0};
@@ -81,6 +94,7 @@ TEST(test_svf_cached_coefs_bit_exact)
 int main(void)
 {
     RUN(test_fast_rcp_exact_enough);
+    RUN(test_fine_tan_matches_libm);
     RUN(test_fast_sin_exact_enough);
     RUN(test_svf_cached_coefs_bit_exact);
     RUN(test_fast_tanh_close);
