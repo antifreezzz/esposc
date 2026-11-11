@@ -18,7 +18,8 @@ typedef struct {
     int howl_303, drive_plaits, whistle; // перегруз синта с воем на 303, на Plaits, свист резонанса 303
     int motion[3], times[5], sends, crush, stutter[5], tonal_step, scale_chrom, scale_mode, cym_knob, perc_models[ACID_PERC_MODELS], perc_knob;
     int layer[2], layer_vol; // слои синтов звучали, их громкость крутили
-    int layer_half;          // слой звучал на половинной частоте (FX 15)
+    int layer_half;          // слой звучал на половинной частоте
+    int reverb;              // реверб был включён и считался
     int grids, grids_fill, grids_ride; // автобарабаны играли, у них была сбивка, рука времени на райде
     int grids_bank, grids_swing;       // играл рисунок из банка классики, играли со свингом
     int petri, petri_knob, petri_freeze; // PETRI звучал, ручки «Чашки» крутили, фриз включали
@@ -100,6 +101,7 @@ static void play_cycle(seen_t *z, int c)
             z->layer_vol |= s.layer_gain[k] != 100.0f / 127.0f;
             z->layer_half |= s.layer_half && lv->half && lv->nheld > 0;
         }
+        z->reverb |= s.rv_wet > 0.0f && acid_reverb_active(&s.reverb);
         z->hat_knob |= s.hat_tone != ACID_HAT_HZ;
         z->grids |= s.grids_hits != hits0;
         z->grids_fill |= s.drummer.knob[DRM_ON] && s.drummer.fill_from < s.drummer.fill_to;
@@ -186,7 +188,9 @@ static void coverage(const acid_demo_song_t *song)
         CHECK(z.crush);
         CHECK(count(z.stutter, 5, 1) >= 2);
         CHECK(z.tonal_step && z.scale_chrom && z.scale_mode);
-        CHECK(z.layer[0] && z.layer[1] && z.layer_vol && z.layer_half);
+        CHECK(z.layer[0] && z.layer[1] && z.layer_vol);
+        CHECK(z.layer_half);
+        CHECK(z.reverb);
         CHECK(z.grids && z.grids_fill);
         CHECK(z.grids_bank && z.grids_swing);
         CHECK(z.petri);

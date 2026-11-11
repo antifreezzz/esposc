@@ -68,19 +68,15 @@ void PhaseDistortionEngine::Render(
   
   // Upsample by 2x
   float* synced = &temp_buffer_[0];
-  float* free_running = &temp_buffer_[2 * size];
   shaper_.Render<true, true>(
       f0, modulator_f, pw, 0.0f, amount, synced, 2 * size);
-  modulator_.Render<false, true>(
-      f0, modulator_f, pw, 0.0f, amount, free_running, 2 * size);
+  // acid: AUX is never read (acid_plaits.cc takes frames[].out only): the free-running
+  // oscillator is not rendered.
   
   for (size_t i = 0; i < size; ++i) {
     // Naive 0.5x downsampling.
     out[i] = 0.5f * Sine(*synced++ + 0.25f);
     out[i] += 0.5f * Sine(*synced++ + 0.25f);
-    
-    aux[i] = 0.5f * Sine(*free_running++ + 0.25f);
-    aux[i] += 0.5f * Sine(*free_running++ + 0.25f);
   }
 }
 

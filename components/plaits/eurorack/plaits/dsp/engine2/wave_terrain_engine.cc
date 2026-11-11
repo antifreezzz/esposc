@@ -214,7 +214,6 @@ void WaveTerrainEngine::Render(
     MAKE_INTEGRAL_FRACTIONAL(z);
 
     float out_s = 0.0f;
-    float aux_s = 0.0f;
     
     for (size_t j = 0; j < kOversampling; ++j) {
       const float x = path_x[ij] * (1.0f - fabsf(x_offset)) + x_offset;
@@ -225,10 +224,9 @@ void WaveTerrainEngine::Render(
       const float z1 = Terrain(x, y, z_integral + 1);
       const float z = (z0 + (z1 - z0) * z_fractional);
       out_s += z;
-      aux_s += y + z;
     }
     out[i] = kScale * out_s;
-    aux[i] = Sine(1.0f + 0.5f * kScale * aux_s);
+    // acid: AUX (terrain as phase distortion) is never read.
   }
 }
 

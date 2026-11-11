@@ -4,6 +4,7 @@
 archive: libacid.a
 entries:
     acid_fx (noflash)
+    acid_reverb (noflash)
     acid_drums (noflash)
     acid_kick (noflash)
     acid_noise (noflash)

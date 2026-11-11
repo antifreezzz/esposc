@@ -47,7 +47,24 @@ TEST(test_kind_other_pages)
     CHECK(kind(8, 9) == PL_PICK_GRID);  // STUTTER
     CHECK(kind(8, 10) == PL_PICK_GRID); // MOTION
     CHECK(kind(8, 14) == PL_PICK_TOGGLE); // LYR HALF
+    CHECK(pl_pick_next(8, 14, raw, 0) == 127); // порог 64
+    CHECK(pl_pick_next(8, 14, raw, 63) == 127);
+    CHECK(pl_pick_next(8, 14, raw, 64) == 0);
+    // REVERB: крутилка, но тап открывает подэкран. Захват только сдвигом пальца, как у списков:
+    // удержание без сдвига остаётся тапом, иначе дрожание пальца крутит ручку вместо входа.
+    CHECK(kind(8, 15) == PL_PICK_NONE);
+    CHECK(pl_pick_sub(8, 15) == PL_PAGE_REVERB);
+    CHECK(pl_pick_grab(8, 15, raw, 0) == 1);
+    CHECK(pl_pick_grab(8, 15, raw, 1) == 0);
+    CHECK(pl_pick_sub(8, 14) == -1 && pl_pick_sub(0, 15) == -1 && pl_pick_sub(PL_PAGE_REVERB, 1) == -1);
+    CHECK(pl_pick_grab(0, 5, raw, 1) == 1);
     CHECK(kind(8, 11) == PL_PICK_NONE); // WIDTH
+    for (int e = 1; e <= 6; e++) {
+        CHECK(kind(PL_PAGE_REVERB, e) == PL_PICK_NONE);
+        CHECK(pl_pick_grab(PL_PAGE_REVERB, e, raw, 0));
+        CHECK(pl_pick_grab(PL_PAGE_REVERB, e, raw, 1));
+    }
+    CHECK(kind(PL_PAGE_REVERB, 7) == PL_PICK_NONE);
     for (int e = 1; e <= 15; e++) {
         CHECK(kind(9, e) == PL_PICK_GRID); // TONAL: всё списки и шаги
     }
@@ -127,9 +144,6 @@ TEST(test_toggle_next)
     CHECK(pl_pick_next(PL_PAGE_SYNTH1, 7, raw, 0) == 1); // WAVE
     CHECK(pl_pick_next(PL_PAGE_SYNTH1, 7, raw, 1) == 0);
     memset(raw, 0, sizeof raw);
-    CHECK(pl_pick_next(8, 14, raw, 0) == 127); // LYR HALF: порог 64
-    CHECK(pl_pick_next(8, 14, raw, 63) == 127);
-    CHECK(pl_pick_next(8, 14, raw, 64) == 0);
     CHECK(pl_pick_next(PL_PAGE_PETRI, 14, raw, 127) == 0);
     CHECK(pl_pick_next(PL_PAGE_GRIDS, 1, raw, 0) == 1);
 }

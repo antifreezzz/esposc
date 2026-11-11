@@ -115,16 +115,14 @@ void VirtualAnalogVCFEngine::Render(
     const float input = SoftClip(
         (out[i] + aux[i] * sub_gain_modulation.Next()) * gain);
     
-    float lp, hp;
-    svf_[0].Process<FILTER_MODE_LOW_PASS, FILTER_MODE_HIGH_PASS>(
-        input, &lp, &hp);
+    // acid: AUX (high-pass output) is never read.
+    float lp = svf_[0].Process<FILTER_MODE_LOW_PASS>(input);
 
     lp = SoftClip(lp * gain);
     lp += stage2_gain * \
         (SoftClip(svf_[1].Process<FILTER_MODE_LOW_PASS>(lp)) - lp);
     
     out[i] = lp;
-    aux[i] = SoftClip(hp * gain);
   }
 }
 

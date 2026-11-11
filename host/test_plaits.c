@@ -58,18 +58,43 @@ TEST(test_plaits_all_models_sound)
     }
 }
 
+// Частота по восходящим нулям с интерполяцией, первые 0.1 с пропускаем.
+static double sine_hz(const float *x, int n)
+{
+    double first = -1.0, last = -1.0;
+    int periods = 0;
+    for (int i = 4801; i < n; i++) {
+        if (x[i - 1] < 0.0f && x[i] >= 0.0f) {
+            double t = (i - 1) - x[i - 1] / (double)(x[i] - x[i - 1]);
+            if (first < 0.0) {
+                first = t;
+            } else {
+                periods++;
+            }
+            last = t;
+        }
+    }
+    return periods / ((last - first) / 48000.0);
+}
+
 TEST(test_plaits_pitch)
 {
-    // FM 2-op без модуляции (timbre 0) - чистый синус на высоте ноты.
-    acid_plaits_init(p);
-    acid_plaits_params_t pp = params(10);
-    pp.timbre = 0.0f;
-    render(&pp, buf, 48000 + 4800);
-    int zc = 0;
-    for (int i = 4801; i < 48000 + 4800; i++) {
-        zc += (buf[i - 1] < 0.0f) != (buf[i] < 0.0f);
+    // FM 2-op без модуляции (timbre 0) - чистый синус на высоте ноты. Строй - как у остальных голосов на 48 кГц:
+    // сам Plaits считает от частоты своего кодека 47872 Гц, без поправки он на 4.6 цента выше.
+    const float notes[2] = {45.0f, 69.0f};
+    for (int k = 0; k < 2; k++) {
+        acid_plaits_init(p);
+        acid_plaits_params_t pp = params(10);
+        pp.timbre = 0.0f;
+        pp.note = notes[k];
+        render(&pp, buf, 48000 * 4);
+        double want = 440.0 * pow(2.0, (notes[k] - 69.0) / 12.0);
+        double cents = 1200.0 * log2(sine_hz(buf, 48000 * 4) / want);
+        if (!(fabs(cents) < 0.3)) {
+            printf("    note %.0f off by %+.2f cents\n", notes[k], cents);
+        }
+        CHECK(fabs(cents) < 0.3);
     }
-    CHECK_NEAR(zc / 2.0f, 110.0f, 2.0f);
 }
 
 TEST(test_plaits_gate_off_silences)
@@ -118,11 +143,56 @@ TEST(test_plaits_dx7_retrigger_smooth)
     CHECK(worst < 0.1f);
 }
 
+TEST(test_plaits_output_is_float)
+{
+    // Модуль Plaits резал выход в 16 бит под свой ЦАП. У нас дальше float и перегруз: сетка 1/32768 - лишний
+    // шум квантования на тихих хвостах. Выход обязан идти мимо сетки и не выходить за +-1.
+    acid_plaits_init(p);
+    acid_plaits_params_t pp = params(10);
+    render(&pp, buf, 24000);
+    int off_grid = 0, clipped = 0;
+    for (int i = 0; i < 24000; i++) {
+        float k = buf[i] * 32768.0f;
+        off_grid += k != floorf(k);
+        clipped += fabsf(buf[i]) > 1.0f;
+    }
+    CHECK(off_grid > 12000);
+    CHECK(clipped == 0);
+    // Отпущенная нота затухает ниже одного шага 16 бит, а не встаёт на нём.
+    pp.trigger = 0;
+    pp.level = 0.0f;
+    render(&pp, buf, 48000 * 4);
+    float tail = 0.0f;
+    for (int i = 48000 * 4 - 4800; i < 48000 * 4; i++) {
+        tail = fabsf(buf[i]) > tail ? fabsf(buf[i]) : tail;
+    }
+    CHECK(tail > 0.0f);
+    CHECK(tail < 0.5f / 32768.0f);
+}
+
+TEST(test_plaits_fast_math_matches_division)
+{
+    // Плата делит float программно, корень - тоже вызов: в посэмпловых циклах Plaits стоят замены на умножениях.
+    // Они обязаны держать точность float на всём рабочем ходе.
+    float worst_r = 0.0f, worst_s = 0.0f;
+    for (int i = 0; i < 200000; i++) {
+        float x = 1e-6f * powf(1e12f, (float)i / 200000.0f); // 1e-6 .. 1e6
+        float e = fabsf(acid_plaits_test_rcp(x) * x - 1.0f);
+        worst_r = e > worst_r ? e : worst_r;
+        e = fabsf(acid_plaits_test_rsqrt(x) * sqrtf(x) - 1.0f);
+        worst_s = e > worst_s ? e : worst_s;
+    }
+    CHECK(worst_r < 4e-7f);
+    CHECK(worst_s < 4e-7f);
+}
+
 int main(void)
 {
     p = acid_plaits_create();
     RUN(test_plaits_all_models_sound);
     RUN(test_plaits_pitch);
+    RUN(test_plaits_output_is_float);
+    RUN(test_plaits_fast_math_matches_division);
     RUN(test_plaits_gate_off_silences);
     RUN(test_plaits_dx7_retrigger_smooth);
     TEST_MAIN_END();

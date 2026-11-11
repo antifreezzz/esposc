@@ -24,6 +24,11 @@ static int half_toggle(int page, int enc)
     return (page == FX || page == PL_PAGE_PETRI) && enc == 14;
 }
 
+int pl_pick_sub(int page, int enc)
+{
+    return page == FX && enc == 15 ? PL_PAGE_REVERB : -1;
+}
+
 // Синт ловит фронт 0 -> 1: RESEED чашки, FILL Grids.
 static int trigger(int page, int enc)
 {
@@ -46,7 +51,7 @@ static int is_mod(int page)
 
 int pl_pick_kind(int page, int enc, const uint8_t raw[16])
 {
-    if (page < 0 || (page >= PL_PAGES && !is_mod(page)) || !pl_knob_label(page, enc, raw)) {
+    if (page < 0 || (page >= PL_PAGES && !is_mod(page) && page != PL_PAGE_REVERB) || !pl_knob_label(page, enc, raw)) {
         return PL_PICK_NONE;
     }
     if (trigger(page, enc)) {
@@ -66,6 +71,9 @@ int pl_pick_kind(int page, int enc, const uint8_t raw[16])
 int pl_pick_view(const pl_model_t *m, int page, int enc, int *tp, int *te)
 {
     *tp = page, *te = enc;
+    if (page == PL_PAGE_REVERB) {
+        return pl_pick_kind(page, enc, m->reverb);
+    }
     if (is_mod(page)) { // ручки модулятора: свои списки (форма, синхронизация, запуск)
         return pl_pick_kind(page, enc, m->mod_knob[page - PL_PAGE_MOD1]);
     }
@@ -131,7 +139,7 @@ int pl_pick_grab(int page, int enc, const uint8_t raw[16], int hold)
 {
     int k = pl_pick_kind(page, enc, raw);
     if (k == PL_PICK_NONE) {
-        return 1;
+        return pl_pick_sub(page, enc) < 0 || !hold;
     }
     return k == PL_PICK_GRID && !hold && !(is_synth(page) && enc == 1);
 }

@@ -21,11 +21,12 @@ typedef struct {
 // Цели макро ставятся не сразу, а шагом связки: не больше стольких ручек за кусок (пересчёт до ~70 мкс на ручку).
 #define ACID_LINK_PER_CHUNK 2
 #define ACID_LINK_DEFER (ACID_PAGES * ACID_KNOBS)
-#define ACID_LINK_PAGES (ACID_PAGE_MOD1 + ACID_MODS)
+#define ACID_LINK_PAGES (ACID_PAGE_REVERB + 1)
 
 typedef struct {
     uint8_t bsp_pos[ACID_KNOBS]; // последнее значение энкодера BSP, 0xFF - не крутили
     // Ручка правлена с панели, BSP молчит до пересечения. Свои страницы 14..19, модуляторы 23..26.
+    // Страница 27 только хранит признак для события панели: на BSP её нет.
     uint8_t held[ACID_LINK_PAGES][ACID_KNOBS];
     int demo_muted;   // панель правила в демо: CC демо больше не идут
     int snapshot_due; // сменился тип синта: панели нужен снимок
@@ -60,7 +61,7 @@ int acid_link_custom_edit(acid_link_t *l, int up, int enc, int idx, int page, in
 int acid_link_mod_edit(acid_link_t *l, const acid_synth_t *s, int k, int idx, int page, int enc);
 // Событие BSP или демо (src) в синт через фильтр. Возвращает число событий для панели в out (0 или 1).
 int acid_link_midi(acid_link_t *l, acid_synth_t *s, const acid_midi_event_t *ev, int src, acid_link_ev_t *out);
-// Правка с панели, enc с 0 (энкодер 1 не трогает), page 0..15. Возвращает 0 или 1 событие в out.
+// Правка с панели, enc с 0 (энкодер 1 не трогает): штатная, своя, MOD, MIX или REVERB. Возвращает 0 или 1 событие.
 int acid_link_panel_set(acid_link_t *l, acid_synth_t *s, int page, int enc, int v, acid_link_ev_t *out);
 // Каждый кусок до рендера: ставит до ACID_LINK_PER_CHUNK отложенных целей макро. Возвращает 0 или 1 событие
 // в out, остальные - acid_link_take.

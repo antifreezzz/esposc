@@ -73,17 +73,8 @@ void GrainEngine::Render(
     out[i] = dc_blocker_[0].Process<FILTER_MODE_HIGH_PASS>(out[i] + aux[i]);
   }
 
-  const float cutoff = NoteToFrequency(root + 96.0f * parameters.timbre);
-  z_oscillator_.Render(
-      f0,
-      cutoff,
-      parameters.morph,
-      parameters.harmonics,
-      aux,
-      size);
-  
-  dc_blocker_[1].set_f<FREQUENCY_DIRTY>(0.3f * f0);
-  dc_blocker_[1].Process<FILTER_MODE_HIGH_PASS>(aux, size);
+  // acid: AUX is never read (acid_plaits.cc takes frames[].out only): the Z oscillator is not
+  // rendered (aux is still the scratch buffer of the second grainlet above).
 }
 
 }  // namespace plaits

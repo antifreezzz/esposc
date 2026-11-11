@@ -71,31 +71,25 @@ void NoiseEngine::Render(
   const float q = 0.5f * SemitonesToRatio(parameters.morph * 120.0f);
   const bool sync = parameters.trigger & TRIGGER_RISING_EDGE;
   clocked_noise_[0].Render(sync, clock_f, aux, size);
-  clocked_noise_[1].Render(sync, clock_f * f1 / f0, temp_buffer_, size);
+  // acid: AUX is never read (acid_plaits.cc takes frames[].out only): the second clocked
+  // noise and both band-pass filters are not rendered. aux stays the scratch
+  // buffer of the first noise source.
   
   ParameterInterpolator f0_modulation(&previous_f0_, f0, size);
-  ParameterInterpolator f1_modulation(&previous_f1_, f1, size);
   ParameterInterpolator q_modulation(&previous_q_, q, size);
   ParameterInterpolator mode_modulation(
       &previous_mode_, parameters.harmonics, size);
   
   const float* in_1 = aux;
-  const float* in_2 = temp_buffer_;
   while (size--) {
     const float f0 = f0_modulation.Next();
-    const float f1 = f1_modulation.Next();
     const float q = q_modulation.Next();
-    const float gain = 1.0f / Sqrt((0.5f + q) * 40.0f * f0);
+    const float gain = stmlib::EspRsqrt((0.5f + q) * 40.0f * f0);  // acid: was 1 / Sqrt
     lp_hp_filter_.set_f_q<FREQUENCY_ACCURATE>(f0, q);
-    bp_filter_[0].set_f_q<FREQUENCY_ACCURATE>(f0, q);
-    bp_filter_[1].set_f_q<FREQUENCY_ACCURATE>(f1, q);
     
     float input_1 = *in_1++ * gain;
-    float input_2 = *in_2++ * gain;
     lp_hp_filter_.ProcessMultimodeLPtoHP(
         &input_1, out++, 1, mode_modulation.Next());
-    *aux++ = bp_filter_[0].Process<FILTER_MODE_BAND_PASS>(input_1) + \
-        bp_filter_[1].Process<FILTER_MODE_BAND_PASS>(input_2);
   }
 }
 

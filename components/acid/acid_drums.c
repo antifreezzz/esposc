@@ -161,3 +161,25 @@ float acid_snare_next(acid_snare_t *s)
     s->noise_env *= s->noise_coef;
     return y;
 }
+
+// Куски голосов: те же сэмплы, что n вызовов next, но без вызова из другого файла на каждый.
+void acid_hat_run(acid_hat_t *h, float gain, float *out, int n)
+{
+    for (int i = 0; i < n; i++) {
+        out[i] = gain * acid_hat_next(h);
+    }
+}
+
+void acid_clap_run(acid_clap_t *c, float gain, float *out, int n)
+{
+    for (int i = 0; i < n; i++) {
+        out[i] = gain * acid_clap_next(c);
+    }
+}
+
+void acid_snare_run(acid_snare_t *s, float gain, float *out, int n)
+{
+    for (int i = 0; i < n; i++) {
+        out[i] = gain * acid_snare_next(s);
+    }
+}

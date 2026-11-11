@@ -51,7 +51,7 @@ class Limiter {
     while (size--) {
       float s = *in_out * pre_gain;
       SLOPE(peak_, fabsf(s), 0.05f, 0.00002f);
-      float gain = (peak_ <= 1.0f ? 1.0f : 1.0f / peak_);
+      float gain = (peak_ <= 1.0f ? 1.0f : EspRcp(peak_));  // acid: было деление
       *in_out++ = s * gain * 0.8f;
     }
   }

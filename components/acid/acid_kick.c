@@ -73,3 +73,10 @@ float acid_kick_next(acid_kick_t *k)
     k->amp_env *= k->amp_coef;
     return y;
 }
+
+void acid_kick_run(acid_kick_t *k, float gain, float *out, int n)
+{
+    for (int i = 0; i < n; i++) {
+        out[i] = gain * acid_kick_next(k);
+    }
+}

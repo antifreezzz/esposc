@@ -578,3 +578,51 @@ void acid_pan(float pos, float *gl, float *gr)
         *gl = pos < 127.0f ? (127.0f - pos) * (1.0f / 63.0f) : 0.0f;
     }
 }
+
+// Эффекты кусками: те же сэмплы, что вызовы next на каждом, но вызов из другого файла - раз на кусок, а не
+// на сэмпл (на плате это заметная доля цены цепочки). flatten встраивает сюда тела next целиком.
+#define FX_RUN __attribute__((flatten))
+
+FX_RUN void acid_pump_run(acid_pump_t *p, float *gain, int n)
+{
+    for (int i = 0; i < n; i++) {
+        gain[i] = acid_pump_next(p);
+    }
+}
+
+FX_RUN void acid_delay_mix2(acid_delay_t *d, const float *send, float *l, float *r, int n)
+{
+    for (int i = 0; i < n; i++) {
+        if (send[i] != 0.0f || acid_delay_active(d)) {
+            float wl, wr;
+            acid_delay_next2(d, send[i], &wl, &wr);
+            l[i] += wl;
+            r[i] += wr;
+        }
+    }
+}
+
+FX_RUN void acid_stutter_run2(acid_stutter_t *st, float *l, float *r, int n)
+{
+    for (int i = 0; i < n; i++) {
+        if (acid_stutter_active(st)) {
+            acid_stutter_next2(st, &l[i], &r[i]);
+        }
+    }
+}
+
+FX_RUN void acid_crush_run2(acid_crush_t *c, float *l, float *r, int n)
+{
+    for (int i = 0; i < n; i++) {
+        if (acid_crush_active(c)) {
+            acid_crush_next2(c, &l[i], &r[i]);
+        }
+    }
+}
+
+FX_RUN void acid_djf_run2(acid_djf_t *f, float *l, float *r, int n)
+{
+    for (int i = 0; i < n; i++) {
+        acid_djf_next2(f, &l[i], &r[i]);
+    }
+}

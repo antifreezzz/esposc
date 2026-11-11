@@ -5,6 +5,10 @@
 
 #include "plaits/dsp/voice.h"
 
+// Plaits считает высоту от частоты кодека своего железа (kCorrectedSampleRate 47872.34 Гц), мы играем на
+// честных 48000: без поправки все его модели на 4.6 цента выше 303 и PETRI. 12 * log2(48000 / 47872.34).
+static const float kTuneFix = -0.046105f;
+
 struct acid_plaits {
     plaits::Voice voice;
     char ram[16384]; // общий буфер движков, как в прошивке Plaits
@@ -29,7 +33,7 @@ extern "C" void acid_plaits_render(acid_plaits_t *p, const acid_plaits_params_t 
 {
     plaits::Patch patch = {};
     patch.engine = pp->model;
-    patch.note = pp->note;
+    patch.note = pp->note + kTuneFix;
     patch.harmonics = pp->harmonics;
     patch.timbre = pp->timbre;
     patch.morph = pp->morph;
@@ -45,9 +49,8 @@ extern "C" void acid_plaits_render(acid_plaits_t *p, const acid_plaits_params_t 
     m.trigger_patched = !pp->sustained;
     m.level_patched = true;
 
-    plaits::Voice::Frame frames[plaits::kMaxBlockSize];
-    p->voice.Render(patch, m, frames, (size_t)n);
-    for (int i = 0; i < n; i++) {
-        out[i] = frames[i].out * (1.0f / 32768.0f);
-    }
+    p->voice.Render(patch, m, out, (size_t)n); // выход float, без 16-битной сетки модуля
 }
+
+extern "C" float acid_plaits_test_rcp(float x) { return stmlib::EspRcp(x); }
+extern "C" float acid_plaits_test_rsqrt(float x) { return stmlib::EspRsqrt(x); }

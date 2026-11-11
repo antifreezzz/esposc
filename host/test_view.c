@@ -33,6 +33,22 @@ TEST(test_standard_cell)
     CHECK(c.skip == -1);
 }
 
+TEST(test_reverb_cell)
+{
+    setup();
+    m.reverb[1] = 33;
+    m.reverb_held[1] = 1;
+    pl_view_cell(&m, PL_PAGE_REVERB, 1, &c);
+    CHECK(strcmp(c.label, "RVB S1") == 0);
+    CHECK(c.v == 33 && c.lo == 0 && c.hi == 127 && strcmp(c.text, "33") == 0);
+    CHECK(c.held == 1 && c.eff == -1 && c.color == pl_knob_color(PL_PAGE_REVERB, 1, m.reverb));
+    pl_view_cell(&m, PL_PAGE_REVERB, 7, &c);
+    CHECK(c.label == NULL);
+    CHECK(strcmp(pl_view_page_name(PL_PAGE_REVERB), "REVERB") == 0);
+    CHECK(pl_view_page_color(PL_PAGE_REVERB) == pl_page_color(8));
+    CHECK(pl_page_bsp(PL_PAGE_REVERB) == -1);
+}
+
 // Вкладка MIX инструмента: ячейка показывает цель (подпись, значение, подхват), под именем - страница-источник.
 TEST(test_mix_cell_shows_target)
 {
@@ -153,7 +169,7 @@ TEST(test_page_names_and_colors)
     CHECK(strcmp(pl_view_page_name(PL_USER_FIRST), "USER 1") == 0);
     CHECK(strcmp(pl_view_page_name(PL_USER_FIRST + 5), "USER 6") == 0);
     CHECK(strcmp(pl_view_page_name(PL_PAGE_MOD1), "MOD 1") == 0); // за вкладками MIX - модуляторы
-    CHECK(pl_view_page_name(PL_PAGE_MOD1 + PL_MOD_PAGES) == NULL); // а за ними страниц нет
+    CHECK(pl_view_page_name(PL_PAGE_REVERB + 1) == NULL); // за подэкраном реверберации страниц нет
     CHECK(pl_view_page_color(3) == pl_page_color(3));
     CHECK(pl_view_page_color(12) != 0);
 }
@@ -198,6 +214,7 @@ int main(void)
 {
     RUN(test_page_bsp_numbers);
     RUN(test_standard_cell);
+    RUN(test_reverb_cell);
     RUN(test_alias_cell_shows_target);
     RUN(test_macro_cell_own_value);
     RUN(test_user_cell_without_frame_empty);

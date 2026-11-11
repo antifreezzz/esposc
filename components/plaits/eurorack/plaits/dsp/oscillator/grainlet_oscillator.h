@@ -153,9 +153,9 @@ class GrainletOscillator {
     } else if (shape_integral == 1) {
       float breakpoint = 0.001f + 0.499f * t * t * t;
       if (phase < breakpoint) {
-        phase *= (0.5f / breakpoint);
+        phase *= 0.5f * stmlib::EspRcp(breakpoint);  // acid: было деление (на ESP32-S3 - программный вызов на каждом сэмпле)
       } else {
-        phase = 0.5f + (phase - breakpoint) * 0.5f / (1.0f - breakpoint);
+        phase = 0.5f + (phase - breakpoint) * 0.5f * stmlib::EspRcp(1.0f - breakpoint);
       }
       phase += 0.75f;
     } else {
@@ -173,7 +173,7 @@ class GrainletOscillator {
       float bleed) {
     float carrier = Carrier(carrier_phase, shape);
     float formant = Sine(formant_phase);
-    return carrier * (formant + bleed) / (1.0f + bleed);
+    return carrier * (formant + bleed) * stmlib::EspRcp(1.0f + bleed);  // acid: было деление (на ESP32-S3 - программный вызов на каждом сэмпле)
   }
 
   // Oscillator state.

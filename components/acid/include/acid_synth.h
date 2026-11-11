@@ -17,9 +17,11 @@
 #include "acid_perc.h"
 #include "acid_petri.h"
 #include "acid_plaits.h"
+#include "acid_reverb.h"
 #include "acid_seq.h"
 #include "acid_tonal.h"
 
+#define ACID_SPLIT_MAX 64
 #define ACID_TYPE_PETRI (1 + ACID_PLAITS_MODELS) // 25 - чашка Петри (у слоя нет)
 #define ACID_TYPES (2 + ACID_PLAITS_MODELS)      // 0 - наш 303, 1..24 - модели Plaits, 25 - чашка Петри
 #define ACID_LAYER_OFF ACID_TYPES                // тип слоя «выкл» (у синтов его нет)
@@ -31,6 +33,8 @@
 #define ACID_PAGE_LAYER1 10
 #define ACID_PAGE_GRIDS 12
 #define ACID_PAGE_PETRI 13
+#define ACID_PAGE_REVERB 27 // только панель: номера BSP нет
+#define ACID_REVERB_KNOBS 6
 #define ACID_PAGE_MOD1 23
 #define ACID_BSP_PETRI 18
 #define ACID_BSP_MOD_FIRST 19
@@ -66,6 +70,7 @@ typedef struct {
     float g;           // коэффициент фильтра с управляющей частоты
     acid_ladder_coefs_t lc; // величины ladder от g и res: в сэмпле без делений
     int ctrl_left;     // сэмплов до следующего пересчёта
+    float ctl_log2, ctl_hz; // высота прошлого пересчёта и её частота: exp2f только когда высота сдвинулась
     // Ручки: их крутят энкодеры (BSP или демо), до этого стартовые значения.
     float cut_base;    // базовый срез, Гц (в режиме трека его задаёт автоматизация)
     float env_hz;      // глубина огибающей фильтра обычной ноты, Гц
@@ -138,6 +143,13 @@ typedef struct acid_synth {
     int16_t *fx_mem;   // буфер дилэя, выделяется один раз (s обнулён до первого init)
     float *st_mem;     // буфер статтера, так же
     float send1, send2, send_drums; // посылы в дилэй 0..1
+    acid_reverb_t reverb;
+    float *rv_mem;                  // линии ревёрба, внутренняя память
+    float rv_wet, rv_send1, rv_send2, rv_send_drums;
+    float rv_narrow;                // 0 - полная ширина wet, 0.5 - моно
+    float rv_duck;                  // ступень 3: уход за 10 мс, затем DSP стоит
+    uint8_t rv_raw[ACID_REVERB_KNOBS];
+    float rv_prev[ACID_SPLIT_MAX];  // посыл прошлого куска для цельного рендера
     float pan_l[ACID_PANS], pan_r[ACID_PANS]; // усиления каналов по источникам
     int dl_time, dl_fb, dl_tone;    // сырые ручки дилэя
     acid_tonal_t tonal; // страница 9: круг транспозиций синтов по тактам
@@ -178,7 +190,9 @@ typedef struct acid_synth {
 // без своих knob[] (микс, ударка, тарелки, перкуссия, эффекты, Grids, чашка).
 #define ACID_SAVED_PAGES 9
 #define ACID_SYNTH_BLOB_V4 (4 + 2 * ACID_SLOTS * (1 + ACID_TYPES * ACID_KNOBS) + ACID_TONAL_KNOBS) // синты, слои
-#define ACID_SYNTH_BLOB (ACID_SYNTH_BLOB_V4 + ACID_SAVED_PAGES * ACID_KNOBS)
+#define ACID_SYNTH_BLOB_V5 (ACID_SYNTH_BLOB_V4 + ACID_SAVED_PAGES * ACID_KNOBS)
+#define ACID_SYNTH_BLOB_V7 (ACID_SYNTH_BLOB_V5 + 5) // версии 6-7: пять ручек реверба, без ширины
+#define ACID_SYNTH_BLOB (ACID_SYNTH_BLOB_V5 + ACID_REVERB_KNOBS)
 
 // Умолчания всех ручек, тишина до первой ноты.
 void acid_synth_init(acid_synth_t *s, float sr);
@@ -213,7 +227,6 @@ void acid_synth_render_with_lr(acid_synth_t *s, float *l, float *r, size_t n, co
 // Тот же with_lr по ядрам, кусок n <= ACID_SPLIT_MAX. side - тарелки и перкуссия (их состояние трогает
 // только он), src - синт 1 и ударка; side и src независимы и могут считаться одновременно на разных ядрах,
 // mix сводит их со слотом 1 и прогоняет через эффекты. Вместе бит в бит как with_lr.
-#define ACID_SPLIT_MAX 64
 typedef struct {
     float cyl[ACID_SPLIT_MAX], cyr[ACID_SPLIT_MAX], pcl[ACID_SPLIT_MAX], pcr[ACID_SPLIT_MAX];
 } acid_synth_side_t;
@@ -222,9 +235,12 @@ typedef struct {
 } acid_synth_src_t;
 void acid_synth_render_side(acid_synth_t *s, acid_synth_side_t *side, size_t n);
 void acid_synth_render_src(acid_synth_t *s, acid_synth_src_t *src, size_t n);
-// layer0 - слой синта 1 (acid_synth_render_layer), NULL - нет.
+// layer0 - слой синта 1 (acid_synth_render_layer), NULL - нет. rv_send принимает посыл текущего куска,
+// rv_wl/rv_wr - wet прошлого куска от acid_synth_render_reverb.
 void acid_synth_render_mix_lr(acid_synth_t *s, float *l, float *r, size_t n, const float *slot1, const float *layer0,
-                              const acid_synth_src_t *src, const acid_synth_side_t *side);
+                              const acid_synth_src_t *src, const acid_synth_side_t *side, float *rv_send,
+                              const float *rv_wl, const float *rv_wr);
+void acid_synth_render_reverb(acid_synth_t *s, const float *send, float *wl, float *wr, size_t n);
 // Слой синта k отдельно, уже с громкостью (k = 0: слой синта 1 на ядре 0 рядом с синтом 2).
 void acid_synth_render_layer(acid_synth_t *s, int k, float *out, size_t n);
 float acid_synth_pitch_hz(const acid_synth_t *s); // высота слота 0

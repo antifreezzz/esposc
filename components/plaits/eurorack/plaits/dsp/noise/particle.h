@@ -69,7 +69,7 @@ class Particle {
           const float f = std::min(
               stmlib::SemitonesToRatio(spread * u) * frequency,
               0.25f);
-          pre_gain_ = 0.5f / stmlib::Sqrt(q * f * stmlib::Sqrt(density));
+          pre_gain_ = 0.5f * stmlib::EspRsqrt(q * f * stmlib::Sqrt(density));  // acid: was 0.5 / Sqrt
           filter_.set_f_q<stmlib::FREQUENCY_DIRTY>(f, q);
           // Keep the cutoff constant for this whole block.
           can_radomize_frequency = false;

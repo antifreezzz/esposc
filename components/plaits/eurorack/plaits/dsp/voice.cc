@@ -90,7 +90,7 @@ void Voice::Init(BufferAllocator* allocator) {
 void Voice::Render(
     const Patch& patch,
     const Modulations& modulations,
-    Frame* frames,
+    float* out,
     size_t size) {
   // Trigger, LPG, internal envelope.
       
@@ -248,16 +248,15 @@ void Voice::Render(
     lpg_envelope_.Init();
   }
   
-  out_post_processor_.Process(
+  out_post_processor_.ProcessFloat(
       pp_s.out_gain,
       lpg_bypass,
       lpg_envelope_.gain(),
       lpg_envelope_.frequency(),
       lpg_envelope_.hf_bleed(),
       out_buffer_,
-      &frames->out,
-      size,
-      2);
+      out,
+      size);
 
   // acid: AUX is never read (acid_plaits.cc takes frames[].out only), so its
   // gate filter and limiter are skipped.

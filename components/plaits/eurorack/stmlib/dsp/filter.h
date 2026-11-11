@@ -31,6 +31,7 @@
 #define STMLIB_DSP_FILTER_H_
 
 #include "stmlib/stmlib.h"
+#include "stmlib/dsp/dsp.h"
 
 #include <cmath>
 #include <algorithm>
@@ -138,7 +139,7 @@ class OnePole {
   template<FrequencyApproximation approximation>
   inline void set_f(float f) {
     g_ = tan<approximation>(f);
-    gi_ = 1.0f / (1.0f + g_);
+    gi_ = EspRcp(1.0f + g_);  // acid: было деление
   }
   
   template<FilterMode mode>
@@ -207,14 +208,14 @@ class Svf {
   inline void set_g_r(float g, float r) {
     g_ = g;
     r_ = r;
-    h_ = 1.0f / (1.0f + r_ * g_ + g_ * g_);
+    h_ = EspRcp(1.0f + r_ * g_ + g_ * g_);  // acid: было деление
   }
 
   // Set frequency from LUT, resonance in true units, adjust the rest.
   inline void set_g_q(float g, float resonance) {
     g_ = g;
-    r_ = 1.0f / resonance;
-    h_ = 1.0f / (1.0f + r_ * g_ + g_ * g_);
+    r_ = EspRcp(resonance);  // acid: было деление
+    h_ = EspRcp(1.0f + r_ * g_ + g_ * g_);  // acid: было деление
   }
 
   // Set frequency and resonance from true units. Various approximations
@@ -222,8 +223,8 @@ class Svf {
   template<FrequencyApproximation approximation>
   inline void set_f_q(float f, float resonance) {
     g_ = OnePole::tan<approximation>(f);
-    r_ = 1.0f / resonance;
-    h_ = 1.0f / (1.0f + r_ * g_ + g_ * g_);
+    r_ = EspRcp(resonance);  // acid: было деление
+    h_ = EspRcp(1.0f + r_ * g_ + g_ * g_);  // acid: было деление
   }
   
   template<FilterMode mode>

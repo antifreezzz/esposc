@@ -21,7 +21,10 @@ int pl_pick_slot(int page, int enc, const uint8_t raw[16], int v);         // к
 int pl_pick_next(int page, int enc, const uint8_t raw[16], int v);         // переключатель: значение после тапа
 // 1 - палец может захватить ручку крутилкой. hold 1 - захват по удержанию, 0 - по сдвигу пальца.
 // У списков удержание - это тап (открыть сетку), у переключателей, триггеров и TYPE крутилки нет.
+// И у ручки с подэкраном удержание - тап: иначе дрожание пальца крутит её вместо входа.
 int pl_pick_grab(int page, int enc, const uint8_t raw[16], int hold);
+// Подэкран за ручкой (тап открывает его, сдвиг пальца крутит ручку): FX 16 REVERB -> PL_PAGE_REVERB; -1 - нет.
+int pl_pick_sub(int page, int enc);
 
 void pl_pick_rect(int n, int slot, int *x, int *y, int *w, int *h); // клетка slot сетки из n значений
 int pl_pick_at(int n, int x, int y);                                // клетка под точкой, -1 мимо

@@ -62,6 +62,26 @@ class LowPassGate {
     }
   }
   
+  // acid: float output, hard-limited to the range of the 16-bit one (see
+  // ChannelPostProcessor::ProcessFloat).
+  void ProcessFloat(
+      float gain,
+      float frequency,
+      float hf_bleed,
+      float* in,
+      float* out,
+      size_t size) {
+    stmlib::ParameterInterpolator gain_modulation(&previous_gain_, gain, size);
+    filter_.set_f_q<stmlib::FREQUENCY_DIRTY>(frequency, 0.4f);
+    while (size--) {
+      const float s = *in++ * gain_modulation.Next();
+      const float lp = filter_.Process<stmlib::FILTER_MODE_LOW_PASS>(s);
+      float y = lp + (s - lp) * hf_bleed;
+      CONSTRAIN(y, -1.0f, 1.0f);
+      *out++ = y;
+    }
+  }
+
   void Process(
       float gain,
       float frequency,

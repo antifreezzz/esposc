@@ -33,17 +33,8 @@
 
 namespace plaits {
 
-// acid: деление float на ESP32-S3 - программный вызов (~46 тактов). 1/x битовым трюком и тремя шагами
-// Ньютона (как acid_rcp): точность float, только умножения. x > 0.
-inline float EspFastRcp(float x) {
-  union { float f; uint32_t i; } u = { x };
-  u.i = 0x7EF311C3u - u.i;
-  float y = u.f;
-  y = y * (2.0f - x * y);
-  y = y * (2.0f - x * y);
-  y = y * (2.0f - x * y);
-  return y;
-}
+// acid: 1/x без программного деления - stmlib::EspRcp (stmlib/dsp/dsp.h).
+inline float EspFastRcp(float x) { return stmlib::EspRcp(x); }
 
 const int kMaxNumModes = 24;
 const int kModeBatchSize = 4;
@@ -62,7 +53,11 @@ class ResonatorSvf {
     }
   }
   
+  // acid: without this GCC turns the 4-float state copies below into memcpy
+  // calls, 5 per batch, 6 batches per 12-sample block (-21 us per 2 ms block
+  // on ESP32-S3 for the modal voice).
   template<stmlib::FilterMode mode, bool add>
+  __attribute__((optimize("no-tree-loop-distribute-patterns")))
   void Process(
       const float* f,
       const float* q,

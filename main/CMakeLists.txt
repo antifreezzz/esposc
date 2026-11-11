@@ -4,11 +4,18 @@ if(ESPOSC_UAC)
 else()
     set(AUDIO_OUT_SRC "audio_out_i2s.c")
 endif()
-idf_component_register(SRCS "main.c" "usb_host_task.c" ${AUDIO_OUT_SRC} "midi_in_usb.c" "store.c" "samples_part.c" "panel_uart.c"
+# Стенд цены голосов без звука: idf.py -B build-modelbench -DESPOSC_MODEL_BENCH=1 ... (main/model_bench.c).
+if(ESPOSC_MODEL_BENCH)
+    set(BENCH_SRC "model_bench.c")
+endif()
+idf_component_register(SRCS "main.c" ${BENCH_SRC} "usb_host_task.c" ${AUDIO_OUT_SRC} "midi_in_usb.c" "store.c" "samples_part.c" "panel_uart.c"
                        INCLUDE_DIRS "."
                        REQUIRES acid panel_link esp_timer nvs_flash esp_partition esp_driver_uart esp_driver_gpio
                                 esp_driver_i2s)
 # Стенд замеров: idf.py -B build-stress -DESPOSC_STRESS=1 ... (свой каталог сборки, чтобы не прошить случайно).
+if(ESPOSC_MODEL_BENCH)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE ESPOSC_MODEL_BENCH)
+endif()
 if(ESPOSC_STRESS)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE ESPOSC_STRESS)
 endif()

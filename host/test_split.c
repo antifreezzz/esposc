@@ -19,9 +19,13 @@ static int same_as_whole(const acid_demo_song_t *song, int seconds)
     static acid_synth_side_t side;
     static acid_synth_src_t src;
     static float ly[CH];
+    static float rv_send[2][CH], rv_wl[CH], rv_wr[CH];
     float la[CH], ra[CH], lb[CH], rb[CH], s1[CH];
     acid_synth_init(&a, SR);
     acid_synth_init(&b, SR);
+    acid_synth_set_knob(&a, 8, 15, 127);
+    acid_synth_set_knob(&b, 8, 15, 127);
+    memset(rv_send, 0, sizeof rv_send);
     acid_demo_init(&da, song);
     acid_demo_init(&db, song);
     int same = 1;
@@ -40,7 +44,9 @@ static int same_as_whole(const acid_demo_song_t *song, int seconds)
         acid_synth_render_layer(&b, 0, ly, CH); // слой синта 1 - на ядре 0, как синт 2
         acid_synth_render_src(&b, &src, CH);
         acid_synth_render_side(&b, &side, CH);
-        acid_synth_render_mix_lr(&b, lb, rb, CH, s1, ly, &src, &side);
+        int cur = k & 1;
+        acid_synth_render_reverb(&b, rv_send[cur ^ 1], rv_wl, rv_wr, CH);
+        acid_synth_render_mix_lr(&b, lb, rb, CH, s1, ly, &src, &side, rv_send[cur], rv_wl, rv_wr);
         same &= memcmp(la, lb, sizeof la) == 0 && memcmp(ra, rb, sizeof ra) == 0;
     }
     return same;

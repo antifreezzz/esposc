@@ -165,6 +165,19 @@ TEST(test_panel_page)
     CHECK(s.page == 2);
 }
 
+TEST(test_reverb_panel_only)
+{
+    reset();
+    bsp(1, 8);
+    CHECK(panel(ACID_PAGE_REVERB, 2, 33) == 1);
+    CHECK(knob(ACID_PAGE_REVERB, 2) == 33);
+    CHECK(ev.page == ACID_PAGE_REVERB && ev.enc == 1 && ev.value == 33 && ev.src == ACID_SRC_PANEL && ev.held == 1);
+    CHECK(s.page == 8 && l.held[ACID_PAGE_REVERB][1] == 1);
+    CHECK(panel(ACID_PAGE_REVERB, 8, 99) == 0);
+    CHECK(acid_link_panel_page(&l, &s, ACID_PAGE_REVERB, &ev) == 0);
+    CHECK(s.page == 8 && acid_link_page(&l, &s) == 8);
+}
+
 static acid_custom_t c;
 
 static void reset_custom(void)
@@ -568,6 +581,7 @@ int main(void)
     RUN(test_type_change_sends_snapshot);
     RUN(test_page_event);
     RUN(test_panel_page);
+    RUN(test_reverb_panel_only);
     RUN(test_user_page_macro_from_bsp);
     RUN(test_user_page_alias_from_bsp);
     RUN(test_user_page_empty_slot);

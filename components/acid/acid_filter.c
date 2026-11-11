@@ -17,7 +17,7 @@ float acid_ladder_coef(float cutoff_hz, float sr)
 {
     float max_fc = 0.45f * sr;
     cutoff_hz = cutoff_hz < 20.0f ? 20.0f : (cutoff_hz > max_fc ? max_fc : cutoff_hz);
-    return tanf(PI_F * cutoff_hz / sr);
+    return acid_tan_fine(PI_F * cutoff_hz / sr); // не tanf: зовётся каждые 16 сэмплов, libm на плате дорог
 }
 
 void acid_ladder_prep(acid_ladder_coefs_t *c, float g, float res)

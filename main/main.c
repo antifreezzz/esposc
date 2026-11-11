@@ -87,6 +87,8 @@ static const acid_bank_t *s_bank; // тарелки из флэша, NULL - мо
 // позже (0.67 мс). Тарелки и перкуссия - тот же кусок: звучат вместе с остальной ударкой.
 static float s_slot1[2][CHUNK];
 static float s_layer0[2][CHUNK]; // слой синта 1: тоже на ядре 0 и на кусок вперёд (на ядре 1 запаса нет)
+static float s_rv_send[2][CHUNK];
+static float s_rv_wet_l[2][CHUNK], s_rv_wet_r[2][CHUNK];
 static int s_slot1_next; // какой буфер считает ядро 0
 static acid_synth_side_t s_side;
 static TaskHandle_t s_synth_task;
@@ -137,6 +139,9 @@ static void slot1_task(void *arg)
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         int64_t t0 = esp_timer_get_time();
         acid_synth_render_side(&s_synth, &s_side, CHUNK);
+        int mix = s_slot1_next ^ 1;
+        // Посыл прошлого куска лежит в соседнем буфере: свой буфер этого куска ядро 1 ещё только заполнит.
+        acid_synth_render_reverb(&s_synth, s_rv_send[mix ^ 1], s_rv_wet_l[mix], s_rv_wet_r[mix], CHUNK);
         xTaskNotifyGive(s_synth_task);
         acid_synth_render_slot(&s_synth, 1, s_slot1[s_slot1_next], CHUNK);
         acid_synth_render_layer(&s_synth, 0, s_layer0[s_slot1_next], CHUNK);
@@ -310,7 +315,8 @@ static void render_block(float *l, float *r)
         xTaskNotifyGive(s_slot1_task);
         acid_synth_render_src(&s_synth, &src, CHUNK);
         ulTaskNotifyTake(pdFALSE, portMAX_DELAY); // тарелки и перкуссия готовы
-        acid_synth_render_mix_lr(&s_synth, l + off, r + off, CHUNK, s_slot1[ready], s_layer0[ready], &src, &s_side);
+        acid_synth_render_mix_lr(&s_synth, l + off, r + off, CHUNK, s_slot1[ready], s_layer0[ready], &src, &s_side,
+                                 s_rv_send[ready], s_rv_wet_l[ready], s_rv_wet_r[ready]);
         ulTaskNotifyTake(pdFALSE, portMAX_DELAY); // синт 2 следующего куска готов, ядро 0 свободно
     }
 }
@@ -723,11 +729,19 @@ static void stats_task(void *arg)
     }
 }
 
+#ifdef ESPOSC_MODEL_BENCH
+void model_bench_start(void);
+#endif
+
 void app_main(void)
 {
     ESP_ERROR_CHECK(store_start());
     boot_count();
     ESP_LOGI(TAG, "%s", s_boot_str);
+#ifdef ESPOSC_MODEL_BENCH
+    model_bench_start(); // стенд цены голосов: без звука, MIDI и панели
+    return;
+#endif
     load_user_data();
     usb_host_start();
     ESP_ERROR_CHECK(midi_in_start());

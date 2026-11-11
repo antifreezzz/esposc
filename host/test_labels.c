@@ -17,7 +17,7 @@ static int empty(int page, int enc, int type)
     case 7: return type == 0 && enc >= 10 && enc <= 12;
     case 10:
     case 11: return type == 26 ? enc >= 2 : type == 0 && enc >= 10 && enc <= 12; // слой: как синт, OFF (26) - пусто
-    case 8: return enc >= 15;
+    case 8: return 0; // FX: все 15, последняя - REVERB
     case 12: return enc >= 15; // Grids: 13 PATTERN, 14 SWING
     default: return 0;
     }
@@ -266,15 +266,33 @@ TEST(test_layer_labels)
     CHECK(pl_knob_color(10, 3, raw) == pl_knob_color(6, 3, raw) && pl_knob_color(10, 3, raw) != 0);
 }
 
-TEST(test_fx_layer_vol_labels)
+TEST(test_fx_reverb_labels)
 {
     uint8_t raw[16] = {0};
     CHECK(strcmp(pl_knob_label(8, 12, raw), "LYR1 VOL") == 0);
     CHECK(strcmp(pl_knob_label(8, 13, raw), "LYR2 VOL") == 0);
     CHECK(strcmp(pl_knob_label(8, 14, raw), "LYR HALF") == 0);
+    CHECK(strcmp(pl_knob_label(8, 15, raw), "REVERB") == 0);
     char buf[12];
     CHECK(strcmp(pl_value_text(8, 14, 63, raw, buf), "OFF") == 0); // переключатель: порог 64
     CHECK(strcmp(pl_value_text(8, 14, 64, raw, buf), "ON") == 0);
+    CHECK(strcmp(pl_value_text(8, 15, 0, raw, buf), "0") == 0);
+    CHECK(strcmp(pl_value_text(8, 15, 64, raw, buf), "64") == 0);
+    CHECK(strcmp(pl_value_text(8, 15, 127, raw, buf), "127") == 0);
+    static const char *const name[6] = {"RVB S1", "RVB S2", "RVB DRUMS", "DECAY", "DAMP", "WIDTH"};
+    CHECK(strcmp(pl_page_name(PL_PAGE_REVERB), "REVERB") == 0);
+    CHECK(pl_page_color(PL_PAGE_REVERB) == pl_page_color(8));
+    for (int e = 1; e < PL_KNOBS; e++) {
+        const char *label = pl_knob_label(PL_PAGE_REVERB, e, raw);
+        CHECK(label == (e <= 6 ? name[e - 1] : NULL));
+        if (label) {
+            CHECK(strcmp(label, name[e - 1]) == 0);
+            CHECK(strcmp(pl_value_text(PL_PAGE_REVERB, e, 64, raw, buf), "64") == 0);
+            int lo, hi;
+            pl_knob_range(PL_PAGE_REVERB, e, raw, &lo, &hi);
+            CHECK(lo == 0 && hi == 127);
+        }
+    }
 }
 
 TEST(test_grids_labels)
@@ -359,7 +377,7 @@ int main(void)
 {
     RUN(petri_labels);
     RUN(test_layer_labels);
-    RUN(test_fx_layer_vol_labels);
+    RUN(test_fx_reverb_labels);
     RUN(test_labels_cover_synth);
     RUN(test_grids_labels);
     RUN(test_ranges);

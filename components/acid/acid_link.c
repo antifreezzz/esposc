@@ -108,6 +108,9 @@ static void type_check(acid_link_t *l, int page, int enc)
 // Значение ручки как на экране: у модулятора - его ручка, у своей страницы - значение слота.
 static int knob_of(const acid_link_t *l, const acid_synth_t *s, int page, int enc)
 {
+    if (page == ACID_PAGE_REVERB) {
+        return acid_synth_knob(s, page, enc);
+    }
     if (page >= ACID_PAGE_MOD1) {
         return acid_mod_knob(l->mod, page - ACID_PAGE_MOD1, enc);
     }
@@ -290,16 +293,19 @@ int acid_link_midi(acid_link_t *l, acid_synth_t *s, const acid_midi_event_t *ev,
 
 int acid_link_panel_set(acid_link_t *l, acid_synth_t *s, int page, int enc, int v, acid_link_ev_t *out)
 {
-    if (page < 0 || (page >= ACID_PAGES && !is_user(l, page) && !is_mod(l, page)) || enc <= 0 || enc >= ACID_KNOBS ||
-        v < 0 || v > 127) {
+    if (page < 0 || (page >= ACID_PAGES && page != ACID_PAGE_REVERB && !is_user(l, page) && !is_mod(l, page)) ||
+        enc <= 0 || enc >= ACID_KNOBS || (page == ACID_PAGE_REVERB && enc > ACID_REVERB_KNOBS) || v < 0 || v > 127) {
         return 0;
     }
-    if (is_mod(l, page)) {
+    if (page == ACID_PAGE_REVERB) {
+        l->npend = l->pend_at = 0;
+        acid_synth_set_knob(s, page, enc, v);
+    } else if (is_mod(l, page)) {
         l->npend = l->pend_at = 0;
         if (!acid_mod_set(l->mod, page - ACID_PAGE_MOD1, enc, v)) {
             return 0;
         }
-    } else if (page >= ACID_USER_FIRST) {
+    } else if (is_user(l, page)) {
         user_apply(l, s, page - ACID_USER_FIRST, enc, v);
     } else {
         l->npend = l->pend_at = 0;
@@ -314,6 +320,9 @@ int acid_link_panel_set(acid_link_t *l, acid_synth_t *s, int page, int enc, int 
 
 int acid_link_panel_page(acid_link_t *l, acid_synth_t *s, int page, acid_link_ev_t *out)
 {
+    if (page == ACID_PAGE_REVERB) {
+        return 0; // подэкран FX не назначает ручки BSP
+    }
     if (is_mod(l, page)) {
         l->mod_page = page - ACID_PAGE_MOD1;
         l->user = l->mix = -1;
