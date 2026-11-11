@@ -143,6 +143,33 @@ TEST(test_plaits_dx7_retrigger_smooth)
     CHECK(worst < 0.1f);
 }
 
+TEST(test_plaits_output_is_float)
+{
+    // Модуль Plaits резал выход в 16 бит под свой ЦАП. У нас дальше float и перегруз: сетка 1/32768 - лишний
+    // шум квантования на тихих хвостах. Выход обязан идти мимо сетки и не выходить за +-1.
+    acid_plaits_init(p);
+    acid_plaits_params_t pp = params(10);
+    render(&pp, buf, 24000);
+    int off_grid = 0, clipped = 0;
+    for (int i = 0; i < 24000; i++) {
+        float k = buf[i] * 32768.0f;
+        off_grid += k != floorf(k);
+        clipped += fabsf(buf[i]) > 1.0f;
+    }
+    CHECK(off_grid > 12000);
+    CHECK(clipped == 0);
+    // Отпущенная нота затухает ниже одного шага 16 бит, а не встаёт на нём.
+    pp.trigger = 0;
+    pp.level = 0.0f;
+    render(&pp, buf, 48000 * 4);
+    float tail = 0.0f;
+    for (int i = 48000 * 4 - 4800; i < 48000 * 4; i++) {
+        tail = fabsf(buf[i]) > tail ? fabsf(buf[i]) : tail;
+    }
+    CHECK(tail > 0.0f);
+    CHECK(tail < 0.5f / 32768.0f);
+}
+
 TEST(test_plaits_fast_math_matches_division)
 {
     // Плата делит float программно, корень - тоже вызов: в посэмпловых циклах Plaits стоят замены на умножениях.
@@ -164,6 +191,7 @@ int main(void)
     p = acid_plaits_create();
     RUN(test_plaits_all_models_sound);
     RUN(test_plaits_pitch);
+    RUN(test_plaits_output_is_float);
     RUN(test_plaits_fast_math_matches_division);
     RUN(test_plaits_gate_off_silences);
     RUN(test_plaits_dx7_retrigger_smooth);

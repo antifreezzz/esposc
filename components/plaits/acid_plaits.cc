@@ -49,11 +49,7 @@ extern "C" void acid_plaits_render(acid_plaits_t *p, const acid_plaits_params_t 
     m.trigger_patched = !pp->sustained;
     m.level_patched = true;
 
-    plaits::Voice::Frame frames[plaits::kMaxBlockSize];
-    p->voice.Render(patch, m, frames, (size_t)n);
-    for (int i = 0; i < n; i++) {
-        out[i] = frames[i].out * (1.0f / 32768.0f);
-    }
+    p->voice.Render(patch, m, out, (size_t)n); // выход float, без 16-битной сетки модуля
 }
 
 extern "C" float acid_plaits_test_rcp(float x) { return stmlib::EspRcp(x); }

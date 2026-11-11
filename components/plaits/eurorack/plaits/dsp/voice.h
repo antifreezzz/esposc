@@ -84,6 +84,39 @@ class ChannelPostProcessor {
     limiter_.Init();
   }
   
+  // acid: the module quantized its output to 16 bits for its DAC. Here the
+  // voice feeds a float chain with an overdrive, so the output stays float,
+  // -1..1, same polarity and hard limit as the 16-bit one.
+  void ProcessFloat(
+      float gain,
+      bool bypass_lpg,
+      float low_pass_gate_gain,
+      float low_pass_gate_frequency,
+      float low_pass_gate_hf_bleed,
+      float* in,
+      float* out,
+      size_t size) {
+    if (gain < 0.0f) {
+      limiter_.Process(-gain, in, size);
+    }
+    const float post_gain = (gain < 0.0f ? 1.0f : gain) * (-32767.0f / 32768.0f);
+    if (!bypass_lpg) {
+      lpg_.ProcessFloat(
+          post_gain * low_pass_gate_gain,
+          low_pass_gate_frequency,
+          low_pass_gate_hf_bleed,
+          in,
+          out,
+          size);
+    } else {
+      while (size--) {
+        float y = *in++ * post_gain;
+        CONSTRAIN(y, -1.0f, 1.0f);
+        *out++ = y;
+      }
+    }
+  }
+
   void Process(
       float gain,
       bool bypass_lpg,
@@ -173,7 +206,7 @@ class Voice {
   void Render(
       const Patch& patch,
       const Modulations& modulations,
-      Frame* frames,
+      float* out,  // acid: float OUT only, -1..1 (was Frame* with 16-bit OUT and AUX)
       size_t size);
   inline int active_engine() const { return previous_engine_index_; }
     
