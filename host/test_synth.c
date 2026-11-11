@@ -117,6 +117,34 @@ TEST(test_pcm_lr)
     }
 }
 
+TEST(test_pcm_rounds_like_lrintf)
+{
+    // Перевод без libm (на плате lrintf - программный вызов на каждый сэмпл) обязан совпадать с прежним
+    // lrintf бит в бит: и на половинках (к чётному), и за краями.
+    static float l[4096], r[4096];
+    static int16_t out[8192];
+    uint32_t rng = 1;
+    int bad = 0;
+    for (int pass = 0; pass < 300; pass++) {
+        for (int i = 0; i < 4096; i++) {
+            rng = rng * 1664525u + 1013904223u;
+            l[i] = (float)(int32_t)rng * (1.1f / 2147483648.0f);          // весь диапазон с запасом
+            r[i] = ((float)((int)(rng >> 8) % 65536 - 32768) + 0.5f) / 32767.0f; // около половинок
+            if (pass == 0) {
+                r[i] = (float)(i - 2048) * (0.5f / 32767.0f) * 16.0f; // и точные половинки после умножения
+            }
+        }
+        acid_pcm_lr_to_s16(l, r, out, 4096);
+        for (int i = 0; i < 4096; i++) {
+            float a = l[i] > 1.0f ? 1.0f : l[i] < -1.0f ? -1.0f : l[i];
+            float b = r[i] > 1.0f ? 1.0f : r[i] < -1.0f ? -1.0f : r[i];
+            bad += out[2 * i] != (int16_t)lrintf(a * 32767.0f);
+            bad += out[2 * i + 1] != (int16_t)lrintf(b * 32767.0f);
+        }
+    }
+    CHECK(bad == 0);
+}
+
 TEST(test_pcm_gain)
 {
     // Q15: 16384 = половина, округление к ближайшему, знак сохраняется.
@@ -157,6 +185,7 @@ int main(void)
     RUN(test_synth_stress_peak);
     RUN(test_render_mono_is_mean);
     RUN(test_pcm_convert);
+    RUN(test_pcm_rounds_like_lrintf);
     RUN(test_pcm_lr);
     RUN(test_pcm_gain);
     TEST_MAIN_END();

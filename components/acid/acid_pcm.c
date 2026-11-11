@@ -1,11 +1,17 @@
 #include "acid_pcm.h"
 
-#include <math.h>
-
-static int16_t s16(float x)
+// Округление к ближайшему, половинки к чётному - как lrintf, но без libm: на плате lrintf - программный вызов
+// на каждый сэмпл (66 мкс на блок 2 мс). |y| < 32768: y + 0.5 во float точно, усечение даёт пол.
+static inline int16_t s16(float x)
 {
     x = x > 1.0f ? 1.0f : (x < -1.0f ? -1.0f : x);
-    return (int16_t)lrintf(x * 32767.0f);
+    float y = x * 32767.0f;
+    float a = y < 0.0f ? -y : y;
+    int32_t i = (int32_t)(a + 0.5f);
+    if ((float)i - a == 0.5f) {
+        i &= ~1; // ровно половина: к чётному
+    }
+    return (int16_t)(y < 0.0f ? -i : i);
 }
 
 void acid_pcm_to_s16_stereo(const float *in, int16_t *out, size_t frames)
