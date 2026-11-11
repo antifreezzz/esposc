@@ -55,7 +55,7 @@ static inline float acid_exp2(float x)
         float f;
         int32_t i;
     } u = {m};
-    u.i += i << 23;
+    u.i += i * (1 << 23); // не сдвиг: у отрицательного i он не определён стандартом
     return u.f;
 }
 
