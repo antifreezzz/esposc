@@ -1759,35 +1759,30 @@ void acid_synth_render_mix_lr(acid_synth_t *s, float *l, float *r, size_t n, con
                               const acid_synth_src_t *src, const acid_synth_side_t *side)
 {
     ACID_PROF_T(t);
-    // Стерео: панорамы по источникам, бочка в центре.
+    // Стерео: панорамы по источникам, бочка в центре. Эффекты - проходами по куску: каждый зависит только от
+    // своего входа и состояния, так что результат тот же, что сэмпл за сэмплом.
     const float *pl = s->pan_l, *pr = s->pan_r;
+    float send[MIX_CHUNK], pump[MIX_CHUNK];
+    acid_pump_run(&s->pump, pump, (int)n);
     for (size_t i = 0; i < n; i++) {
         float y = layer0 ? src->y[i] + layer0[i] : src->y[i], kick = src->kick[i], hat = src->hat[i], clap = src->clap[i], snare = src->snare[i];
         float s1 = slot1[i];
         float cl = side->cyl[i], cr = side->cyr[i]; // уже стерео с балансом
         float ql = side->pcl[i], qr = side->pcr[i]; // перкуссия, уже с панорамой
         // Посылы до пампинга и панорамы: повторы не качаются вместе с сухим звуком.
-        float send = s->send1 * y + s->send2 * s1 + s->send_drums * (hat + clap + snare + 0.5f * (cl + cr + ql + qr));
-        float pump = acid_pump_next(&s->pump);
-        float yl = kick + pump * (pl[ACID_PAN_SYNTH1] * y + pl[ACID_PAN_SYNTH2] * s1 + pl[ACID_PAN_HAT] * hat +
-                                  pl[ACID_PAN_CLAP] * clap + pl[ACID_PAN_SNARE] * snare + cl + ql);
-        float yr = kick + pump * (pr[ACID_PAN_SYNTH1] * y + pr[ACID_PAN_SYNTH2] * s1 + pr[ACID_PAN_HAT] * hat +
-                                  pr[ACID_PAN_CLAP] * clap + pr[ACID_PAN_SNARE] * snare + cr + qr);
-        if (send != 0.0f || acid_delay_active(&s->delay)) {
-            float wl, wr;
-            acid_delay_next2(&s->delay, send, &wl, &wr);
-            yl += wl;
-            yr += wr;
-        }
-        if (acid_stutter_active(&s->stutter)) {
-            acid_stutter_next2(&s->stutter, &yl, &yr);
-        }
-        if (acid_crush_active(&s->crush)) {
-            acid_crush_next2(&s->crush, &yl, &yr);
-        }
-        acid_djf_next2(&s->djf, &yl, &yr);
-        l[i] = s->master * OUT_PEAK * acid_tanh(s->drive * yl);
-        r[i] = s->master * OUT_PEAK * acid_tanh(s->drive * yr);
+        send[i] = s->send1 * y + s->send2 * s1 + s->send_drums * (hat + clap + snare + 0.5f * (cl + cr + ql + qr));
+        l[i] = kick + pump[i] * (pl[ACID_PAN_SYNTH1] * y + pl[ACID_PAN_SYNTH2] * s1 + pl[ACID_PAN_HAT] * hat +
+                                 pl[ACID_PAN_CLAP] * clap + pl[ACID_PAN_SNARE] * snare + cl + ql);
+        r[i] = kick + pump[i] * (pr[ACID_PAN_SYNTH1] * y + pr[ACID_PAN_SYNTH2] * s1 + pr[ACID_PAN_HAT] * hat +
+                                 pr[ACID_PAN_CLAP] * clap + pr[ACID_PAN_SNARE] * snare + cr + qr);
+    }
+    acid_delay_mix2(&s->delay, send, l, r, (int)n);
+    acid_stutter_run2(&s->stutter, l, r, (int)n);
+    acid_crush_run2(&s->crush, l, r, (int)n);
+    acid_djf_run2(&s->djf, l, r, (int)n);
+    for (size_t i = 0; i < n; i++) {
+        l[i] = s->master * OUT_PEAK * acid_tanh(s->drive * l[i]);
+        r[i] = s->master * OUT_PEAK * acid_tanh(s->drive * r[i]);
     }
     ACID_PROF_ADD(ACID_PROF_FX, t);
 }

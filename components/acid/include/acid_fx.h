@@ -116,3 +116,11 @@ int acid_stutter_active(const acid_stutter_t *st);
 
 // Панорама 0 слева, 64 центр, 127 справа: в центре оба канала 1, к краю дальний канал уходит в 0.
 void acid_pan(float pos, float *gl, float *gr);
+
+// Те же эффекты кусками по n сэмплов, результат сэмпл в сэмпл как у next. Пампинг - множители в gain;
+// дилэй добавляет повторы посыла send в l и r; остальные правят l и r на месте.
+void acid_pump_run(acid_pump_t *p, float *gain, int n);
+void acid_delay_mix2(acid_delay_t *d, const float *send, float *l, float *r, int n);
+void acid_stutter_run2(acid_stutter_t *st, float *l, float *r, int n);
+void acid_crush_run2(acid_crush_t *c, float *l, float *r, int n);
+void acid_djf_run2(acid_djf_t *f, float *l, float *r, int n);
