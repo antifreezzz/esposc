@@ -53,7 +53,11 @@ class ResonatorSvf {
     }
   }
   
+  // acid: without this GCC turns the 4-float state copies below into memcpy
+  // calls, 5 per batch, 6 batches per 12-sample block (-21 us per 2 ms block
+  // on ESP32-S3 for the modal voice).
   template<stmlib::FilterMode mode, bool add>
+  __attribute__((optimize("no-tree-loop-distribute-patterns")))
   void Process(
       const float* f,
       const float* q,

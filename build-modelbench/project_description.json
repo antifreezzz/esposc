@@ -1,7 +1,7 @@
 {
     "version":            "1.3",
     "project_name":       "esposc",
-    "project_version":    "0b4930d-dirty",
+    "project_version":    "325b956-dirty",
     "project_path":       "/home/antifreezzz/Documents/projects/esp/esposc",
     "idf_path":           "/home/antifreezzz/esp/esp-idf-v6.1",
     "build_dir":          "/home/antifreezzz/Documents/projects/esp/esposc/build-modelbench",
