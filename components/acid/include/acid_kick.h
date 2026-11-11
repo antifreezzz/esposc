@@ -27,3 +27,5 @@ void acid_kick_trigger_vel(acid_kick_t *k, float v);
 // Тон, глубина и время спада высоты, время спада громкости.
 void acid_kick_set(acid_kick_t *k, float low_hz, float sweep_hz, float pitch_s, float amp_s);
 float acid_kick_next(acid_kick_t *k);
+// n сэмплов с громкостью gain: то же, что gain * next на каждом.
+void acid_kick_run(acid_kick_t *k, float gain, float *out, int n);

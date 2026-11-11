@@ -28,6 +28,8 @@ void acid_hat_trigger(acid_hat_t *h, int open);
 // Тон (срез ФВЧ), спад закрытого и открытого.
 void acid_hat_set(acid_hat_t *h, float tone_hz, float closed_s, float open_s);
 float acid_hat_next(acid_hat_t *h);
+// n сэмплов с громкостью gain: то же, что gain * next на каждом.
+void acid_hat_run(acid_hat_t *h, float gain, float *out, int n);
 
 // Клэп: шум через полосовой ~1.2 кГц, 3 всплеска с шагом 10 мс и хвост.
 typedef struct {
@@ -46,6 +48,7 @@ void acid_clap_trigger(acid_clap_t *c);
 // Тон (центр полосы) и хвост.
 void acid_clap_set(acid_clap_t *c, float tone_hz, float tail_s);
 float acid_clap_next(acid_clap_t *c);
+void acid_clap_run(acid_clap_t *c, float gain, float *out, int n);
 
 // Малый: синус-корпус с коротким падением высоты плюс шумовые пружины через ФВЧ.
 typedef struct {
@@ -64,3 +67,4 @@ void acid_snare_trigger(acid_snare_t *s);
 // Тон корпуса, доля пружин 0..1, спад (до 1/e).
 void acid_snare_set(acid_snare_t *s, float tune_hz, float snappy, float decay_s);
 float acid_snare_next(acid_snare_t *s);
+void acid_snare_run(acid_snare_t *s, float gain, float *out, int n);

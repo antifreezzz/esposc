@@ -1748,12 +1748,10 @@ void acid_synth_render_src(acid_synth_t *s, acid_synth_src_t *src, size_t n)
     slot_run(s, &s->slot[0], src->y, (int)n);
     s->clock_now += (uint32_t)n;
     ACID_PROF_ADD(ACID_PROF_SYNTH1, t);
-    for (size_t i = 0; i < n; i++) {
-        src->kick[i] = s->kick_gain * s->kick_vel * acid_kick_next(&s->kick);
-        src->hat[i] = s->hat_gain * s->hat_vel * acid_hat_next(&s->hat);
-        src->clap[i] = s->clap_gain * s->clap_vel * acid_clap_next(&s->clap);
-        src->snare[i] = s->snare_gain * s->snare_vel * acid_snare_next(&s->snare);
-    }
+    acid_kick_run(&s->kick, s->kick_gain * s->kick_vel, src->kick, (int)n); // голос за голосом, не сэмпл за сэмплом
+    acid_hat_run(&s->hat, s->hat_gain * s->hat_vel, src->hat, (int)n);
+    acid_clap_run(&s->clap, s->clap_gain * s->clap_vel, src->clap, (int)n);
+    acid_snare_run(&s->snare, s->snare_gain * s->snare_vel, src->snare, (int)n);
     ACID_PROF_ADD(ACID_PROF_DRUMS, t);
 }
 
