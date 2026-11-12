@@ -1134,7 +1134,7 @@ int acid_synth_knob_smooth(const acid_synth_t *s, int page, int enc)
     case PAGE_TOMS + 1:
     case PAGE_COW: return enc >= 2 && enc <= 13;
     case PAGE_FX: return enc != 6 && enc != 9 && enc != 10 && enc != 14;
-    case ACID_PAGE_GRIDS: return enc >= 2 && enc <= 7;
+    case ACID_PAGE_GRIDS: return (enc >= 2 && enc <= 7) || enc == DRM_ROLL;
     default: {
         int idx = synth_page_idx(page);
         if (idx < 0) {

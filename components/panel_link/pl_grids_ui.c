@@ -25,9 +25,9 @@ static const area_t AREA[PL_GUI_IDS] = {
     [PL_GUI_ON] = {8, ROW1_Y, 80, ROW1_H, 1},
     [PL_GUI_FILL] = {96, ROW1_Y, 120, ROW1_H, 1},
     [PL_GUI_HAT] = {224, ROW1_Y, 248, ROW1_H, 3},
-    [PL_GUI_SRC] = {8, ROW2_Y, 200, SRC_H, 1},
-    [PL_GUI_XY] = {8, ROW2_Y + SRC_H + 4, 200, ROW2_H - SRC_H - 4, 1},
-    [PL_GUI_SLIDER] = {220, ROW2_Y, 250, ROW2_H, 5},
+    [PL_GUI_SRC] = {8, ROW2_Y, 176, SRC_H, 1},
+    [PL_GUI_XY] = {8, ROW2_Y + SRC_H + 4, 176, ROW2_H - SRC_H - 4, 1},
+    [PL_GUI_SLIDER] = {190, ROW2_Y, 282, ROW2_H, 6},
     [PL_GUI_GRID] = {GRID_X, GRID_Y, 32 * CELL_DX, 3 * CELL_DY, 1},
     [PL_GUI_TIME] = {8, ROW3_Y, 120, ROW3_H, 2},
     [PL_GUI_EVERY] = {136, ROW3_Y, 200, ROW3_H, 4},
@@ -69,7 +69,7 @@ int pl_gui_enc(int id, int idx)
 {
     switch (id) {
     case PL_GUI_ON: return 1;
-    case PL_GUI_SLIDER: return idx < 4 ? 4 + idx : 14; // плотности и хаос, пятый - свинг
+    case PL_GUI_SLIDER: return idx < 4 ? 4 + idx : 10 + idx; // плотности и хаос, пятый - свинг (14), шестой - дробь (15)
     case PL_GUI_SRC: return 13;
     case PL_GUI_HAT: return 8;
     case PL_GUI_TIME: return 9;

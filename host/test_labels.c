@@ -18,7 +18,7 @@ static int empty(int page, int enc, int type)
     case 10:
     case 11: return type == 26 ? enc >= 2 : type == 0 && enc >= 10 && enc <= 12; // слой: как синт, OFF (26) - пусто
     case 8: return 0; // FX: все 15, последняя - REVERB
-    case 12: return enc >= 15; // Grids: 13 PATTERN, 14 SWING
+    case 12: return 0; // Grids: 13 PATTERN, 14 SWING, 15 ROLL
     default: return 0;
     }
 }
@@ -306,7 +306,7 @@ TEST(test_grids_labels)
     }
     CHECK(strcmp(pl_knob_label(PL_PAGE_GRIDS, 13, raw), "PATTERN") == 0);
     CHECK(strcmp(pl_knob_label(PL_PAGE_GRIDS, 14, raw), "SWING") == 0);
-    CHECK(pl_knob_label(PL_PAGE_GRIDS, 15, raw) == NULL);
+    CHECK(strcmp(pl_knob_label(PL_PAGE_GRIDS, 15, raw), "ROLL") == 0);
     int lo, hi;
     pl_knob_range(PL_PAGE_GRIDS, 2, raw, &lo, &hi);
     CHECK(lo == 0 && hi == 127);

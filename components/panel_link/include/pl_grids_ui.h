@@ -11,7 +11,7 @@ enum {
     PL_GUI_TIME,   // сегменты HAT RIDE
     PL_GUI_EVERY,  // сегменты OFF 4 8 16
     PL_GUI_LEN,    // сегменты 1 2 4
-    PL_GUI_SLIDER, // KICK SNARE HAT CHAOS SWING
+    PL_GUI_SLIDER, // KICK SNARE HAT CHAOS SWING ROLL
     PL_GUI_XY,     // карта: X и Y; у банка и своих на её месте кнопка редактора
     PL_GUI_SRC,    // источник рисунка: тап открывает сетку выбора
     PL_GUI_GRID,   // сетка шагов: тап открывает редактор

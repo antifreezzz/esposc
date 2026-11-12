@@ -40,7 +40,7 @@ static const char *const FX[16] = {NULL, "CRUSH BITS", "CRUSH RATE", "DLY S1", "
                                    "REVERB"};
 static const char *const REVERB[16] = {NULL, "RVB S1", "RVB S2", "RVB DRUMS", "DECAY", "DAMP", "WIDTH"};
 static const char *const GRIDS[16] = {NULL, "ON", "X", "Y", "KICK", "SNARE", "HAT", "CHAOS", "HAT MODE",
-                                      "TIME", "EVERY", "FILL LEN", "FILL", "PATTERN", "SWING", NULL};
+                                      "TIME", "EVERY", "FILL LEN", "FILL", "PATTERN", "SWING", "ROLL"};
 // Источник рисунка: имена банка - те же, что в pl_grids_bank (сверяет test_labels).
 static const char *const GRIDS_SRC[PL_GRIDS_SRCS] = {
     "MAP",        "FOUR FLOOR", "HOUSE", "ELECTRO", "BRK HOUSE", "DUB TECHNO", "TWO STEP", "AMEN",

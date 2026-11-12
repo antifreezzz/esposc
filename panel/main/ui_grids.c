@@ -21,12 +21,13 @@
 #define C_SWING 0x5d6f7b // ползунок свинга
 #define PARTS 3
 #define STEPS PL_GRIDS_STEPS
-#define SLIDERS 5
+#define SLIDERS 6
 #define ENC_SRC 13
 #define ENC_SWING 14
+#define SL_SWING 4 // ползунок свинга: список из 4 значений, остальные - 0..127
 #define ALL_USER ((1 << PL_GRIDS_USER) - 1)
 
-static const char *const SLIDER_NAME[SLIDERS] = {"KICK", "SNARE", "HAT", "CHAOS", "SWING"};
+static const char *const SLIDER_NAME[SLIDERS] = {"KICK", "SNARE", "HAT", "CHAOS", "SWING", "ROLL"};
 static const char *const PART_NAME[PARTS] = {"K", "S", "H"};
 static const int SEGS[PL_GUI_IDS] = {[PL_GUI_HAT] = 3, [PL_GUI_TIME] = 2, [PL_GUI_EVERY] = 4, [PL_GUI_LEN] = 3};
 static const int ED_N[PL_GED_IDS] = {[PL_GED_BACK] = 1, [PL_GED_SLOT] = 4, [PL_GED_BAR] = 2, [PL_GED_TRIP] = 1,
@@ -202,7 +203,7 @@ void ug_build(lv_obj_t *scr)
         pl_gui_rect(PL_GUI_SLIDER, i, &x, &y, &w, &h);
         g.track[i] = ui_box(g.box, x, y - UI_WORK_Y, w, h, C_TILE);
         lv_obj_set_style_radius(g.track[i], 10, 0);
-        g.bar[i] = ui_box(g.track[i], 0, h, w, 0, i < 3 ? C_HIT : i == 3 ? C_CHAOS : C_SWING);
+        g.bar[i] = ui_box(g.track[i], 0, h, w, 0, i < 3 ? C_HIT : i == 3 ? C_CHAOS : i == SL_SWING ? C_SWING : C_HIT);
         lv_obj_set_style_radius(g.bar[i], 10, 0);
         g.sl_name[i] = ui_label(g.track[i], &bc_15, C_DIM);
         lv_label_set_text(g.sl_name[i], SLIDER_NAME[i]);
@@ -357,8 +358,8 @@ void ug_draw(const pl_model_t *m)
         g.drawn_src = raw[ENC_SRC];
     }
     for (int i = 0; i < SLIDERS; i++) {
-        int swing = i == SLIDERS - 1;
-        int v = swing ? raw[ENC_SWING] : raw[4 + i];
+        int swing = i == SL_SWING;
+        int v = raw[pl_gui_enc(PL_GUI_SLIDER, i)];
         if (v == g.drawn_sl[i]) {
             continue;
         }
@@ -544,7 +545,7 @@ void ug_input(pl_model_t *m, int down, int x, int y, int x0, int y0, uint32_t ms
         }
     }
     if (g.id == PL_GUI_SLIDER) {
-        int v = g.arg == SLIDERS - 1 ? pl_gui_swing_value(y) : pl_gui_slider_value(y);
+        int v = g.arg == SL_SWING ? pl_gui_swing_value(y) : pl_gui_slider_value(y);
         if (v != g.sent) {
             send(m, pl_gui_enc(g.id, g.arg), v);
             g.sent = v;

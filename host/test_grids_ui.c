@@ -14,7 +14,7 @@ static void center(int id, int idx, int *x, int *y)
 TEST(test_hit_centers)
 {
     static const int N[PL_GUI_IDS] = {[PL_GUI_ON] = 1, [PL_GUI_FILL] = 1, [PL_GUI_HAT] = 3, [PL_GUI_TIME] = 2,
-                                      [PL_GUI_EVERY] = 4, [PL_GUI_LEN] = 3, [PL_GUI_SLIDER] = 5, [PL_GUI_XY] = 1,
+                                      [PL_GUI_EVERY] = 4, [PL_GUI_LEN] = 3, [PL_GUI_SLIDER] = 6, [PL_GUI_XY] = 1,
                                       [PL_GUI_SRC] = 1, [PL_GUI_GRID] = 1};
     for (int id = 1; id < PL_GUI_IDS; id++) {
         for (int i = 0; i < N[id]; i++) {
@@ -31,7 +31,7 @@ TEST(test_rects_inside_and_apart)
 {
     int x, y, w, h;
     for (int id = 1; id < PL_GUI_IDS; id++) {
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 6; i++) {
             if (!pl_gui_rect(id, i, &x, &y, &w, &h)) {
                 continue;
             }
@@ -57,6 +57,10 @@ TEST(test_enc_of)
     CHECK(pl_gui_enc(PL_GUI_FILL, 0) == 12);
     CHECK(pl_gui_enc(PL_GUI_XY, 0) == 0); // две ручки: X и Y через pl_xy
     CHECK(pl_gui_enc(PL_GUI_SLIDER, 4) == 14); // SWING
+    CHECK(pl_gui_enc(PL_GUI_SLIDER, 5) == 15); // ROLL
+    int x, y, w, h;
+    CHECK(pl_gui_rect(PL_GUI_SLIDER, 5, &x, &y, &w, &h) && w >= 40 && x + w <= 472);
+    CHECK(!pl_gui_rect(PL_GUI_SLIDER, 6, &x, &y, &w, &h));
     CHECK(pl_gui_enc(PL_GUI_SRC, 0) == 13);
     CHECK(pl_gui_enc(PL_GUI_GRID, 0) == 0); // тап по сетке открывает редактор
 }

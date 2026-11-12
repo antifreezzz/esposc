@@ -22,6 +22,7 @@ typedef struct {
     int reverb;              // реверб был включён и считался
     int grids, grids_fill, grids_ride; // автобарабаны играли, у них была сбивка, рука времени на райде
     int grids_bank, grids_swing;       // играл рисунок из банка классики, играли со свингом
+    int grids_roll;                    // руки дробили удары (ручка ROLL)
     int petri, petri_knob, petri_freeze; // PETRI звучал, ручки «Чашки» крутили, фриз включали
     double petri_rms, other_rms;          // самое громкое окно с PETRI и без него
     long silent_windows, wide_windows;
@@ -108,6 +109,7 @@ static void play_cycle(seen_t *z, int c)
         z->grids_ride |= s.grids_hits != hits0 && s.drummer.knob[DRM_TIME] == DRM_TIME_RIDE;
         z->grids_bank |= s.grids_hits != hits0 && s.drummer.knob[DRM_SRC] >= 1 && s.drummer.knob[DRM_SRC] <= PL_GRIDS_BANK;
         z->grids_swing |= s.grids_hits != hits0 && s.drummer.knob[DRM_SWING] > 0;
+        z->grids_roll |= s.drummer.knob[DRM_ROLL] > 0 && (s.drummer.roll[0].left || s.drummer.roll[1].left);
         hits0 = s.grids_hits;
         for (int k = 0; k < ACID_PERC_SLOTS; k++) {
             const acid_perc_voice_t *pv = &s.perc.v[k];
@@ -193,6 +195,7 @@ static void coverage(const acid_demo_song_t *song)
         CHECK(z.reverb);
         CHECK(z.grids && z.grids_fill);
         CHECK(z.grids_bank && z.grids_swing);
+        CHECK(z.grids_roll);
         CHECK(z.petri);
         CHECK(z.petri_knob);
         CHECK(z.petri_freeze);
