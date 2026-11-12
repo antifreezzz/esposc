@@ -108,14 +108,14 @@ TEST(test_list_ignore)
     live();
     acid_synth_set_knob(&s, P, 3, ACID_TUNINGS);
     CHECK(acid_synth_knob(&s, P, 3) == 0);
-    acid_synth_set_knob(&s, P, 1, 3);
+    acid_synth_set_knob(&s, P, 1, ACID_GLIDES);
     CHECK(acid_synth_knob(&s, P, 1) == 0);
     acid_synth_set_knob(&s, P, 1, ACID_GLIDE_QUARTER);
     CHECK(acid_synth_knob(&s, P, 1) == ACID_GLIDE_QUARTER);
     CHECK(acid_synth_take_save(&s) == 1); // ручка пользователя: память пора записать
 }
 
-// Слайд октавой вверх: каждые 1/10 мс смотрим звучащую высоту голоса. Возвращает число разных значений,
+// Слайд октавой вверх: каждые 1/12 мс смотрим звучащую высоту голоса. Возвращает число разных значений,
 // grid - ступень сетки в полутонах (0 - гладко, проверка сетки не делается).
 static int slide_values(acid_slot_t *v, int ch, int from, int to, double grid, int *on_grid, int *monotonic)
 {
@@ -188,6 +188,49 @@ TEST(test_glide_per_synth_and_layer)
     CHECK(n > 200);
 }
 
+// Полулесенка: на каждой ступени полшага стоим, полшага едем к следующей. Нота приходит точно.
+static void ramp_case(int mode, double grid, int steps)
+{
+    live();
+    acid_synth_set_knob(&s, P, 1, mode);
+    CHECK(acid_synth_knob(&s, P, 1) == mode);
+    acid_slot_t *v = &s.slot[0];
+    on(BASS, 45);
+    render(4800);
+    on(BASS, 57);
+    double prev = -1e9;
+    int mono = 1, held = 0, moving = 0, total = 0;
+    for (int i = 0; i < 48000 / 4; i++) {
+        render(4);
+        double st = cents(v, 57) / 100.0;
+        if (st > -1e-6) {
+            break;
+        }
+        double q = st / grid;
+        held += fabs(q - floor(q + 0.5)) < 1e-3;
+        moving += fabs(st - prev) > 1e-6;
+        mono &= st >= prev - 1e-6;
+        prev = st;
+        total++;
+    }
+    CHECK(mono);
+    CHECK(total > 100);
+    CHECK(held > total / 5 && held < total * 4 / 5); // стоим на ступенях часть времени, не всё
+    CHECK(moving > steps * 3);                         // между ступенями едем, а не прыгаем
+    render(48000);
+    CHECK(fabs(cents(v, 57)) < 1e-3);
+}
+
+TEST(test_glide_semi_ramp)
+{
+    ramp_case(ACID_GLIDE_SEMI_RAMP, 1.0, 12);
+}
+
+TEST(test_glide_quarter_ramp)
+{
+    ramp_case(ACID_GLIDE_QUARTER_RAMP, 0.5, 24);
+}
+
 // Plaits: нота модели на сетке полутонов, пока едет слайд.
 TEST(test_glide_steps_plaits)
 {
@@ -252,6 +295,8 @@ int main(void)
     RUN(test_glide_quarter_steps);
     RUN(test_glide_smooth_unchanged);
     RUN(test_glide_per_synth_and_layer);
+    RUN(test_glide_semi_ramp);
+    RUN(test_glide_quarter_ramp);
     RUN(test_glide_steps_plaits);
     RUN(test_glide_steps_tuned);
     RUN(test_blob);

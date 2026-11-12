@@ -36,7 +36,8 @@
 #define ACID_PAGE_REVERB 27 // только панель: номера BSP нет
 #define ACID_PAGE_PITCH 28  // только панель (подэкран GLIDE): шаг слайда синтов 1-2 и строй, номера BSP нет
 #define ACID_PITCH_KNOBS 3
-enum { ACID_GLIDE_SMOOTH, ACID_GLIDE_SEMI, ACID_GLIDE_QUARTER }; // ручки 1-2: слайд гладко или лесенкой
+// Ручки 1-2: слайд гладко, лесенкой или полулесенкой (полшага стоим, полшага едем).
+enum { ACID_GLIDE_SMOOTH, ACID_GLIDE_SEMI, ACID_GLIDE_QUARTER, ACID_GLIDE_SEMI_RAMP, ACID_GLIDE_QUARTER_RAMP, ACID_GLIDES };
 // Ручка 3: строй от тоники страницы 9 (ROOT). Равномерный - прежняя высота бит в бит.
 enum { ACID_TUNING_EQUAL, ACID_TUNING_JUST, ACID_TUNING_PYTHAG, ACID_TUNING_MEANTONE, ACID_TUNING_RAST,
        ACID_TUNING_BAYATI, ACID_TUNINGS };
@@ -69,6 +70,7 @@ typedef struct {
     float target_log2;
     float glide_coef;
     float gstep, ginv;  // слайд лесенкой: ступень в октавах (1/12, 1/24) и обратная; 0 - гладко
+    int gramp;          // полулесенка: полшага на ступени, полшага съезд к следующей
     int gliding;
     float accent_gain;
     float fenv_amount; // Гц на пике огибающей фильтра

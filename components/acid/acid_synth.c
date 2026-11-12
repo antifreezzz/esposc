@@ -143,6 +143,7 @@ static void slot_init(acid_slot_t *v, float sr, int type)
     acid_amp_init(&v->amp, 0.003f, 0.01f, sr);
     v->glide_coef = expf(-1.0f / (GLIDE_S * sr));
     v->gstep = v->ginv = 0.0f;
+    v->gramp = 0;
     v->pitch_log2 = v->target_log2 = log2f(110.0f);
     v->gliding = 0;
     v->accent_gain = 1.0f;
@@ -364,12 +365,20 @@ void acid_synth_set_load(acid_synth_t *s, float load)
 }
 
 // Звучащая высота: на слайде лесенкой - ближайшая ступень от цели, иначе как есть.
+// Полулесенка: в дальней от цели половине ступени высота стоит, в ближней съезжает к следующей ступени.
 static inline float pitch_out(const acid_slot_t *v)
 {
     if (v->gstep == 0.0f || !v->gliding) {
         return v->pitch_log2;
     }
     float d = (v->pitch_log2 - v->target_log2) * v->ginv;
+    if (v->gramp) {
+        float a = d < 0.0f ? -d : d;
+        float k = (float)(int)a;
+        float f = 2.2f * (a - k) - 0.1f; // у самой ступени - ровно на ней: гладкий глайд не доезжает ~0.8 цента
+        a = k + (f < 0.0f ? 0.0f : f < 1.0f ? f : 1.0f);
+        return v->target_log2 + (d < 0.0f ? -a : a) * v->gstep;
+    }
     return v->target_log2 + (float)(int)(d < 0.0f ? d - 0.5f : d + 0.5f) * v->gstep;
 }
 
@@ -982,13 +991,16 @@ static void page_reverb(acid_synth_t *s, int slot, int v)
 // Подэкран PITCH: шаг слайда синта 1 и 2 (у синта и его слоя один), строй. Вне списка - игнор.
 static void page_pitch(acid_synth_t *s, int slot, int v)
 {
-    if (slot <= 2 && v <= ACID_GLIDE_QUARTER) {
+    if (slot <= 2 && v < ACID_GLIDES) {
         s->pitch_raw[slot - 1] = (uint8_t)v;
-        float inv = v == ACID_GLIDE_SEMI ? 12.0f : v == ACID_GLIDE_QUARTER ? 24.0f : 0.0f;
+        int ramp = v >= ACID_GLIDE_SEMI_RAMP;
+        int st = ramp ? v - ACID_GLIDE_SEMI_RAMP + ACID_GLIDE_SEMI : v;
+        float inv = st == ACID_GLIDE_SEMI ? 12.0f : st == ACID_GLIDE_QUARTER ? 24.0f : 0.0f;
         acid_slot_t *vs[2] = {&s->slot[slot - 1], &s->layer[slot - 1]};
         for (int i = 0; i < 2; i++) {
             vs[i]->ginv = inv;
             vs[i]->gstep = inv > 0.0f ? 1.0f / inv : 0.0f;
+            vs[i]->gramp = ramp;
         }
     } else if (slot == 3 && v < ACID_TUNINGS) {
         s->pitch_raw[2] = (uint8_t)v;

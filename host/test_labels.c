@@ -385,10 +385,12 @@ TEST(test_pitch_labels)
     CHECK(pl_knob_label(PL_PAGE_PITCH, 4, raw) == NULL && pl_knob_label(PL_PAGE_PITCH, 0, raw) == NULL);
     int lo, hi;
     pl_knob_range(PL_PAGE_PITCH, 1, raw, &lo, &hi);
-    CHECK(lo == 0 && hi == 2 && pl_knob_list(PL_PAGE_PITCH, 2, raw));
+    CHECK(lo == 0 && hi == 4 && pl_knob_list(PL_PAGE_PITCH, 2, raw));
     CHECK(strcmp(pl_value_text(PL_PAGE_PITCH, 1, 0, raw, buf), "SMOOTH") == 0);
     CHECK(strcmp(pl_value_text(PL_PAGE_PITCH, 2, 1, raw, buf), "SEMI") == 0);
     CHECK(strcmp(pl_value_text(PL_PAGE_PITCH, 2, 2, raw, buf), "QUARTER") == 0);
+    CHECK(strcmp(pl_value_text(PL_PAGE_PITCH, 1, 3, raw, buf), "SEMI GL") == 0);
+    CHECK(strcmp(pl_value_text(PL_PAGE_PITCH, 1, 4, raw, buf), "QRTR GL") == 0);
     pl_knob_range(PL_PAGE_PITCH, 3, raw, &lo, &hi);
     CHECK(lo == 0 && hi == 5);
     static const char *const T[6] = {"EQUAL", "JUST", "PYTHAG", "MEANTONE", "RAST", "BAYATI"};
