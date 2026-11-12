@@ -319,7 +319,8 @@ TEST(test_list_ignore)
     CHECK(acid_drummer_set(&d, DRM_SRC, PL_GRIDS_SRCS) == 0 && d.knob[DRM_SRC] == PL_GRIDS_SRCS - 1);
     CHECK(acid_drummer_set(&d, DRM_SWING, 3) == 1);
     CHECK(acid_drummer_set(&d, DRM_SWING, 4) == 0 && d.knob[DRM_SWING] == 3);
-    CHECK(acid_drummer_set(&d, 15, 1) == 0);
+    CHECK(acid_drummer_set(&d, DRM_ROLL, 127) == 1 && d.knob[DRM_ROLL] == 127);
+    CHECK(acid_drummer_set(&d, DRM_ROLL, 128) == 0 && acid_drummer_set(&d, 16, 1) == 0);
 }
 
 TEST(test_defaults)
@@ -330,6 +331,7 @@ TEST(test_defaults)
     CHECK(d.knob[DRM_CHAOS] == 0 && d.knob[DRM_HAT_MODE] == 0 && d.knob[DRM_TIME] == 0);
     CHECK(d.knob[DRM_FILL_EVERY] == 2 && d.knob[DRM_FILL_LEN] == 0 && d.knob[DRM_FILL_NOW] == 0);
     CHECK(d.knob[DRM_SRC] == PL_GRIDS_SRC_MAP && d.knob[DRM_SWING] == 0 && acid_drummer_grid(&d) == PL_GRIDS_16);
+    CHECK(DRM_ROLL == 15 && d.knob[DRM_ROLL] == 0);
 }
 
 TEST(test_deterministic)
@@ -528,6 +530,188 @@ TEST(test_two_feet)
     CHECK(vel_of_note(h, n, 36) >= 82);
 }
 
+// Дробь (ROLL): свой рисунок - хэт на каждом шаге (акцент на долях), малый на 2 и 4 долях, бочка на долях.
+static pl_grids_pat_t roll_pat[PL_GRIDS_USER];
+static acid_hit_t rh[ACID_DRUMMER_ROLLS];
+// Журнал такта: на каждый шаг до 9 тиков, в ячейке - число повторов ноты note на этом тике после шага.
+static uint8_t roll_at[32][9];
+static int roll_vel_bad, roll_foreign, roll_total;
+
+static void roll_setup(int grid, int roll, int swing)
+{
+    memset(roll_pat, 0, sizeof roll_pat);
+    roll_pat[0].grid = (uint8_t)grid;
+    for (int g = 0; g < 32; g++) {
+        roll_pat[0].lv[0 * 32 + g] = g % 4 == 0 ? PL_GRIDS_LV_ACC : 0;
+        roll_pat[0].lv[1 * 32 + g] = g % 8 == 4 ? PL_GRIDS_LV_HIT : 0;
+        roll_pat[0].lv[2 * 32 + g] = g % 4 == 0 ? PL_GRIDS_LV_ACC : PL_GRIDS_LV_HIT;
+    }
+    setup(64, 64, 80, 70, 90);
+    acid_drummer_use_user(&d, roll_pat);
+    acid_drummer_set(&d, DRM_SRC, PL_GRIDS_SRC_USER);
+    acid_drummer_set(&d, DRM_SWING, swing);
+    acid_drummer_set(&d, DRM_ROLL, roll);
+}
+
+// Два такта: шаг, потом тики до следующего шага (len[step & 1] - 1 штук). Считает повторы ноты note.
+static void roll_run(int steps, const int len[2], int note)
+{
+    memset(roll_at, 0, sizeof roll_at);
+    roll_vel_bad = roll_foreign = roll_total = 0;
+    for (int g = 0; g < 2 * steps; g++) {
+        int n = acid_drummer_step(&d, g % steps, (uint32_t)(g / steps), h);
+        for (int t = 1; t < len[g & 1]; t++) {
+            int k = acid_drummer_tick(&d, rh);
+            roll_total += k;
+            for (int i = 0; i < k; i++) {
+                int first = vel_of_note(h, n, rh[i].note);
+                roll_foreign += first < 0 || (rh[i].note != 38 && rh[i].note != 42 && rh[i].note != 51);
+                roll_vel_bad += rh[i].vel >= first || rh[i].vel == 0;
+                roll_at[g][t] += rh[i].note == note;
+            }
+        }
+    }
+}
+
+TEST(test_roll_off_silent)
+{
+    static const int len[2] = {6, 6};
+    roll_setup(PL_GRIDS_16, 0, 0);
+    uint32_t rnd0 = d.rnd;
+    roll_run(16, len, 42);
+    CHECK(roll_total == 0);
+    // Без дроби генератор случайных чисел идёт как раньше: хаос такта 0 (3) и по числу на удар -
+    // 4 бочки, 2 малых, 16 хэтов на такт.
+    acid_drummer_t ref;
+    acid_drummer_init(&ref);
+    ref.rnd = rnd0;
+    for (int i = 0; i < 3 + 2 * (4 + 2 + 16); i++) {
+        ref.rnd = ref.rnd * 1664525u + 1013904223u;
+    }
+    CHECK(d.rnd == ref.rnd);
+}
+
+TEST(test_roll_max)
+{
+    static const int len[2] = {6, 6};
+    roll_setup(PL_GRIDS_16, 127, 0);
+    roll_run(16, len, 42);
+    CHECK(roll_foreign == 0 && roll_vel_bad == 0);
+    int x2 = 0, x3 = 0, other = 0;
+    for (int g = 0; g < 32; g++) {
+        const uint8_t *a = roll_at[g];
+        int two = a[3] == 1 && !a[1] && !a[2] && !a[4] && !a[5];
+        int three = a[2] == 1 && a[4] == 1 && !a[1] && !a[3] && !a[5];
+        int none = !a[1] && !a[2] && !a[3] && !a[4] && !a[5];
+        x2 += two, x3 += three, other += !two && !three && !none;
+        if (g % 4 == 0) {
+            CHECK(none); // акцент не дробится
+        }
+    }
+    CHECK(other == 0);
+    CHECK(x2 >= 10 && x3 >= 2 && x2 + x3 >= 20); // на максимуме почти каждый обычный удар; x3 - примерно четверть
+    roll_setup(PL_GRIDS_16, 127, 0);
+    roll_run(16, len, 38);
+    int snare = 0;
+    for (int g = 0; g < 32; g++) {
+        for (int t = 1; t < 6; t++) {
+            snare += roll_at[g][t];
+            CHECK(g % 8 == 4 || roll_at[g][t] == 0);
+        }
+    }
+    CHECK(snare >= 3); // малый дробится тоже
+}
+
+TEST(test_roll_amount)
+{
+    static const int len[2] = {6, 6};
+    int total[3];
+    static const int knob[3] = {20, 64, 127};
+    for (int i = 0; i < 3; i++) {
+        roll_setup(PL_GRIDS_16, knob[i], 0);
+        total[i] = 0;
+        for (int rep = 0; rep < 8; rep++) {
+            roll_run(16, len, 42);
+            total[i] += roll_total;
+        }
+    }
+    CHECK(total[0] > 0 && total[0] < total[1] && total[1] < total[2]);
+}
+
+// Свинг 3: чётный шаг длится 9 тиков, нечётный - 3. Повторы делят свой шаг ровно; в короткий не влезают.
+TEST(test_roll_swing)
+{
+    static const int len[2] = {9, 3};
+    roll_setup(PL_GRIDS_16, 127, 3);
+    roll_run(16, len, 42);
+    int rolled = 0;
+    for (int g = 0; g < 32; g++) {
+        const uint8_t *a = roll_at[g];
+        if (g & 1) {
+            CHECK(!a[1] && !a[2]);
+            continue;
+        }
+        int two = a[4] == 1 && a[3] + a[6] == 0;
+        int three = a[3] == 1 && a[6] == 1 && a[4] == 0;
+        int sum = 0;
+        for (int t = 1; t < 9; t++) {
+            sum += a[t];
+        }
+        CHECK(sum == 0 || (two && sum == 1) || (three && sum == 2));
+        rolled += sum > 0;
+    }
+    CHECK(rolled >= 6);
+}
+
+// Триольная сетка: шаг 8 тиков, дробь - 2 или 4 удара.
+TEST(test_roll_triplet)
+{
+    static const int len[2] = {8, 8};
+    roll_setup(PL_GRIDS_12T, 127, 0);
+    roll_run(12, len, 42);
+    int x2 = 0, x4 = 0;
+    for (int g = 0; g < 24; g++) {
+        const uint8_t *a = roll_at[g];
+        int two = a[4] == 1 && a[2] + a[6] == 0;
+        int four = a[2] == 1 && a[4] == 1 && a[6] == 1;
+        int sum = 0;
+        for (int t = 1; t < 8; t++) {
+            sum += a[t];
+        }
+        CHECK(sum == 0 || (two && sum == 1) || (four && sum == 3));
+        x2 += two && sum == 1, x4 += four;
+    }
+    CHECK(x2 >= 6 && x4 >= 1);
+}
+
+// Новый шаг и сброс обрывают недоигранную дробь.
+TEST(test_roll_cancel)
+{
+    roll_setup(PL_GRIDS_16, 127, 0);
+    int pending = 0;
+    for (int g = 0; g < 32 && !pending; g++) {
+        acid_drummer_step(&d, g % 16, (uint32_t)(g / 16), h);
+        acid_drummer_t copy = d;
+        for (int t = 1; t < 6; t++) {
+            pending += acid_drummer_tick(&copy, rh);
+        }
+        if (pending) {
+            acid_drummer_reset(&d);
+            for (int t = 1; t < 6; t++) {
+                CHECK(acid_drummer_tick(&d, rh) == 0);
+            }
+        }
+    }
+    CHECK(pending > 0);
+    // Выключенный барабанщик не дробит.
+    roll_setup(PL_GRIDS_16, 127, 0);
+    acid_drummer_step(&d, 1, 0, h);
+    acid_drummer_set(&d, DRM_ON, 0);
+    for (int t = 1; t < 6; t++) {
+        CHECK(acid_drummer_tick(&d, rh) == 0);
+    }
+}
+
 int main(void)
 {
     RUN(test_two_feet);
@@ -545,5 +729,11 @@ int main(void)
     RUN(test_bank_source);
     RUN(test_user_ghosts);
     RUN(test_triplet_grid);
+    RUN(test_roll_off_silent);
+    RUN(test_roll_max);
+    RUN(test_roll_amount);
+    RUN(test_roll_swing);
+    RUN(test_roll_triplet);
+    RUN(test_roll_cancel);
     TEST_MAIN_END();
 }

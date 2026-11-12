@@ -191,6 +191,37 @@ TEST(test_swing_change_mid_step)
     CHECK(s.grids_hits == 16);
 }
 
+// Дробь: повторы барабанщика идут в ударку с тиков между шагами.
+TEST(test_roll_between_steps)
+{
+    static pl_grids_pat_t u[PL_GRIDS_USER];
+    pl_grids_user_init(u);
+    for (int st = 0; st < 32; st++) {
+        u[0].lv[2 * 32 + st] = PL_GRIDS_LV_HIT; // хэт на каждом шаге, без акцентов
+    }
+    for (int roll = 0; roll < 2; roll++) {
+        acid_synth_init(&s, SR);
+        acid_synth_use_grids(&s, u);
+        acid_synth_set_knob(&s, ACID_PAGE_GRIDS, DRM_ON, 1);
+        acid_synth_set_knob(&s, ACID_PAGE_GRIDS, DRM_SRC, PL_GRIDS_SRC_USER);
+        acid_synth_set_knob(&s, ACID_PAGE_GRIDS, DRM_FILL_EVERY, 0);
+        acid_synth_set_knob(&s, ACID_PAGE_GRIDS, DRM_ROLL, roll ? 127 : 0);
+        CHECK(acid_synth_knob(&s, ACID_PAGE_GRIDS, DRM_ROLL) == (roll ? 127 : 0));
+        ev(ACID_MIDI_START, 0, 0, 0);
+        ticks(96);
+        if (roll) {
+            CHECK(s.grids_hits >= 16 + 12 && s.grids_hits <= 16 + 32);
+        } else {
+            CHECK(s.grids_hits == 16);
+        }
+        ticks(1); // шаг 0 следующего такта, за ним могла бы идти дробь
+        uint32_t hits = s.grids_hits;
+        ev(ACID_MIDI_STOP, 0, 0, 0);
+        ticks(12);
+        CHECK(s.grids_hits == hits);
+    }
+}
+
 int main(void)
 {
     RUN(test_user_patterns);
@@ -202,5 +233,6 @@ int main(void)
     RUN(test_enable_mid_bar);
     RUN(test_stop_silent);
     RUN(test_bsp_drums_pass);
+    RUN(test_roll_between_steps);
     TEST_MAIN_END();
 }

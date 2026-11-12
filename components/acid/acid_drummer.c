@@ -35,6 +35,7 @@ void acid_drummer_reset(acid_drummer_t *d)
     d->crash_next = 0;
     d->kick_next = 0;
     d->kick_run = 0;
+    d->roll[0].left = d->roll[1].left = 0;
 }
 
 void acid_drummer_use_user(acid_drummer_t *d, const pl_grids_pat_t *user)
@@ -49,7 +50,7 @@ int acid_drummer_grid(const acid_drummer_t *d)
 
 int acid_drummer_set(acid_drummer_t *d, int enc, int v)
 {
-    if (enc < DRM_ON || enc > DRM_SWING || v < 0 || v > KNOB_MAX) {
+    if (enc < DRM_ON || enc > DRM_ROLL || v < 0 || v > KNOB_MAX) {
         return 0;
     }
     switch (enc) {
@@ -118,6 +119,31 @@ static int vel_of(acid_drummer_t *d, int accent, int ghost)
     return base + (int)(next_rnd(d) % (2 * VEL_JITTER + 1)) - VEL_JITTER;
 }
 
+// Дробь руки hand (0 малый, 1 рука времени) на шаге длиной len тиков: с шансом ROLL удар повторяется, деля шаг
+// ровно - чаще на 2, в четверти случаев на fast (3, у триольной сетки 4). Доли короче 2 тиков не играются.
+static void roll_arm(acid_drummer_t *d, int hand, int note, int vel, int len, int fast)
+{
+    int amount = d->knob[DRM_ROLL];
+    if (!amount) {
+        return; // и генератор не трогаем: без дроби рисунок сил ударов прежний
+    }
+    uint32_t r = next_rnd(d);
+    if ((int)(r & 127) >= amount) {
+        return;
+    }
+    int hits = ((r >> 7) & 3) == 0 ? fast : 2;
+    while (hits > 1 && len / hits < 2) {
+        hits--;
+    }
+    if (hits < 2) {
+        return;
+    }
+    d->roll[hand].note = (uint8_t)note;
+    d->roll[hand].vel = (uint8_t)(vel * 3 / 4); // повторы тише первого удара
+    d->roll[hand].left = (uint8_t)(hits - 1);
+    d->roll[hand].every = d->roll[hand].wait = (uint8_t)(len / hits);
+}
+
 static uint8_t sat_add128(uint8_t v)
 {
     return v > 127 ? 255 : (uint8_t)(v + 128);
@@ -134,6 +160,10 @@ int acid_drummer_step(acid_drummer_t *d, int step, uint32_t bar, acid_hit_t out[
     int beat = acid_drummer_grid(d) == PL_GRIDS_12T ? 3 : 4;
     int bar_steps = 4 * beat;
     int crash = 0;
+    // Длина шага в тиках клока: триольный - 8, шестнадцатая - 6, свинг удлиняет чётную и укорачивает нечётную.
+    int len = beat == 3 ? 8 : 6 + ((step & 1) ? -1 : 1) * d->knob[DRM_SWING];
+    int fast = beat == 3 ? 4 : 3;
+    d->roll[0].left = d->roll[1].left = 0; // недоигранная дробь прошлого шага обрывается
     if (step == 0) {
         // Новый такт: сбивка прошлого такта кончилась, авто-сбивка на конец такта фразы.
         d->fill_from = d->fill_to = 0;
@@ -194,7 +224,11 @@ int acid_drummer_step(acid_drummer_t *d, int step, uint32_t bar, acid_hit_t out[
         uint8_t fd[3] = {dens[0], sat_add128(dens[1]), sat_add128(dens[2])};
         unsigned f = pl_grids_src_step(src, d->user, x, y, fd, d->perturb, g);
         if ((f >> 1) & 1) {
-            add(out, &n, N_SNARE, vel_of(d, (f >> 4) & 1, (f >> 7) & 1));
+            int vel = vel_of(d, (f >> 4) & 1, (f >> 7) & 1);
+            add(out, &n, N_SNARE, vel);
+            if (!((f >> 4) & 1)) {
+                roll_arm(d, 0, N_SNARE, vel, len, fast);
+            }
         }
         if ((f >> 2) & 1) {
             int idx = 6 * (step - d->fill_from) / (fill_to - d->fill_from);
@@ -206,7 +240,11 @@ int acid_drummer_step(acid_drummer_t *d, int step, uint32_t bar, acid_hit_t out[
     } else {
         // Вторая рука: малый по дорожке 1.
         if ((m >> 1) & 1) {
-            add(out, &n, N_SNARE, vel_of(d, (m >> 4) & 1, (m >> 7) & 1));
+            int vel = vel_of(d, (m >> 4) & 1, (m >> 7) & 1);
+            add(out, &n, N_SNARE, vel);
+            if (!((m >> 4) & 1)) {
+                roll_arm(d, 0, N_SNARE, vel, len, fast); // акцент не дробится
+            }
         }
         // Рука времени по дорожке 2, на шаге крэша молчит.
         if (((m >> 2) & 1) && !crash) {
@@ -221,12 +259,29 @@ int acid_drummer_step(acid_drummer_t *d, int step, uint32_t bar, acid_hit_t out[
             } else {
                 note = 42;
             }
-            add(out, &n, note, vel_of(d, accent, (m >> 8) & 1));
+            int vel = vel_of(d, accent, (m >> 8) & 1);
+            add(out, &n, note, vel);
+            if (!accent && note != 46) {
+                roll_arm(d, 1, note, vel, len, fast); // закрытый хэт и райд; открытый хэт дробью звучит кашей
+            }
         }
     }
     // Левая нога: педаль хэта на 2 и 4 долях тихо, только в режиме райд.
     if (d->knob[DRM_TIME] == DRM_TIME_RIDE && (step == beat || step == 3 * beat)) {
         add(out, &n, N_PEDAL, VEL_PEDAL);
+    }
+    return n;
+}
+
+int acid_drummer_tick(acid_drummer_t *d, acid_hit_t out[ACID_DRUMMER_ROLLS])
+{
+    int n = 0;
+    for (int i = 0; i < ACID_DRUMMER_ROLLS; i++) {
+        if (d->roll[i].left && --d->roll[i].wait == 0) {
+            d->roll[i].left--;
+            d->roll[i].wait = d->roll[i].every;
+            add(out, &n, d->roll[i].note, d->roll[i].vel);
+        }
     }
     return n;
 }

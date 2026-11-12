@@ -1413,6 +1413,13 @@ void acid_synth_midi(acid_synth_t *s, const acid_midi_event_t *ev)
         int grid_step = acid_beat_grid_due(&s->beat, acid_drummer_grid(&s->drummer), s->grids_swing);
         if (grid_step >= 0) {
             grids_play(s, grid_step);
+        } else if (!s->beat.stopped) {
+            acid_hit_t hit[ACID_DRUMMER_ROLLS]; // между шагами - повторы дроби
+            int n = acid_drummer_tick(&s->drummer, hit);
+            for (int i = 0; i < n; i++) {
+                drum_on(s, hit[i].note, hit[i].vel);
+            }
+            s->grids_hits += (uint32_t)n;
         }
         if (s->seq) {
             acid_seq_ev_t sev[4];
