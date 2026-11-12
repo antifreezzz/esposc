@@ -1,4 +1,5 @@
 // Синт и встроенный секвенсер: ноты с тика клока, смешивание с BSP, Stop и ▶.
+#include "acid_mod.h"
 #include "acid_seq.h"
 #include "acid_synth.h"
 #include "test.h"
@@ -147,6 +148,26 @@ TEST(test_same_note_bsp_release_keeps_seq)
     CHECK(s.slot[0].nheld == 1 && s.slot[0].held[0] == 36);
 }
 
+// Ретриггер x3: удары по тику (21 мс при 120 BPM) короче окна дребезга пэдов, но секвенсер не пэд -
+// каждое отпускание настоящее и каждый удар запускает ноту заново.
+TEST(test_retrig_not_debounced)
+{
+    setup();
+    acid_seq_set_step(&q, 0, 0, 0, 0 | ACID_SEQ_RTG | ACID_SEQ_SLIDE);
+    acid_synth_use_seq(&s, &q);
+    ev(ACID_MIDI_START, 0, 0, 0);
+    acid_synth_seq_run(&s, 0, 1);
+    int hits = 0;
+    for (int t = 0; t < 6; t++) {
+        s.trig = 0;
+        ticks(1);
+        hits += (s.trig & ACID_TRIG_NOTE1) != 0;
+        CHECK(s.slot[0].nheld == (t % 2 == 0));
+        CHECK(s.layer[0].nheld == (t % 2 == 0));
+    }
+    CHECK(hits == 3);
+}
+
 int main(void)
 {
     RUN(test_seq_plays_note);
@@ -157,5 +178,6 @@ int main(void)
     RUN(test_start_rewinds);
     RUN(test_same_note_seq_gate_keeps_bsp);
     RUN(test_same_note_bsp_release_keeps_seq);
+    RUN(test_retrig_not_debounced);
     TEST_MAIN_END();
 }

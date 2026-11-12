@@ -1314,6 +1314,15 @@ static void synth_note(acid_synth_t *s, int idx, int on, int note, int vel)
     }
 }
 
+// Отпускание без окна дребезга: у секвенсера коротких случайных нот нет, а удары ретриггера короче окна.
+static void exact_off(acid_synth_t *s, acid_slot_t *v, int note)
+{
+    if (v->pend_note == note) {
+        v->pend_note = -1;
+    }
+    note_release(s, v, note);
+}
+
 static void seq_notes(acid_synth_t *s, const acid_seq_ev_t *ev, int n)
 {
     for (int i = 0; i < n; i++) {
@@ -1321,7 +1330,12 @@ static void seq_notes(acid_synth_t *s, const acid_seq_ev_t *ev, int n)
         if (!ev[i].on && (s->bsp_held[ev[i].synth][note >> 5] >> (note & 31) & 1)) {
             continue; // ту же ноту держит BSP: отпустит он
         }
-        synth_note(s, ev[i].synth, ev[i].on, note, ev[i].vel);
+        if (ev[i].on || s->drone) {
+            synth_note(s, ev[i].synth, ev[i].on, note, ev[i].vel);
+        } else {
+            exact_off(s, &s->slot[ev[i].synth], note);
+            exact_off(s, &s->layer[ev[i].synth], note);
+        }
     }
 }
 

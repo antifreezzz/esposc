@@ -21,6 +21,11 @@ void acid_seq_init(acid_seq_t *q)
     q->bpm = BPM_DEFAULT;
 }
 
+int acid_seq_hits(uint8_t v)
+{
+    return v & ACID_SEQ_RTG ? (v & ACID_SEQ_SLIDE ? 3 : 2) : 1;
+}
+
 static int in(int v, int lo, int hi)
 {
     return v >= lo && v <= hi;
@@ -29,7 +34,7 @@ static int in(int v, int lo, int hi)
 void acid_seq_set_step(acid_seq_t *q, int synth, int pat, int step, uint8_t v)
 {
     if (in(synth, 0, ACID_SEQ_SYNTHS - 1) && in(pat, 0, ACID_SEQ_PATS - 1) && in(step, 0, ACID_SEQ_STEPS - 1)) {
-        q->t[synth].pat[pat][step] = v & (ACID_SEQ_DEG | ACID_SEQ_ACC | ACID_SEQ_SLIDE | ACID_SEQ_UP);
+        q->t[synth].pat[pat][step] = v & (ACID_SEQ_DEG | ACID_SEQ_ACC | ACID_SEQ_SLIDE | ACID_SEQ_UP | ACID_SEQ_RTG);
     }
 }
 
@@ -195,7 +200,9 @@ static int track_clock(acid_seq_track_t *t, int synth, int beat_step, const acid
     uint8_t v = t->pat[t->cur_pat][t->step];
     if (t->tick == 0) {
         int deg = v & ACID_SEQ_DEG;
+        int hits = acid_seq_hits(v);
         int old = t->sounding;
+        t->rtg = 0;
         if (old >= 0 && !t->slid) {
             k = emit(out, k, synth, 0, old, 0); // гейт не успел (rewind): гасим до новой, без глайда
             old = t->sounding = -1;
@@ -210,15 +217,32 @@ static int track_clock(acid_seq_track_t *t, int synth, int beat_step, const acid
             int sc = t->scale[t->cur_pat];
             int note = sc ? acid_tonal_scale_note(sc - 1, base, deg) : acid_tonal_degree_note(tonal, base, deg);
             note = note < 0 ? 0 : (note > 127 ? 127 : note);
+            int vel = (v & ACID_SEQ_ACC) ? VEL_ACC : VEL;
             if (note != old) {
-                k = emit(out, k, synth, 1, note, (v & ACID_SEQ_ACC) ? VEL_ACC : VEL); // новая раньше старой: глайд
+                k = emit(out, k, synth, 1, note, vel); // новая раньше старой: глайд
                 if (old >= 0) {
                     k = emit(out, k, synth, 0, old, 0);
                 }
                 t->sounding = (int8_t)note;
+            } else if (hits > 1) {
+                k = emit(out, k, synth, 0, old, 0); // та же нота пришла слайдом: ретриггер бьёт заново
+                k = emit(out, k, synth, 1, note, vel);
             }
+            // Период повторов: шаг из 6 тиков делится на 2 удара по 3 тика или 3 по 2.
+            t->rtg = (uint8_t)(hits > 1 ? TICKS / hits : 0);
+            t->rtg_note = (uint8_t)note;
+            t->rtg_vel = (uint8_t)vel;
         }
-        t->slid = (v & ACID_SEQ_SLIDE) && t->sounding >= 0;
+        t->slid = (v & ACID_SEQ_SLIDE) && hits == 1 && t->sounding >= 0;
+    } else if (t->rtg) {
+        // Повторы идут по защёлкнутому на тике 0: правка шага посреди хода их не ломает.
+        if (t->tick % t->rtg == 0) {
+            k = emit(out, k, synth, 1, t->rtg_note, t->rtg_vel);
+            t->sounding = (int8_t)t->rtg_note;
+        } else if (t->tick % t->rtg == t->rtg - 1 && t->sounding >= 0) {
+            k = emit(out, k, synth, 0, t->sounding, 0);
+            t->sounding = -1;
+        }
     } else if (t->tick == GATE_TICK && t->sounding >= 0 && !t->slid) {
         k = emit(out, k, synth, 0, t->sounding, 0);
         t->sounding = -1;

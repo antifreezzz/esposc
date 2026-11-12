@@ -364,6 +364,85 @@ TEST(test_clk_ext_mutes)
     CHECK(n == 24); // 0.5 с при 120 BPM
 }
 
+// Журнал шага: по 6 тиков строка из знаков '+' (on), '-' (off), '.' (тишина), '*' (off и on на одном тике).
+static const char *step_log(void)
+{
+    static char log[7];
+    for (int t = 0; t < 6; t++) {
+        tick(-1);
+        int on = 0, off = 0;
+        for (int i = 0; i < nev; i++) {
+            on += ev[i].on, off += !ev[i].on;
+        }
+        log[t] = on && off ? '*' : on ? '+' : off ? '-' : '.';
+    }
+    return log;
+}
+
+TEST(test_retrig_x2_x3)
+{
+    setup();
+    acid_seq_set_step(&q, 0, 0, 0, 2 | ACID_SEQ_RTG);                  // x2
+    acid_seq_set_step(&q, 0, 0, 1, 2 | ACID_SEQ_RTG | ACID_SEQ_SLIDE); // x3: слайд с ретриггером не слайд
+    acid_seq_set_step(&q, 0, 0, 2, 4);
+    CHECK(q.t[0].pat[0][0] == (2 | ACID_SEQ_RTG));
+    CHECK(acid_seq_hits(2) == 1 && acid_seq_hits(2 | ACID_SEQ_SLIDE) == 1);
+    CHECK(acid_seq_hits(2 | ACID_SEQ_RTG) == 2 && acid_seq_hits(2 | ACID_SEQ_RTG | ACID_SEQ_SLIDE) == 3);
+    run(0);
+    CHECK(strcmp(step_log(), "+.-+.-") == 0);
+    CHECK(strcmp(step_log(), "+-+-+-") == 0);
+    CHECK(strcmp(step_log(), "+....-") == 0); // после x3 нота не тянется: слайда не было
+}
+
+TEST(test_retrig_keeps_note_and_accent)
+{
+    setup();
+    acid_seq_set_step(&q, 0, 0, 0, 3 | ACID_SEQ_RTG | ACID_SEQ_ACC | ACID_SEQ_UP);
+    run(0);
+    int ons = 0;
+    for (int t = 0; t < 6; t++) {
+        tick(-1);
+        for (int i = 0; i < nev; i++) {
+            CHECK(ev[i].note == 36 + 12 + 3);
+            if (ev[i].on) {
+                ons++;
+                CHECK(ev[i].vel == 110); // акцент на каждом ударе
+            }
+        }
+    }
+    CHECK(ons == 2);
+}
+
+TEST(test_retrig_after_slide_same_note)
+{
+    setup();
+    acid_seq_set_step(&q, 0, 0, 0, 0 | ACID_SEQ_SLIDE);
+    acid_seq_set_step(&q, 0, 0, 1, 0 | ACID_SEQ_RTG);
+    run(0);
+    CHECK(strcmp(step_log(), "+.....") == 0);
+    tick(-1); // та же нота со слайдом в шаг с ретриггером: не тянется, бьёт заново
+    CHECK(nev == 2 && !ev[0].on && ev[1].on && ev[0].note == 36 && ev[1].note == 36);
+}
+
+TEST(test_retrig_rest_silent)
+{
+    setup();
+    acid_seq_set_step(&q, 0, 0, 0, ACID_SEQ_REST | ACID_SEQ_RTG);
+    run(0);
+    CHECK(strcmp(step_log(), "......") == 0);
+}
+
+TEST(test_retrig_blob)
+{
+    setup();
+    acid_seq_set_step(&q, 1, 3, 7, 5 | ACID_SEQ_RTG | ACID_SEQ_SLIDE);
+    uint8_t blob[ACID_SEQ_BLOB];
+    CHECK(acid_seq_export(&q, blob, sizeof blob) == ACID_SEQ_BLOB);
+    acid_seq_t r;
+    CHECK(acid_seq_import(&r, blob, sizeof blob));
+    CHECK(r.t[1].pat[3][7] == (5 | ACID_SEQ_RTG | ACID_SEQ_SLIDE));
+}
+
 int main(void)
 {
     RUN(test_song_walk);
@@ -386,5 +465,10 @@ int main(void)
     RUN(test_blob_rejects_foreign);
     RUN(test_clk_rate);
     RUN(test_clk_ext_mutes);
+    RUN(test_retrig_x2_x3);
+    RUN(test_retrig_keeps_note_and_accent);
+    RUN(test_retrig_after_slide_same_note);
+    RUN(test_retrig_rest_silent);
+    RUN(test_retrig_blob);
     TEST_MAIN_END();
 }

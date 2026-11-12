@@ -17,6 +17,7 @@
 #define ACID_SEQ_ACC 0x10
 #define ACID_SEQ_SLIDE 0x20
 #define ACID_SEQ_UP 0x40    // нота на октаву выше
+#define ACID_SEQ_RTG 0x80   // ретриггер: шаг бьёт дважды; вместе со SLIDE - трижды (слайда у такого шага нет)
 #define ACID_SEQ_EMPTY 0xFF // пустая ячейка песни
 #define ACID_SEQ_BPM_MIN 60
 #define ACID_SEQ_BPM_MAX 200
@@ -35,6 +36,7 @@ typedef struct {
     int8_t sounding; // звучащая MIDI-нота, -1 нет
     uint8_t armed;   // ждём шаг 0 общего такта
     uint8_t slid;    // звучащая тянется слайдом в следующий шаг
+    uint8_t rtg, rtg_note, rtg_vel; // ретриггер идущего шага: период в тиках (0 - нет), нота и сила повторов
 } acid_seq_track_t;
 
 typedef struct {
@@ -46,6 +48,7 @@ typedef struct {
     uint8_t synth, on, note, vel;
 } acid_seq_ev_t;
 
+int acid_seq_hits(uint8_t v); // ударов на шаг по байту шага: 1, 2 или 3
 void acid_seq_init(acid_seq_t *q); // всё пусто (пауза), rep = 1, ячейки EMPTY, bpm 120, run 0
 void acid_seq_set_step(acid_seq_t *q, int synth, int pat, int step, uint8_t v);
 void acid_seq_set_oct(acid_seq_t *q, int synth, int pat, int oct); // -2..+2, вне - игнор
