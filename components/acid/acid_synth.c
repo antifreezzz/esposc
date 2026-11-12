@@ -66,8 +66,18 @@ static const uint8_t PAN_DEFAULT[ACID_PANS] = {64, 64, 80, 48, 64};
 // 2: + ручки слоя тональности, 3: + слои синтов, 4: + PETRI, 5: + страницы микса, ударки, эффектов, Grids, чашки,
 // 6: + пять ручек реверба (wet на FX 15 вместо LYR HALF), 7: LYR HALF на FX 15, wet на FX 16,
 // 8: + ширина реверба.
-static const uint8_t BLOB_MAGIC[4] = {'A', 'S', '5', 8};
+static const uint8_t BLOB_MAGIC[4] = {'A', 'S', '5', 9};
 static const uint8_t RV_DEFAULT[ACID_REVERB_KNOBS] = {64, 64, 64, 64, 50, 127};
+// Строи: отклонение ступени (полутонов от тоники страницы 9) от равномерного, в центах. Чистый - 5-предельный,
+// пифагоров и среднетоновый (1/4 коммы) - цепью квинт от Eb до G#; RAST и BAYATI - четвертьтона макамов.
+static const float TUNING_CENTS[ACID_TUNINGS][12] = {
+    [ACID_TUNING_JUST] = {0, 11.73f, 3.91f, 15.64f, -13.69f, -1.96f, -17.49f, 1.96f, 13.69f, -15.64f, 17.60f, -11.73f},
+    [ACID_TUNING_PYTHAG] = {0, -9.78f, 3.91f, -5.87f, 7.82f, -1.96f, 11.73f, 1.96f, -7.82f, 5.87f, -3.91f, 9.78f},
+    [ACID_TUNING_MEANTONE] = {0, -23.95f, -6.84f, 10.26f, -13.69f, 3.42f, -20.53f, -3.42f, -27.37f, -10.26f, 6.84f,
+                              -17.11f},
+    [ACID_TUNING_RAST] = {[4] = -50, [11] = -50}, // E и B на четверть тона ниже
+    [ACID_TUNING_BAYATI] = {[2] = -50},           // вторая ступень на четверть тона ниже
+};
 #define OLD_TYPES 25 // версии 2-3: без PETRI, у слоя «выкл» = 25
 #define BLOB_OLD(slots) (4 + (slots) * (1 + OLD_TYPES * ACID_KNOBS) + ACID_TONAL_KNOBS)
 #define LAYER_GAIN_RAW 100 // громкость слоя после включения (FX 13-14)
@@ -132,6 +142,7 @@ static void slot_init(acid_slot_t *v, float sr, int type)
     acid_decay_init(&v->fenv, FENV_NORMAL_S, sr);
     acid_amp_init(&v->amp, 0.003f, 0.01f, sr);
     v->glide_coef = expf(-1.0f / (GLIDE_S * sr));
+    v->gstep = v->ginv = 0.0f;
     v->pitch_log2 = v->target_log2 = log2f(110.0f);
     v->gliding = 0;
     v->accent_gain = 1.0f;
@@ -221,6 +232,7 @@ void acid_synth_init(acid_synth_t *s, float sr)
     acid_stutter_init(&s->stutter, sr, s->st_mem);
     acid_reverb_init(&s->reverb, s->rv_mem);
     memcpy(s->rv_raw, RV_DEFAULT, sizeof s->rv_raw);
+    memset(s->pitch_raw, 0, sizeof s->pitch_raw);
     s->rv_wet = 0.0f;
     s->rv_send1 = s->rv_send2 = s->rv_send_drums = 64.0f / 127.0f;
     s->rv_duck = 1.0f;
@@ -351,15 +363,49 @@ void acid_synth_set_load(acid_synth_t *s, float load)
     }
 }
 
+// Звучащая высота: на слайде лесенкой - ближайшая ступень от цели, иначе как есть.
+static inline float pitch_out(const acid_slot_t *v)
+{
+    if (v->gstep == 0.0f || !v->gliding) {
+        return v->pitch_log2;
+    }
+    float d = (v->pitch_log2 - v->target_log2) * v->ginv;
+    return v->target_log2 + (float)(int)(d < 0.0f ? d - 0.5f : d + 0.5f) * v->gstep;
+}
+
+float acid_slot_pitch(const acid_slot_t *v)
+{
+    return pitch_out(v);
+}
+
+// Отклонение строя для ноты, в октавах; у равномерного - 0 (и высота считается как раньше).
+static float tune_oct(const acid_synth_t *s, int note)
+{
+    int t = s->pitch_raw[2];
+    return t ? TUNING_CENTS[t][((note - s->tonal.tonic) % 12 + 12) % 12] * (1.0f / 1200.0f) : 0.0f;
+}
+
+static float note_log2(const acid_synth_t *s, int note)
+{
+    float x = log2f(acid_midi_to_hz(note));
+    return s->pitch_raw[2] ? x + tune_oct(s, note) : x;
+}
+
+static float note_hz(const acid_synth_t *s, int note)
+{
+    float hz = acid_midi_to_hz(note);
+    return s->pitch_raw[2] ? hz * exp2f(tune_oct(s, note)) : hz;
+}
+
 float acid_synth_pitch_hz(const acid_synth_t *s)
 {
-    return exp2f(s->slot[0].pitch_log2);
+    return exp2f(pitch_out(&s->slot[0]));
 }
 
 // Новая нота голоса: со слайдом только глайд, без него перезапуск огибающих.
 static void voice_note(acid_synth_t *s, acid_slot_t *v, int note, int accent, int slide)
 {
-    v->target_log2 = log2f(acid_midi_to_hz(note));
+    v->target_log2 = note_log2(s, note);
     // Акцент громкости действует и на слайде, огибающие при этом не перезапускаются.
     v->accent_gain = accent ? v->accent_amt : 1.0f;
     v->accented = accent != 0;
@@ -436,7 +482,7 @@ static void note_on(acid_synth_t *s, acid_slot_t *v, int note, int vel)
         int sn = slot_note(s, v, note);
         voice_note(s, v, sn, vel > ACCENT_VEL, 1);
         if (v->type == ACID_TYPE_PETRI && v->pet) {
-            acid_petri_move(v->pet, old, note, acid_midi_to_hz(sn));
+            acid_petri_move(v->pet, old, note, note_hz(s, sn));
         }
         v->ctrl_left = 0;
         return;
@@ -466,7 +512,7 @@ static void note_on(acid_synth_t *s, acid_slot_t *v, int note, int vel)
     voice_note(s, v, slot_note(s, v, note), vel > ACCENT_VEL, slide);
     if (v->type == ACID_TYPE_PETRI && v->pet) {
         // Парафония: у каждой ноты свой голос, огибающая фильтра бьёт на каждой (слайда нет).
-        acid_petri_note_on(v->pet, note, acid_midi_to_hz(slot_note(s, v, note)), vel);
+        acid_petri_note_on(v->pet, note, note_hz(s, slot_note(s, v, note)), vel);
         acid_decay_trigger(&v->fenv, 1.0f);
     }
     v->ctrl_left = 0; // новая нота: пересчитать сразу
@@ -500,7 +546,7 @@ static void note_release(acid_synth_t *s, acid_slot_t *v, int note)
     }
     if (top && v->nheld > 0) {
         // Отпустили верхнюю при зажатой нижней: глайд обратно, как в 303.
-        v->target_log2 = log2f(acid_midi_to_hz(slot_note(s, v, v->held[v->nheld - 1])));
+        v->target_log2 = note_log2(s, slot_note(s, v, v->held[v->nheld - 1]));
         v->gliding = 1;
     }
 }
@@ -782,7 +828,7 @@ static void type_switch(acid_synth_t *s, acid_slot_t *v)
         voice_note(s, v, slot_note(s, v, top), v->accented, 0);
         for (int i = 0; v->type == ACID_TYPE_PETRI && v->pet && i < v->nheld; i++) {
             int n = v->held[i]; // весь аккорд, верхняя - последней (самый новый голос)
-            acid_petri_note_on(v->pet, n, acid_midi_to_hz(slot_note(s, v, n)), 100);
+            acid_petri_note_on(v->pet, n, note_hz(s, slot_note(s, v, n)), 100);
         }
         v->ctrl_left = 0;
     }
@@ -933,9 +979,32 @@ static void page_reverb(acid_synth_t *s, int slot, int v)
     }
 }
 
+// Подэкран PITCH: шаг слайда синта 1 и 2 (у синта и его слоя один), строй. Вне списка - игнор.
+static void page_pitch(acid_synth_t *s, int slot, int v)
+{
+    if (slot <= 2 && v <= ACID_GLIDE_QUARTER) {
+        s->pitch_raw[slot - 1] = (uint8_t)v;
+        float inv = v == ACID_GLIDE_SEMI ? 12.0f : v == ACID_GLIDE_QUARTER ? 24.0f : 0.0f;
+        acid_slot_t *vs[2] = {&s->slot[slot - 1], &s->layer[slot - 1]};
+        for (int i = 0; i < 2; i++) {
+            vs[i]->ginv = inv;
+            vs[i]->gstep = inv > 0.0f ? 1.0f / inv : 0.0f;
+        }
+    } else if (slot == 3 && v < ACID_TUNINGS) {
+        s->pitch_raw[2] = (uint8_t)v;
+        if (s->drone) {
+            drone_retune(s);
+        }
+    }
+}
+
 // Энкодер slot (с 1) на странице page, как будто BSP стоит на ней.
 static void apply_page(acid_synth_t *s, int page, int slot, int v)
 {
+    if (page == ACID_PAGE_PITCH && slot > 0 && slot <= ACID_PITCH_KNOBS) {
+        page_pitch(s, slot, v);
+        return;
+    }
     if (page == ACID_PAGE_REVERB && slot > 0 && slot <= ACID_REVERB_KNOBS) {
         page_reverb(s, slot, v);
         return;
@@ -1012,7 +1081,7 @@ static int synth_page_idx(int page)
 // Ручка от пользователя (BSP, панель, сцена, демо): поменялось действующее значение - память пора записать.
 static void user_knob(acid_synth_t *s, int page, int slot, int v)
 {
-    if (page != ACID_PAGE_REVERB && s->mod_base[page][slot] != KNOB_NONE) {
+    if (page < ACID_PAGES && s->mod_base[page][slot] != KNOB_NONE) {
         int idx = synth_page_idx(page);
         if (idx >= 0) {
             s->mod_unset[idx] &= (uint16_t)~(1u << slot);
@@ -1057,8 +1126,10 @@ void acid_synth_petri(acid_synth_t *s, const acid_petri_frame_t *f)
 
 void acid_synth_set_knob(acid_synth_t *s, int page, int enc, int v)
 {
-    int page_ok = (page >= 0 && page < ACID_PAGES) || page == ACID_PAGE_REVERB;
-    int enc_ok = page == ACID_PAGE_REVERB ? enc > 0 && enc <= ACID_REVERB_KNOBS : enc > 0 && enc < ACID_KNOBS;
+    int page_ok = (page >= 0 && page < ACID_PAGES) || page == ACID_PAGE_REVERB || page == ACID_PAGE_PITCH;
+    int enc_ok = page == ACID_PAGE_REVERB  ? enc > 0 && enc <= ACID_REVERB_KNOBS
+                 : page == ACID_PAGE_PITCH ? enc > 0 && enc <= ACID_PITCH_KNOBS
+                                           : enc > 0 && enc < ACID_KNOBS;
     if (page_ok && enc_ok && v >= 0 && v <= 127) {
         user_knob(s, page, enc, v);
     }
@@ -1068,6 +1139,9 @@ static int raw_knob(const acid_synth_t *s, int page, int enc)
 {
     if (page == ACID_PAGE_REVERB) {
         return enc > 0 && enc <= ACID_REVERB_KNOBS ? s->rv_raw[enc - 1] : 0;
+    }
+    if (page == ACID_PAGE_PITCH) {
+        return enc > 0 && enc <= ACID_PITCH_KNOBS ? s->pitch_raw[enc - 1] : 0;
     }
     if (page < 0 || page >= ACID_PAGES || enc < 0 || enc >= ACID_KNOBS) {
         return 0;
@@ -1096,7 +1170,7 @@ static int raw_knob(const acid_synth_t *s, int page, int enc)
 
 int acid_synth_knob(const acid_synth_t *s, int page, int enc)
 {
-    if (page == ACID_PAGE_REVERB) {
+    if (page == ACID_PAGE_REVERB || page == ACID_PAGE_PITCH) {
         return raw_knob(s, page, enc);
     }
     if (page < 0 || page >= ACID_PAGES || enc < 0 || enc >= ACID_KNOBS) {
@@ -1220,10 +1294,10 @@ static void drone_retune(acid_synth_t *s)
             continue;
         }
         int top = v->held[v->nheld - 1];
-        float target = log2f(acid_midi_to_hz(slot_note(s, v, top)));
+        float target = note_log2(s, slot_note(s, v, top));
         for (int k = 0; v->type == ACID_TYPE_PETRI && v->pet && k < v->nheld; k++) {
             int n = v->held[k];
-            acid_petri_retune(v->pet, n, acid_midi_to_hz(slot_note(s, v, n)));
+            acid_petri_retune(v->pet, n, note_hz(s, slot_note(s, v, n)));
         }
         if (target == v->target_log2) {
             if (s->tonal.held_mode != 1 && v->gliding) {
@@ -1287,10 +1361,10 @@ static void tonal_boundary(acid_synth_t *s)
         if (mode == 0) {
             continue;
         }
-        v->target_log2 = log2f(acid_midi_to_hz(slot_note(s, v, v->held[v->nheld - 1])));
+        v->target_log2 = note_log2(s, slot_note(s, v, v->held[v->nheld - 1]));
         for (int k = 0; v->type == ACID_TYPE_PETRI && v->pet && k < v->nheld; k++) {
             int n = v->held[k]; // у PETRI слайда нет: аккорд прыгает весь и в режиме глайда
-            acid_petri_retune(v->pet, n, acid_midi_to_hz(slot_note(s, v, n)));
+            acid_petri_retune(v->pet, n, note_hz(s, slot_note(s, v, n)));
         }
         if (mode == 1) {
             v->gliding = 1;
@@ -1467,9 +1541,10 @@ static inline float slot_sr(const acid_synth_t *s, const acid_slot_t *v)
 static float control_update(acid_synth_t *s, acid_slot_t *v)
 {
     // exp2f из libm - сотни тактов на плате: пока высота стоит (нет слайда), берём прошлую частоту.
-    if (v->pitch_log2 != v->ctl_log2) {
-        v->ctl_log2 = v->pitch_log2;
-        v->ctl_hz = exp2f(v->pitch_log2);
+    float pitch = pitch_out(v);
+    if (pitch != v->ctl_log2) {
+        v->ctl_log2 = pitch;
+        v->ctl_hz = exp2f(pitch);
     }
     float hz = v->ctl_hz;
     acid_osc_set_freq(&v->osc, hz, slot_sr(s, v));
@@ -1496,14 +1571,14 @@ static void plaits_refill(acid_slot_t *v, int gate)
 {
     v->ppos = 0;
     if (acid_drive_on(&v->drv)) {
-        acid_drive_pitch(&v->drv, acid_exp2(v->pitch_log2));
+        acid_drive_pitch(&v->drv, acid_exp2(pitch_out(v)));
     }
     if (!gate && v->idle >= IDLE_BLOCKS) {
         memset(v->pbuf, 0, sizeof v->pbuf);
         return;
     }
     acid_plaits_params_t *p = &v->pp;
-    p->note = 12.0f * (v->pitch_log2 - log2f(440.0f)) + 69.0f + (v->half ? 12.0f : 0.0f); // Plaits на 48 кГц
+    p->note = 12.0f * (pitch_out(v) - log2f(440.0f)) + 69.0f + (v->half ? 12.0f : 0.0f); // Plaits на 48 кГц
     p->trigger = gate && !v->retrig;
     v->retrig = 0;
     p->level = gate ? (v->accented ? 1.0f : 1.0f - v->p_accent) : 0.0f;
@@ -1972,6 +2047,8 @@ size_t acid_synth_export(const acid_synth_t *s, void *buf, size_t cap)
         }
     }
     memcpy(b, s->rv_raw, sizeof s->rv_raw);
+    b += sizeof s->rv_raw;
+    memcpy(b, s->pitch_raw, sizeof s->pitch_raw);
     return ACID_SYNTH_BLOB;
 }
 
@@ -1979,7 +2056,8 @@ int acid_synth_import(acid_synth_t *s, const void *buf, size_t len)
 {
     const uint8_t *b = buf;
     // Версия 2 (до слоёв) - только синты; 2-3 - по 25 типов (без PETRI), у слоя «выкл» = 25.
-    int ver = len == ACID_SYNTH_BLOB && memcmp(b, BLOB_MAGIC, sizeof BLOB_MAGIC) == 0       ? 8
+    int ver = len == ACID_SYNTH_BLOB && memcmp(b, BLOB_MAGIC, sizeof BLOB_MAGIC) == 0       ? 9
+              : len == ACID_SYNTH_BLOB_V8 && memcmp(b, "AS5\x08", 4) == 0               ? 8
               : len == ACID_SYNTH_BLOB_V7 && memcmp(b, "AS5\x07", 4) == 0               ? 7
               : len == ACID_SYNTH_BLOB_V7 && memcmp(b, "AS5\x06", 4) == 0               ? 6
               : len == ACID_SYNTH_BLOB_V5 && memcmp(b, "AS5\x05", 4) == 0               ? 5
@@ -2031,6 +2109,10 @@ int acid_synth_import(acid_synth_t *s, const void *buf, size_t len)
         if (b[e] <= 127) {
             apply_page(s, ACID_PAGE_REVERB, e + 1, b[e]);
         }
+    }
+    b += ACID_REVERB_KNOBS;
+    for (int e = 0; ver >= 9 && e < ACID_PITCH_KNOBS; e++) {
+        apply_page(s, ACID_PAGE_PITCH, e + 1, b[e]);
     }
     if (s->drone) {
         drone_retune(s);

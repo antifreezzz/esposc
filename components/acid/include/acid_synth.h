@@ -34,6 +34,12 @@
 #define ACID_PAGE_GRIDS 12
 #define ACID_PAGE_PETRI 13
 #define ACID_PAGE_REVERB 27 // только панель: номера BSP нет
+#define ACID_PAGE_PITCH 28  // только панель (подэкран GLIDE): шаг слайда синтов 1-2 и строй, номера BSP нет
+#define ACID_PITCH_KNOBS 3
+enum { ACID_GLIDE_SMOOTH, ACID_GLIDE_SEMI, ACID_GLIDE_QUARTER }; // ручки 1-2: слайд гладко или лесенкой
+// Ручка 3: строй от тоники страницы 9 (ROOT). Равномерный - прежняя высота бит в бит.
+enum { ACID_TUNING_EQUAL, ACID_TUNING_JUST, ACID_TUNING_PYTHAG, ACID_TUNING_MEANTONE, ACID_TUNING_RAST,
+       ACID_TUNING_BAYATI, ACID_TUNINGS };
 #define ACID_REVERB_KNOBS 6
 #define ACID_PAGE_MOD1 23
 #define ACID_BSP_PETRI 18
@@ -62,6 +68,7 @@ typedef struct {
     float pitch_log2;  // текущая высота, log2(Гц)
     float target_log2;
     float glide_coef;
+    float gstep, ginv;  // слайд лесенкой: ступень в октавах (1/12, 1/24) и обратная; 0 - гладко
     int gliding;
     float accent_gain;
     float fenv_amount; // Гц на пике огибающей фильтра
@@ -149,6 +156,7 @@ typedef struct acid_synth {
     float rv_narrow;                // 0 - полная ширина wet, 0.5 - моно
     float rv_duck;                  // ступень 3: уход за 10 мс, затем DSP стоит
     uint8_t rv_raw[ACID_REVERB_KNOBS];
+    uint8_t pitch_raw[ACID_PITCH_KNOBS]; // подэкран PITCH: шаг слайда синтов 1-2, строй
     float rv_prev[ACID_SPLIT_MAX];  // посыл прошлого куска для цельного рендера
     float pan_l[ACID_PANS], pan_r[ACID_PANS]; // усиления каналов по источникам
     int dl_time, dl_fb, dl_tone;    // сырые ручки дилэя
@@ -192,7 +200,8 @@ typedef struct acid_synth {
 #define ACID_SYNTH_BLOB_V4 (4 + 2 * ACID_SLOTS * (1 + ACID_TYPES * ACID_KNOBS) + ACID_TONAL_KNOBS) // синты, слои
 #define ACID_SYNTH_BLOB_V5 (ACID_SYNTH_BLOB_V4 + ACID_SAVED_PAGES * ACID_KNOBS)
 #define ACID_SYNTH_BLOB_V7 (ACID_SYNTH_BLOB_V5 + 5) // версии 6-7: пять ручек реверба, без ширины
-#define ACID_SYNTH_BLOB (ACID_SYNTH_BLOB_V5 + ACID_REVERB_KNOBS)
+#define ACID_SYNTH_BLOB_V8 (ACID_SYNTH_BLOB_V5 + ACID_REVERB_KNOBS)
+#define ACID_SYNTH_BLOB (ACID_SYNTH_BLOB_V8 + ACID_PITCH_KNOBS)
 
 // Умолчания всех ручек, тишина до первой ноты.
 void acid_synth_init(acid_synth_t *s, float sr);
@@ -243,7 +252,8 @@ void acid_synth_render_mix_lr(acid_synth_t *s, float *l, float *r, size_t n, con
 void acid_synth_render_reverb(acid_synth_t *s, const float *send, float *wl, float *wr, size_t n);
 // Слой синта k отдельно, уже с громкостью (k = 0: слой синта 1 на ядре 0 рядом с синтом 2).
 void acid_synth_render_layer(acid_synth_t *s, int k, float *out, size_t n);
-float acid_synth_pitch_hz(const acid_synth_t *s); // высота слота 0
+float acid_synth_pitch_hz(const acid_synth_t *s);
+float acid_slot_pitch(const acid_slot_t *v); // звучащая высота голоса, log2 Гц (со ступенями слайда) // высота слота 0
 // 1 и сброс флага, если с прошлого вызова ручка или тип синтеза поменялись (пора записать память во flash).
 int acid_synth_take_save(acid_synth_t *s);
 // Память ручек в blob размера ACID_SYNTH_BLOB и обратно. import: 1 - применено, 0 - чужой blob.
