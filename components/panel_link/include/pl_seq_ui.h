@@ -7,7 +7,8 @@
 
 #define PL_SEQ_LEVELS 16 // 0 - пауза, 1..15 - ступень 0..14
 enum { PL_SEQ_PATTERN, PL_SEQ_SONG }; // вид экрана
-enum { PL_SEQ_BRUSH_NOTE, PL_SEQ_BRUSH_ACC, PL_SEQ_BRUSH_SLIDE, PL_SEQ_BRUSH_OCT, PL_SEQ_BRUSHES };
+enum { PL_SEQ_BRUSH_NOTE, PL_SEQ_BRUSH_ACC, PL_SEQ_BRUSH_SLIDE, PL_SEQ_BRUSH_OCT, PL_SEQ_BRUSH_RTG,
+       PL_SEQ_BRUSHES };
 enum {
     PL_ST_NONE,
     PL_ST_SYNTH,  // S1/S2, тап
@@ -37,8 +38,11 @@ typedef struct {
 void pl_seq_drag_begin(pl_seq_drag_t *d, int brush);
 // Палец в (x, y): шаг под пальцем меняется в pat. Возвращает шаг 0..15 или -1 (ничего не поменялось).
 // NOTE - ступень по высоте (уровень 0 = пауза), флаги остаются; ACC/SLIDE/OCT - флаг переключается один раз за проход.
+// RTG - удары шага по кругу 1 -> 2 -> 3 -> 1, тоже раз за проход; SLIDE на шаге с ретриггером делает из него слайд.
 // Ярус выбирается по y: палец, ушедший в соседний ярус, рисует в нём.
 int pl_seq_drag(pl_seq_drag_t *d, uint8_t pat[16], int x, int y);
+int pl_seq_hits(uint8_t step);   // ударов на шаг: 1, 2 или 3
+int pl_seq_slides(uint8_t step); // шаг тянется слайдом (бит SLIDE без ретриггера)
 // Темп по ходу пальца вдоль кнопки BPM: вправо быстрее, 3 px на 1 BPM, 60..200.
 int pl_seq_bpm_drag(int bpm0, int x0, int x);
 // Цвет шапки полосы: у акцента - кремовый, иначе цвет синта (у синта 1 он совпадает с оранжевым акцентом).

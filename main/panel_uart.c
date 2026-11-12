@@ -34,7 +34,7 @@ _Static_assert(ACID_SEQ_REST == PL_SEQ_REST && ACID_SEQ_DEG == PL_SEQ_DEG && ACI
                    ACID_SEQ_SLIDE == PL_SEQ_SLIDE && ACID_SEQ_EMPTY == PL_SEQ_EMPTY && ACID_SEQ_SYNTHS == PL_SEQ_SYNTHS &&
                    ACID_SEQ_PATS == PL_SEQ_PATS && ACID_SEQ_STEPS == PL_SEQ_STEPS && ACID_SEQ_ROWS == PL_SEQ_ROWS &&
                    ACID_SEQ_CELLS == PL_SEQ_CELLS && PANEL_SEQ_MAX == 3 + PL_SEQ_CELLS && ACID_SEQ_UP == PL_SEQ_UP &&
-                   ACID_SEQ_SCALES == PL_SEQ_SCALES,
+                   ACID_SEQ_SCALES == PL_SEQ_SCALES && ACID_SEQ_RTG == PL_SEQ_RTG,
                "step sequencer byte format shared by synth and panel");
 _Static_assert(ACID_PAGE_MOD1 == PL_PAGE_MOD1 && ACID_BSP_MOD_FIRST == PL_BSP_MOD_FIRST &&
                    ACID_MODS == PL_MOD_PAGES && ACID_MOD_TARGETS == PL_MOD_TARGETS && ACID_MOD_NONE == PL_NONE &&

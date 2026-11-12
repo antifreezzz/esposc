@@ -186,6 +186,42 @@ TEST(test_accent_cap_visible)
     }
 }
 
+// Кисть RTG: проход по шагу листает удары 1 -> 2 -> 3 -> 1; x3 занимает бит слайда, слайда у такого шага нет.
+TEST(test_brush_retrig_cycles)
+{
+    uint8_t pat[16];
+    memset(pat, 3, sizeof pat);
+    pat[5] = 3 | PL_SEQ_SLIDE | PL_SEQ_ACC;
+    pl_seq_drag_t d;
+    int x, y, w, h;
+    pl_seq_rect(PL_SEQ_PATTERN, PL_ST_BAR, 2, 0, &x, &y, &w, &h);
+    CHECK(pl_seq_hits(pat[2]) == 1 && pl_seq_hits(pat[5]) == 1 && pl_seq_slides(pat[5]));
+    pl_seq_drag_begin(&d, PL_SEQ_BRUSH_RTG);
+    CHECK(pl_seq_drag(&d, pat, x + 10, y + 50) == 2);
+    CHECK(pl_seq_drag(&d, pat, x + 40, y + 90) == -1); // один раз за проход
+    CHECK(pat[2] == (3 | PL_SEQ_RTG) && pl_seq_hits(pat[2]) == 2 && !pl_seq_slides(pat[2]));
+    pl_seq_drag_begin(&d, PL_SEQ_BRUSH_RTG);
+    pl_seq_drag(&d, pat, x + 10, y + 50);
+    CHECK(pat[2] == (3 | PL_SEQ_RTG | PL_SEQ_SLIDE) && pl_seq_hits(pat[2]) == 3 && !pl_seq_slides(pat[2]));
+    pl_seq_drag_begin(&d, PL_SEQ_BRUSH_RTG);
+    pl_seq_drag(&d, pat, x + 10, y + 50);
+    CHECK(pat[2] == 3);
+    // Шаг со слайдом: ретриггер снимает слайд, остальные флаги на месте.
+    pl_seq_rect(PL_SEQ_PATTERN, PL_ST_BAR, 5, 0, &x, &y, &w, &h);
+    pl_seq_drag_begin(&d, PL_SEQ_BRUSH_RTG);
+    pl_seq_drag(&d, pat, x + 10, y + 50);
+    CHECK(pat[5] == (3 | PL_SEQ_RTG | PL_SEQ_ACC));
+    // Кисть SLIDE на шаге с ретриггером делает из него обычный слайд, вторым проходом снимает.
+    pl_seq_drag_begin(&d, PL_SEQ_BRUSH_RTG);
+    pl_seq_drag(&d, pat, x + 10, y + 50); // x3
+    pl_seq_drag_begin(&d, PL_SEQ_BRUSH_SLIDE);
+    pl_seq_drag(&d, pat, x + 10, y + 50);
+    CHECK(pat[5] == (3 | PL_SEQ_SLIDE | PL_SEQ_ACC));
+    pl_seq_drag_begin(&d, PL_SEQ_BRUSH_SLIDE);
+    pl_seq_drag(&d, pat, x + 10, y + 50);
+    CHECK(pat[5] == (3 | PL_SEQ_ACC));
+}
+
 int main(void)
 {
     RUN(test_bars_tile);
@@ -198,5 +234,6 @@ int main(void)
     RUN(test_toolbar);
     RUN(test_bpm_drag_horizontal);
     RUN(test_accent_cap_visible);
+    RUN(test_brush_retrig_cycles);
     TEST_MAIN_END();
 }

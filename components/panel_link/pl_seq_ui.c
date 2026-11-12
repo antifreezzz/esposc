@@ -126,6 +126,16 @@ int pl_seq_level(int step, int y)
     return lvl < 1 ? 1 : lvl;
 }
 
+int pl_seq_hits(uint8_t step)
+{
+    return step & PL_SEQ_RTG ? (step & PL_SEQ_SLIDE ? 3 : 2) : 1;
+}
+
+int pl_seq_slides(uint8_t step)
+{
+    return (step & (PL_SEQ_SLIDE | PL_SEQ_RTG)) == PL_SEQ_SLIDE;
+}
+
 void pl_seq_drag_begin(pl_seq_drag_t *d, int brush)
 {
     d->brush = brush;
@@ -143,8 +153,15 @@ int pl_seq_drag(pl_seq_drag_t *d, uint8_t pat[16], int x, int y)
         v = (uint8_t)((old & ~PL_SEQ_DEG) | (lvl == 0 ? PL_SEQ_REST : lvl - 1));
     } else if (!(d->done >> step & 1)) {
         d->done |= (uint16_t)(1u << step);
-        static const uint8_t FLAG[PL_SEQ_BRUSHES] = {0, PL_SEQ_ACC, PL_SEQ_SLIDE, PL_SEQ_UP};
-        v = old ^ FLAG[d->brush];
+        static const uint8_t FLAG[PL_SEQ_BRUSHES] = {0, PL_SEQ_ACC, PL_SEQ_SLIDE, PL_SEQ_UP, 0};
+        static const uint8_t HITS[3] = {PL_SEQ_RTG, PL_SEQ_RTG | PL_SEQ_SLIDE, 0}; // после 1, 2 и 3 ударов
+        if (d->brush == PL_SEQ_BRUSH_RTG) {
+            v = (uint8_t)((old & ~(PL_SEQ_RTG | PL_SEQ_SLIDE)) | HITS[pl_seq_hits(old) - 1]);
+        } else if (d->brush == PL_SEQ_BRUSH_SLIDE && (old & PL_SEQ_RTG)) {
+            v = (uint8_t)((old & ~PL_SEQ_RTG) | PL_SEQ_SLIDE);
+        } else {
+            v = old ^ FLAG[d->brush];
+        }
     }
     if (v == old) {
         return -1;

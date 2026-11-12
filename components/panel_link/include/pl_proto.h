@@ -90,6 +90,7 @@ typedef struct {
 #define PL_SEQ_ACC 0x10
 #define PL_SEQ_SLIDE 0x20
 #define PL_SEQ_UP 0x40 // нота на октаву выше
+#define PL_SEQ_RTG 0x80 // ретриггер: два удара на шаг, вместе со SLIDE - три (слайда у такого шага нет)
 #define PL_SEQ_SCALES 9
 #define PL_SEQ_EMPTY 0xFF
 #define PL_SEQ_KEEP 0xFF // run в PL_SEQ_CTRL: только такт экрана, ▶/■ как есть

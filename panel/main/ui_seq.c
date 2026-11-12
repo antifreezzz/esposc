@@ -29,7 +29,7 @@ static struct {
     int drawn_tool, drawn_tier_ok, drawn_song_ok, drawn_mark, drawn_cell_mark, drawn_pick;
 } g;
 
-static const char *const BRUSH[PL_SEQ_BRUSHES] = {"NOTE", "ACC", "SLIDE", "OCT"};
+static const char *const BRUSH[PL_SEQ_BRUSHES] = {"NOTE", "ACC", "SLIDE", "OCT", "RTG"};
 // Лад такта: TONAL - со страницы 9, дальше лады её SCALE.
 static const char *const SCALE[PL_SEQ_SCALES] = {"TONAL", "CHROM", "MAJOR", "MINOR", "DORIAN",
                                                  "PHRYG", "MIXO",  "HMIN",  "PENTA"};
@@ -132,14 +132,15 @@ static void tool_draw(lv_event_t *e)
 static int tool_key(const pl_model_t *m)
 {
     const pl_seq_dump_t *d = seq(m);
-    int k = g.synth | g.view << 1 | g.brush << 2 | g.bpm_drag << 4 | (d ? 1 : 0) << 5;
+    int k = g.synth | g.view << 1 | g.brush << 2 | g.bpm_drag << 5 | (d ? 1 : 0) << 6;
     if (d) {
-        k |= d->edit << 6 | d->oct[d->edit] << 9 | shown_bpm(m) << 12 | d->scale[d->edit] << 20;
+        k |= d->edit << 7 | d->oct[d->edit] << 10 | shown_bpm(m) << 13 | d->scale[d->edit] << 21;
     }
     return k;
 }
 
-// Ярус шагов: полоса до своей ступени, яркая шапка - акцент, перемычка к соседу - слайд, точка внизу - пауза.
+// Ярус шагов: полоса до своей ступени, яркая шапка - акцент, перемычка к соседу - слайд, точка внизу - пауза,
+// разрезы полосы - ретриггер.
 static void tier_draw(lv_event_t *e)
 {
     int tier = (int)(intptr_t)lv_event_get_user_data(e);
@@ -189,7 +190,16 @@ static void tier_draw(lv_event_t *e)
         area_of(lv_event_get_target_obj(e), x + 8, yt, w - 16, acc ? 12 : 8, &cap);
         f.color = lv_color_hex(pl_seq_cap_color(pat[s], sc));
         lv_draw_fill(layer, &f, &cap);
-        if ((pat[s] & PL_SEQ_SLIDE) && i < 7) {
+        // Ретриггер: полоса разрезана на 2 или 3 доли.
+        int hits = pl_seq_hits(pat[s]);
+        for (int c = 1; c < hits; c++) {
+            lv_area_t cut;
+            area_of(lv_event_get_target_obj(e), x + 8 + c * (w - 16) / hits - 2, yt, 4, yb - yt, &cut);
+            f.radius = 0;
+            f.color = lv_color_hex(C_BG);
+            lv_draw_fill(layer, &f, &cut);
+        }
+        if (pl_seq_slides(pat[s]) && i < 7) {
             lv_area_t br;
             area_of(lv_event_get_target_obj(e), x + w - 8, yt + 2, 16, 4, &br);
             f.radius = 2;
