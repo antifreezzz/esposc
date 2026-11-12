@@ -169,7 +169,8 @@ TEST(test_page_names_and_colors)
     CHECK(strcmp(pl_view_page_name(PL_USER_FIRST), "USER 1") == 0);
     CHECK(strcmp(pl_view_page_name(PL_USER_FIRST + 5), "USER 6") == 0);
     CHECK(strcmp(pl_view_page_name(PL_PAGE_MOD1), "MOD 1") == 0); // за вкладками MIX - модуляторы
-    CHECK(pl_view_page_name(PL_PAGE_REVERB + 1) == NULL); // за подэкраном реверберации страниц нет
+    CHECK(strcmp(pl_view_page_name(PL_PAGE_PITCH), "PITCH") == 0);
+    CHECK(pl_view_page_name(PL_PAGE_PITCH + 1) == NULL); // за подэкраном PITCH страниц нет
     CHECK(pl_view_page_color(3) == pl_page_color(3));
     CHECK(pl_view_page_color(12) != 0);
 }
@@ -210,6 +211,20 @@ TEST(test_status_seq)
     CHECK(strcmp(pl_view_status(&sm, 1), "SEQ") == 0);
 }
 
+TEST(test_pitch_cell)
+{
+    setup();
+    m.pitch[3] = 4;
+    m.pitch_held[3] = 1;
+    pl_view_cell(&m, PL_PAGE_PITCH, 3, &c);
+    CHECK(strcmp(c.label, "TUNING") == 0 && strcmp(c.text, "RAST") == 0);
+    CHECK(c.v == 4 && c.lo == 0 && c.hi == 5 && c.held == 1);
+    pl_view_cell(&m, PL_PAGE_PITCH, 4, &c);
+    CHECK(c.label == NULL);
+    CHECK(pl_view_page_color(PL_PAGE_PITCH) == pl_page_color(6));
+    CHECK(pl_page_bsp(PL_PAGE_PITCH) == -1);
+}
+
 int main(void)
 {
     RUN(test_page_bsp_numbers);
@@ -225,5 +240,6 @@ int main(void)
     RUN(test_status_seq);
     RUN(test_mix_cell_shows_target);
     RUN(test_mix_page_name_and_color);
+    RUN(test_pitch_cell);
     TEST_MAIN_END();
 }

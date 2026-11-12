@@ -105,8 +105,8 @@ void pl_view_cell(const pl_model_t *m, int page, int enc, pl_cell_t *c)
     c->skip = -1;
     c->eff = -1;
     c->color = 0;
-    if (page == PL_PAGE_REVERB) {
-        const uint8_t *raw = m->reverb;
+    if (page == PL_PAGE_REVERB || page == PL_PAGE_PITCH) {
+        const uint8_t *raw = pl_model_raw(m, page);
         c->label = pl_knob_label(page, enc, raw);
         if (!c->label) {
             return;
@@ -115,7 +115,7 @@ void pl_view_cell(const pl_model_t *m, int page, int enc, pl_cell_t *c)
         pl_knob_range(page, enc, raw, &c->lo, &c->hi);
         c->color = pl_knob_color(page, enc, raw);
         c->text = pl_value_text(page, enc, c->v, raw, c->vbuf);
-        c->held = m->reverb_held[enc];
+        c->held = (page == PL_PAGE_PITCH ? m->pitch_held : m->reverb_held)[enc];
         return;
     }
     if (page >= PL_PAGE_MOD1 && page < PL_PAGE_MOD1 + PL_MOD_PAGES) {
@@ -176,7 +176,7 @@ void pl_view_cell(const pl_model_t *m, int page, int enc, pl_cell_t *c)
 
 const char *pl_view_page_name(int page)
 {
-    if (page == PL_PAGE_REVERB) {
+    if (page == PL_PAGE_REVERB || page == PL_PAGE_PITCH) {
         return pl_page_name(page);
     }
     if (page >= PL_PAGE_MOD1 && page < PL_PAGE_MOD1 + PL_MOD_PAGES) {

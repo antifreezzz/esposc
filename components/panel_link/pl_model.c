@@ -71,6 +71,10 @@ static void apply_snapshot2(pl_model_t *m, const pl_snapshot2_t *s)
         m->reverb[e] = s->reverb[e - 1];
     }
     memset(m->reverb_held, 0, sizeof m->reverb_held);
+    for (int e = 1; e <= PL_PITCH_KNOBS; e++) {
+        m->pitch[e] = s->pitch[e - 1];
+    }
+    memset(m->pitch_held, 0, sizeof m->pitch_held);
 }
 
 // Чья позиция BSP в событии: на открытой у синта вкладке MIX энкодер BSP - слот, событие несёт его цель.
@@ -115,6 +119,13 @@ static void apply_knob(pl_model_t *m, const pl_knob_t *k, uint32_t ms)
         if (k->enc <= PL_REVERB_KNOBS) {
             m->reverb[k->enc] = k->value;
             m->reverb_held[k->enc] = k->held;
+        }
+        return;
+    }
+    if (k->page == PL_PAGE_PITCH) {
+        if (k->enc <= PL_PITCH_KNOBS) {
+            m->pitch[k->enc] = k->value;
+            m->pitch_held[k->enc] = k->held;
         }
         return;
     }
@@ -212,12 +223,13 @@ void pl_model_hello_sent(pl_model_t *m, uint32_t ms)
 
 int pl_model_local_set(pl_model_t *m, int page, int enc, int v)
 {
-    if (page == PL_PAGE_REVERB) {
-        if (!m->have || enc <= 0 || enc > PL_REVERB_KNOBS) {
+    if (page == PL_PAGE_REVERB || page == PL_PAGE_PITCH) {
+        int pitch = page == PL_PAGE_PITCH;
+        if (!m->have || enc <= 0 || enc > (pitch ? PL_PITCH_KNOBS : PL_REVERB_KNOBS)) {
             return 0;
         }
-        m->reverb[enc] = (uint8_t)v;
-        m->reverb_held[enc] = 1;
+        (pitch ? m->pitch : m->reverb)[enc] = (uint8_t)v;
+        (pitch ? m->pitch_held : m->reverb_held)[enc] = 1;
         return 1;
     }
     if (m->have && is_user(page) && enc > 0 && enc < PL_KNOBS && (m->user_have >> (page - PL_USER_FIRST) & 1)) {
@@ -255,6 +267,9 @@ const uint8_t *pl_model_raw(const pl_model_t *m, int page)
 {
     if (page == PL_PAGE_REVERB) {
         return m->reverb;
+    }
+    if (page == PL_PAGE_PITCH) {
+        return m->pitch;
     }
     if (page >= 0 && page < PL_PAGES) {
         return m->raw[page];

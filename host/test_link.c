@@ -567,6 +567,19 @@ TEST(test_mod_edit_and_shared_budget)
     CHECK(acid_mod_step(&m, &s, ACID_LINK_PER_CHUNK - l.step_n) == 1);
 }
 
+TEST(test_pitch_panel_only)
+{
+    reset();
+    bsp(1, 6);
+    CHECK(panel(ACID_PAGE_PITCH, 3, 2) == 1);
+    CHECK(knob(ACID_PAGE_PITCH, 3) == 2);
+    CHECK(ev.page == ACID_PAGE_PITCH && ev.enc == 2 && ev.value == 2 && ev.src == ACID_SRC_PANEL);
+    CHECK(l.held[ACID_PAGE_PITCH][2] == 1);
+    CHECK(panel(ACID_PAGE_PITCH, 5, 1) == 0); // внутри 4: за TUNING ручек нет
+    CHECK(acid_link_panel_page(&l, &s, ACID_PAGE_PITCH, &ev) == 0);
+    CHECK(s.page == 6);
+}
+
 int main(void)
 {
     RUN(test_link_layer_type_report);
@@ -604,5 +617,6 @@ int main(void)
     RUN(test_init_drops_deferred);
     RUN(test_mod_page_from_bsp_and_panel);
     RUN(test_mod_edit_and_shared_budget);
+    RUN(test_pitch_panel_only);
     TEST_MAIN_END();
 }

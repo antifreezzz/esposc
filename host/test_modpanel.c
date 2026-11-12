@@ -27,7 +27,7 @@ static void model_from_synth(void)
 TEST(test_page_names)
 {
     CHECK(!strcmp(pl_page_name(PL_PAGE_MOD1), "MOD 1") && !strcmp(pl_page_name(PL_PAGE_MOD1 + 3), "MOD 4"));
-    CHECK(pl_page_name(PL_PAGE_MOD1 + 5) == NULL && pl_page_name(PL_PAGE_MIX_DRUMS) == NULL);
+    CHECK(pl_page_name(PL_PAGE_MOD1 + 6) == NULL && pl_page_name(PL_PAGE_MIX_DRUMS) == NULL);
 }
 
 TEST(test_labels)

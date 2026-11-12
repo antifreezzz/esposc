@@ -53,10 +53,10 @@ TEST(test_kind_other_pages)
     // REVERB: крутилка, но тап открывает подэкран. Захват только сдвигом пальца, как у списков:
     // удержание без сдвига остаётся тапом, иначе дрожание пальца крутит ручку вместо входа.
     CHECK(kind(8, 15) == PL_PICK_NONE);
-    CHECK(pl_pick_sub(8, 15) == PL_PAGE_REVERB);
+    CHECK(pl_pick_sub(8, 15, raw) == PL_PAGE_REVERB);
     CHECK(pl_pick_grab(8, 15, raw, 0) == 1);
     CHECK(pl_pick_grab(8, 15, raw, 1) == 0);
-    CHECK(pl_pick_sub(8, 14) == -1 && pl_pick_sub(0, 15) == -1 && pl_pick_sub(PL_PAGE_REVERB, 1) == -1);
+    CHECK(pl_pick_sub(8, 14, raw) == -1 && pl_pick_sub(0, 15, raw) == -1 && pl_pick_sub(PL_PAGE_REVERB, 1, raw) == -1);
     CHECK(pl_pick_grab(0, 5, raw, 1) == 1);
     CHECK(kind(8, 11) == PL_PICK_NONE); // WIDTH
     for (int e = 1; e <= 6; e++) {
@@ -227,6 +227,31 @@ TEST(test_view_mix)
     CHECK(pl_pick_view(&m, PL_PAGE_MIX_SYN1, 12, &tp, &te) == PL_PICK_NONE); // пустой слот
 }
 
+// GLIDE синта и слоя: тап открывает подэкран PITCH, крутит только сдвиг пальца. У 303 - E9, у Plaits - E8.
+TEST(test_glide_opens_pitch)
+{
+    uint8_t r[16] = {0};
+    for (int page = 6; page <= 11; page++) {
+        if (page >= 8 && page <= 9) {
+            continue;
+        }
+        r[1] = 0; // 303
+        CHECK(pl_pick_sub(page, 8, r) == PL_PAGE_PITCH && pl_pick_sub(page, 7, r) == -1);
+        CHECK(pl_pick_grab(page, 8, r, 0) == 1 && pl_pick_grab(page, 8, r, 1) == 0);
+        r[1] = 1; // Plaits
+        CHECK(pl_pick_sub(page, 7, r) == PL_PAGE_PITCH && pl_pick_sub(page, 8, r) == -1);
+        r[1] = PL_TYPE_PETRI; // у чашки глайда нет
+        for (int e = 1; e < 16; e++) {
+            CHECK(pl_pick_sub(page, e, r) == -1);
+        }
+    }
+    uint8_t p[16] = {0};
+    CHECK(pl_pick_kind(PL_PAGE_PITCH, 1, p) == PL_PICK_GRID); // три значения: сетка, не переключатель
+    CHECK(pl_pick_kind(PL_PAGE_PITCH, 3, p) == PL_PICK_GRID);
+    CHECK(pl_pick_kind(PL_PAGE_PITCH, 4, p) == PL_PICK_NONE);
+    CHECK(pl_pick_sub(PL_PAGE_PITCH, 1, p) == -1);
+}
+
 int main(void)
 {
     RUN(test_kind_synth);
@@ -241,5 +266,6 @@ int main(void)
     RUN(test_view_alias);
     RUN(test_dish_link);
     RUN(test_view_mix);
+    RUN(test_glide_opens_pitch);
     TEST_MAIN_END();
 }

@@ -15,7 +15,9 @@
 #define PL_PAGE_GRIDS 12
 #define PL_PAGE_PETRI 13 // на BSP 18
 #define PL_PAGE_REVERB 27 // подэкран FX, на BSP номера нет
+#define PL_PAGE_PITCH 28  // подэкран GLIDE синтов: шаг слайда S1/S2 и строй, номера BSP нет
 #define PL_REVERB_KNOBS 6
+#define PL_PITCH_KNOBS 3
 #define PL_KNOBS 16
 #define PL_PAYLOAD_MAX 255
 #define PL_FRAME_MAX (PL_PAYLOAD_MAX + 4)
@@ -144,6 +146,7 @@ typedef struct {
     uint8_t bsp_pos[PL_KNOBS];                // 0xFF - энкодер не крутили
     uint8_t held[(PL_PAGES * PL_KNOBS) / 8]; // бит page * 16 + enc: ручка ждёт подхвата BSP
     uint8_t reverb[PL_REVERB_KNOBS];         // посылы S1, S2, ударки, DECAY, DAMP, WIDTH
+    uint8_t pitch[PL_PITCH_KNOBS];           // шаг слайда S1, S2, строй
 } pl_snapshot2_t;
 
 typedef struct {

@@ -23,8 +23,9 @@ int pl_pick_next(int page, int enc, const uint8_t raw[16], int v);         // п
 // У списков удержание - это тап (открыть сетку), у переключателей, триггеров и TYPE крутилки нет.
 // И у ручки с подэкраном удержание - тап: иначе дрожание пальца крутит её вместо входа.
 int pl_pick_grab(int page, int enc, const uint8_t raw[16], int hold);
-// Подэкран за ручкой (тап открывает его, сдвиг пальца крутит ручку): FX 16 REVERB -> PL_PAGE_REVERB; -1 - нет.
-int pl_pick_sub(int page, int enc);
+// Подэкран за ручкой (тап открывает его, сдвиг пальца крутит ручку): FX 16 REVERB -> PL_PAGE_REVERB,
+// GLIDE синта или слоя (у 303 и Plaits на разных энкодерах, raw - ручки страницы) -> PL_PAGE_PITCH; -1 - нет.
+int pl_pick_sub(int page, int enc, const uint8_t raw[16]);
 
 void pl_pick_rect(int n, int slot, int *x, int *y, int *w, int *h); // клетка slot сетки из n значений
 int pl_pick_at(int n, int x, int y);                                // клетка под точкой, -1 мимо

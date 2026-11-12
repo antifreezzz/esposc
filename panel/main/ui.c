@@ -37,7 +37,7 @@
 #define LOAD_WARN 85
 #define LOAD_STALE_MS 2000
 
-enum { OVL_NONE, OVL_VAL, OVL_USER, OVL_MODE, OVL_MORPH, OVL_REVERB };
+enum { OVL_NONE, OVL_VAL, OVL_USER, OVL_MODE, OVL_MORPH, OVL_SUB }; // OVL_SUB - подэкран REVERB или PITCH
 
 typedef struct {
     lv_obj_t *card, *arc, *val, *name, *sub, *pdot, *empty_dot;
@@ -57,6 +57,8 @@ static struct {
     int page;               // открытая страница ручек (0..22)
     int dish;               // 1 - на странице с чашкой открыт экран чашки вместо карточек
     int overlay;            // OVL_* поверх экрана
+    int sub;                // страница подэкрана OVL_SUB: PL_PAGE_REVERB, PL_PAGE_PITCH
+    int val_back;           // куда вернуться из сетки значений OVL_VAL: OVL_NONE или OVL_SUB
     int grab;               // индекс ручки 0..14 или -1
     pl_press_t press;
     pl_turn_t turn;
@@ -185,7 +187,7 @@ static int xy_on(void)
 
 static int view_page(void)
 {
-    return u.ed.state == PL_EDIT_PICK_KNOB ? u.ed.page : u.overlay == OVL_REVERB ? PL_PAGE_REVERB : u.page;
+    return u.ed.state == PL_EDIT_PICK_KNOB ? u.ed.page : u.overlay == OVL_SUB ? u.sub : u.page;
 }
 
 // Какие кнопки действий стоят правее вкладок у открытой вкладки (до двух).
@@ -302,9 +304,9 @@ static void overlay_title(const pl_model_t *m, char nav[40], uint32_t *nc, const
     } else if (u.overlay == OVL_MORPH) {
         snprintf(nav, 40, "SCENE MORPH");
         *nc = C_ACCENT;
-    } else if (u.overlay == OVL_REVERB) {
-        snprintf(nav, 40, "REVERB");
-        *nc = pl_view_page_color(PL_PAGE_REVERB);
+    } else if (u.overlay == OVL_SUB) {
+        snprintf(nav, 40, "%s", pl_view_page_name(u.sub));
+        *nc = pl_view_page_color(u.sub);
     } else {
         snprintf(nav, 40, "SEQ");
         *nc = group_color(u.group);
@@ -352,7 +354,7 @@ static void bar_draw(lv_event_t *e)
         int x0, x1;
         pl_nav_rect(PL_BAR_OVERLAY, PL_NAV_CLOSE, &x0, &x1);
         lv_area_t ca = {x0, 5, x1 - 1, TOP_H - 6};
-        draw_pill(layer, &ca, u.overlay == OVL_REVERB ? UI_SYM_CLOSE " BACK" : UI_SYM_CLOSE " CLOSE", 0, 0, 8);
+        draw_pill(layer, &ca, u.overlay == OVL_SUB ? UI_SYM_CLOSE " BACK" : UI_SYM_CLOSE " CLOSE", 0, 0, 8);
         if (act[0]) {
             pl_nav_rect(PL_BAR_OVERLAY, PL_NAV_ACTION, &x0, &x1);
             lv_area_t aa = {x0, 5, x1 - 1, TOP_H - 6};
@@ -1239,21 +1241,25 @@ void ui_open_pick(int page, int enc)
     u.pick_page = u.pick_tp = page;
     u.pick_enc = u.pick_te = enc;
     u.overlay = OVL_VAL;
+    u.val_back = OVL_NONE;
 }
 
 static void card_tap(pl_model_t *m, int cell, uint32_t ms)
 {
     int enc = cell + 1, tp, te;
     int kind = pl_pick_view(m, u.page, enc, &tp, &te);
-    if (pl_pick_sub(tp, te) == PL_PAGE_REVERB) {
+    int sub = pl_pick_sub(tp, te, pl_model_raw(m, tp));
+    if (sub >= 0) {
         u.grab = -1;
-        u.overlay = OVL_REVERB;
+        u.sub = sub;
+        u.overlay = OVL_SUB;
         return;
     }
     switch (kind) {
     case PL_PICK_GRID:
         u.pick_page = u.page, u.pick_enc = enc, u.pick_tp = tp, u.pick_te = te;
         u.overlay = OVL_VAL;
+        u.val_back = OVL_NONE;
         break;
     case PL_PICK_TOGGLE:
         set_knob(m, u.page, enc, pl_pick_next(tp, te, pl_model_raw(m, tp), pl_model_raw(m, tp)[te]));
@@ -1282,7 +1288,7 @@ static void knob_input(pl_model_t *m, int ev, int down, int x, int y, int x0, in
         pl_cell_t cell;
         pl_view_cell(m, page, i + 1, &cell);
         int kind = pl_pick_view(m, page, i + 1, &tp, &te);
-        int can = kind == PL_PICK_NONE && pl_pick_sub(tp, te) < 0 ? 1 : pl_pick_grab(tp, te, pl_model_raw(m, tp), !drag);
+        int can = kind == PL_PICK_NONE && pl_pick_sub(tp, te, pl_model_raw(m, tp)) < 0 ? 1 : pl_pick_grab(tp, te, pl_model_raw(m, tp), !drag);
         if (i >= 0 && i < KNOBS && cell.label && m->have && can) {
             pl_turn_begin(&u.turn, x, y - RING_DY, cell.v, cell.lo, cell.hi);
             pl_turn_skip(&u.turn, cell.skip);
@@ -1351,13 +1357,30 @@ static void edit_input(pl_model_t *m, int ev, int down, int x, int y, int x0, in
 static void overlay_input(pl_model_t *m, int ev, int down, int x, int y, int tap, int x0, int y0, int x1, int y1,
                           int nav, uint32_t ms)
 {
-    if (u.overlay == OVL_REVERB) {
+    if (u.overlay == OVL_SUB) {
         if (y0 < TOP_H) {
             if (tap && nav == PL_NAV_CLOSE) {
                 u.grab = -1;
                 u.overlay = OVL_NONE;
             }
             return;
+        }
+        int cell = pl_grid_cell(x0, y0);
+        if (tap && cell >= 0 && cell == pl_grid_cell(x1, y1)) {
+            // Список подэкрана (шаг слайда, строй): тап - сетка значений, выбор возвращает в подэкран.
+            int enc = cell + 1, tp, te;
+            int kind = pl_pick_view(m, u.sub, enc, &tp, &te);
+            if (kind == PL_PICK_GRID) {
+                u.pick_page = u.sub, u.pick_enc = enc, u.pick_tp = tp, u.pick_te = te;
+                u.overlay = OVL_VAL;
+                u.val_back = OVL_SUB;
+                u.grab = -1;
+                return;
+            }
+            if (kind == PL_PICK_TOGGLE) {
+                set_knob(m, u.sub, enc, pl_pick_next(tp, te, pl_model_raw(m, tp), pl_model_raw(m, tp)[te]));
+                return;
+            }
         }
         knob_input(m, ev, down, x, y, x0, y0);
         return;
@@ -1367,7 +1390,7 @@ static void overlay_input(pl_model_t *m, int ev, int down, int x, int y, int tap
     }
     if (y0 < TOP_H) {
         if (nav == PL_NAV_CLOSE) {
-            u.overlay = OVL_NONE;
+            u.overlay = u.overlay == OVL_VAL ? u.val_back : OVL_NONE;
         }
         return;
     }
@@ -1379,7 +1402,7 @@ static void overlay_input(pl_model_t *m, int ev, int down, int x, int y, int tap
         if (t >= 0) {
             set_knob(m, u.pick_page, u.pick_enc, t);
         }
-        u.overlay = OVL_NONE;
+        u.overlay = u.val_back;
     } else if (u.overlay == OVL_USER) {
         int up = pl_pick_at(PL_USER_PAGES, x0, y0);
         if (up >= 0 && up == pl_pick_at(PL_USER_PAGES, x1, y1)) {
@@ -1659,7 +1682,7 @@ void ui_step(pl_model_t *m, int down, int x, int y, uint32_t ms)
     u.now = ms;
     pick_m = m;
     int ovl = overlay_on();
-    int reverb_grid = u.overlay == OVL_REVERB && !editing();
+    int reverb_grid = u.overlay == OVL_SUB && !editing(); // подэкран - сетка карточек своей страницы
     int pick_vis = (editing() && u.ed.state == PL_EDIT_PICK_PAGE) || (u.overlay != OVL_NONE && !reverb_grid);
     int edit_grid = editing() && (u.ed.state == PL_EDIT_SLOTS || u.ed.state == PL_EDIT_PICK_KNOB);
     const pl_tab_t *t = cur_tab();

@@ -39,6 +39,9 @@ static const char *const FX[16] = {NULL, "CRUSH BITS", "CRUSH RATE", "DLY S1", "
                                    "DLY FB", "DLY TONE", "STUTTER", "MOTION", "WIDTH", "LYR1 VOL", "LYR2 VOL", "LYR HALF",
                                    "REVERB"};
 static const char *const REVERB[16] = {NULL, "RVB S1", "RVB S2", "RVB DRUMS", "DECAY", "DAMP", "WIDTH"};
+static const char *const PITCH[16] = {NULL, "S1 GLIDE", "S2 GLIDE", "TUNING"};
+static const char *const GLIDE_STEP[3] = {"SMOOTH", "SEMI", "QUARTER"};
+static const char *const TUNING[6] = {"EQUAL", "JUST", "PYTHAG", "MEANTONE", "RAST", "BAYATI"}; // как ACID_TUNING_*
 static const char *const GRIDS[16] = {NULL, "ON", "X", "Y", "KICK", "SNARE", "HAT", "CHAOS", "HAT MODE",
                                       "TIME", "EVERY", "FILL LEN", "FILL", "PATTERN", "SWING", "ROLL"};
 // Источник рисунка: имена банка - те же, что в pl_grids_bank (сверяет test_labels).
@@ -89,6 +92,9 @@ const char *pl_page_name(int page)
 {
     if (page == PL_PAGE_REVERB) {
         return "REVERB";
+    }
+    if (page == PL_PAGE_PITCH) {
+        return "PITCH";
     }
     if (is_mod_page(page)) {
         return MOD_NAME[page - PL_PAGE_MOD1];
@@ -157,6 +163,7 @@ const char *pl_knob_label(int page, int enc, const uint8_t page_raw[16])
     }
     case 8: return FX[enc];
     case PL_PAGE_REVERB: return REVERB[enc];
+    case PL_PAGE_PITCH: return PITCH[enc];
     case 9: return TONAL[enc];
     case GRIDS_PAGE: return GRIDS[enc];
     case PETRI_PG: return PETRI_PAGE[enc];
@@ -169,6 +176,13 @@ static int list_of(int page, int enc, const uint8_t *raw, const char *const **wo
 {
     *words = NULL;
     *lo = 0;
+    if (page == PL_PAGE_PITCH) {
+        if (enc < 1 || enc > 3) {
+            return 0;
+        }
+        *words = enc == 3 ? TUNING : GLIDE_STEP, *hi = enc == 3 ? N(TUNING) - 1 : N(GLIDE_STEP) - 1;
+        return 1;
+    }
     if (is_mod_page(page)) {
         if (enc == 1) {
             *words = MOD_SHAPE, *hi = 7;
@@ -327,6 +341,9 @@ uint32_t pl_page_color(int page)
     if (page == PL_PAGE_REVERB) {
         return PAGE_COLOR[8];
     }
+    if (page == PL_PAGE_PITCH) {
+        return PAGE_COLOR[6];
+    }
     if (is_mod_page(page)) {
         return 0xc4a6e0; // C_MOD панели
     }
@@ -342,7 +359,8 @@ uint32_t pl_knob_color(int page, int enc, const uint8_t page_raw[16])
         return enc <= 4 ? 0xc4a6e0 : enc <= 7 ? 0x8fc4d8 : enc == 8 ? 0xffb648 : 0xe39bb0;
     }
     switch (as_synth(page)) {
-    case PL_PAGE_REVERB: return pl_page_color(page);
+    case PL_PAGE_REVERB:
+    case PL_PAGE_PITCH: return pl_page_color(page);
     case 0: // MIX: мастер/драйв, синты, ударка, пампинг/DJ-фильтр, панорама
         if (enc <= 2) return 0xffb648;
         if (enc <= 4) return 0xa8d672;

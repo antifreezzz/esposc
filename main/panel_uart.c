@@ -27,7 +27,8 @@ _Static_assert(ACID_PAGE_PETRI == PL_PAGE_PETRI && ACID_BSP_PETRI == 18 && ACID_
                    ACID_LAYER_OFF == PL_LAYER_OFF && ACID_PETRI_TABLE == PL_PETRI_POINTS,
                "petri numbers shared by synth and panel (pl_proto.h, pl_page_bsp)");
 _Static_assert(ACID_PAGES == PL_PAGES && ACID_PAGE_GRIDS == PL_PAGE_GRIDS && ACID_USER_FIRST == PL_USER_FIRST &&
-                   ACID_PAGE_REVERB == PL_PAGE_REVERB && ACID_REVERB_KNOBS == PL_REVERB_KNOBS,
+                   ACID_PAGE_REVERB == PL_PAGE_REVERB && ACID_REVERB_KNOBS == PL_REVERB_KNOBS &&
+                   ACID_PAGE_PITCH == PL_PAGE_PITCH && ACID_PITCH_KNOBS == PL_PITCH_KNOBS,
                "synth and panel page numbering");
 _Static_assert(sizeof(pl_snapshot2_t) <= PL_PAYLOAD_MAX, "snapshot2 fits UART frame");
 _Static_assert(ACID_SEQ_REST == PL_SEQ_REST && ACID_SEQ_DEG == PL_SEQ_DEG && ACID_SEQ_ACC == PL_SEQ_ACC &&
@@ -226,6 +227,9 @@ static void send_snapshot(void)
     memcpy(snap2.bsp_pos, s_link->bsp_pos, sizeof snap2.bsp_pos);
     for (int e = 0; e < ACID_REVERB_KNOBS; e++) {
         snap2.reverb[e] = (uint8_t)acid_synth_knob(s_synth, ACID_PAGE_REVERB, e + 1);
+    }
+    for (int e = 0; e < ACID_PITCH_KNOBS; e++) {
+        snap2.pitch[e] = (uint8_t)acid_synth_knob(s_synth, ACID_PAGE_PITCH, e + 1);
     }
     send(PL_SNAPSHOT, &snap, sizeof snap);
     send(PL_SNAPSHOT2, &snap2, sizeof snap2); // весь снимок с 14 страницами не влезает в один кадр

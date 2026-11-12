@@ -20,6 +20,7 @@ typedef struct {
     int demo; // песня демо PL_DEMO_* (в live - последняя)
     uint8_t raw[PL_PAGES][PL_KNOBS], bsp_pos[PL_KNOBS], held[PL_PAGES][PL_KNOBS];
     uint8_t reverb[PL_KNOBS], reverb_held[PL_KNOBS]; // подэкран FX: ручки с энкодера 0, номера BSP нет
+    uint8_t pitch[PL_KNOBS], pitch_held[PL_KNOBS];   // подэкран PITCH, так же
     uint32_t last_rx_ms, last_hello_ms;
     int hello_sent;
     int toast_page, toast_enc;

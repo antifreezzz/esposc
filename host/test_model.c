@@ -498,6 +498,25 @@ TEST(test_mod_local_set)
     CHECK(!pl_model_local_set(&m, PL_PAGE_REVERB + 1, 5, 50));
 }
 
+TEST(test_pitch_local_set)
+{
+    pl_model_init(&m);
+    CHECK(pl_model_local_set(&m, PL_PAGE_PITCH, 1, 2) == 0); // снимка нет
+    knob(PL_PAGE_PITCH, 3, 2, 2, 0xFF, 1, 10);
+    CHECK(m.pitch[3] == 2 && m.pitch_held[3] == 1 && m.reverb[3] == 0);
+    static pl_snapshot_t s;
+    pl_model_apply(&m, PL_SNAPSHOT, (const uint8_t *)&s, sizeof s, 20);
+    static pl_snapshot2_t s2;
+    s2.pitch[0] = 2;
+    s2.pitch[2] = 4;
+    pl_model_apply(&m, PL_SNAPSHOT2, (const uint8_t *)&s2, sizeof s2, 20);
+    CHECK(m.pitch[1] == 2 && m.pitch[3] == 4);
+    CHECK(pl_model_raw(&m, PL_PAGE_PITCH) == m.pitch);
+    CHECK(pl_model_local_set(&m, PL_PAGE_PITCH, 2, 1) == 1);
+    CHECK(m.pitch[2] == 1 && m.pitch_held[2] == 1);
+    CHECK(pl_model_local_set(&m, PL_PAGE_PITCH, 0, 1) == 0 && pl_model_local_set(&m, PL_PAGE_PITCH, 4, 1) == 0);
+}
+
 int main(void)
 {
     RUN(test_mod_frame_applied);
@@ -529,5 +548,6 @@ int main(void)
     RUN(test_local_set_alias_moves_target);
     RUN(test_scene_state_applied);
     RUN(test_seq_dump_pos_and_local_edits);
+    RUN(test_pitch_local_set);
     TEST_MAIN_END();
 }

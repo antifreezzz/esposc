@@ -32,7 +32,7 @@ TEST(test_model_raw)
     CHECK(pl_model_raw(&m, 0) == m.raw[0] && pl_model_raw(&m, PL_PAGES - 1) == m.raw[PL_PAGES - 1]);
     CHECK(pl_model_raw(&m, PL_PAGE_MOD1) == m.mod_knob[0] && pl_model_raw(&m, PL_PAGE_MOD1 + 3) == m.mod_knob[3]);
     CHECK(pl_model_raw(&m, PL_PAGES) == NULL && pl_model_raw(&m, PL_USER_FIRST) == NULL);
-    CHECK(pl_model_raw(&m, PL_PAGE_MIX_DRUMS) == NULL && pl_model_raw(&m, PL_PAGE_MOD1 + 5) == NULL && pl_model_raw(&m, -1) == NULL);
+    CHECK(pl_model_raw(&m, PL_PAGE_MIX_DRUMS) == NULL && pl_model_raw(&m, PL_PAGE_MOD1 + 6) == NULL && pl_model_raw(&m, -1) == NULL);
 }
 
 TEST(test_view_cell_mod_page)
@@ -54,7 +54,7 @@ TEST(test_view_cell_mod_page)
     CHECK(!strcmp(c.label, "DEPTH 3") && c.bipolar && c.v == 100 && !strcmp(c.text, "+36") && c.src == NULL);
     pl_view_cell(&m, PL_PAGE_MOD1 + 1, 13, &c);
     CHECK(c.label == NULL);
-    pl_view_cell(&m, PL_PAGE_MOD1 + 5, 1, &c);
+    pl_view_cell(&m, PL_PAGE_MOD1 + 6, 1, &c);
     CHECK(c.label == NULL);
     // Под именем глубины - цель: её подпись и цвет страницы цели; пустая или негодная цель - нет.
     m.mod_t[1][2] = (pl_mod_target_t){0, 2}; // MIX DRIVE

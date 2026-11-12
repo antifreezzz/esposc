@@ -373,6 +373,31 @@ TEST(petri_labels)
     CHECK(pl_knob_label(10, 2, raw) == NULL);
 }
 
+TEST(test_pitch_labels)
+{
+    static const uint8_t raw[16];
+    char buf[12];
+    CHECK(strcmp(pl_page_name(PL_PAGE_PITCH), "PITCH") == 0);
+    CHECK(pl_page_color(PL_PAGE_PITCH) == pl_page_color(6));
+    CHECK(strcmp(pl_knob_label(PL_PAGE_PITCH, 1, raw), "S1 GLIDE") == 0);
+    CHECK(strcmp(pl_knob_label(PL_PAGE_PITCH, 2, raw), "S2 GLIDE") == 0);
+    CHECK(strcmp(pl_knob_label(PL_PAGE_PITCH, 3, raw), "TUNING") == 0);
+    CHECK(pl_knob_label(PL_PAGE_PITCH, 4, raw) == NULL && pl_knob_label(PL_PAGE_PITCH, 0, raw) == NULL);
+    int lo, hi;
+    pl_knob_range(PL_PAGE_PITCH, 1, raw, &lo, &hi);
+    CHECK(lo == 0 && hi == 2 && pl_knob_list(PL_PAGE_PITCH, 2, raw));
+    CHECK(strcmp(pl_value_text(PL_PAGE_PITCH, 1, 0, raw, buf), "SMOOTH") == 0);
+    CHECK(strcmp(pl_value_text(PL_PAGE_PITCH, 2, 1, raw, buf), "SEMI") == 0);
+    CHECK(strcmp(pl_value_text(PL_PAGE_PITCH, 2, 2, raw, buf), "QUARTER") == 0);
+    pl_knob_range(PL_PAGE_PITCH, 3, raw, &lo, &hi);
+    CHECK(lo == 0 && hi == 5);
+    static const char *const T[6] = {"EQUAL", "JUST", "PYTHAG", "MEANTONE", "RAST", "BAYATI"};
+    for (int i = 0; i < 6; i++) {
+        CHECK(strcmp(pl_value_text(PL_PAGE_PITCH, 3, i, raw, buf), T[i]) == 0);
+        CHECK(strlen(T[i]) <= 10);
+    }
+}
+
 int main(void)
 {
     RUN(petri_labels);
@@ -389,5 +414,6 @@ int main(void)
     RUN(test_bipolar);
     RUN(test_page_summary);
     RUN(test_slot_label);
+    RUN(test_pitch_labels);
     TEST_MAIN_END();
 }

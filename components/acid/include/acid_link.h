@@ -21,12 +21,12 @@ typedef struct {
 // Цели макро ставятся не сразу, а шагом связки: не больше стольких ручек за кусок (пересчёт до ~70 мкс на ручку).
 #define ACID_LINK_PER_CHUNK 2
 #define ACID_LINK_DEFER (ACID_PAGES * ACID_KNOBS)
-#define ACID_LINK_PAGES (ACID_PAGE_REVERB + 1)
+#define ACID_LINK_PAGES (ACID_PAGE_PITCH + 1)
 
 typedef struct {
     uint8_t bsp_pos[ACID_KNOBS]; // последнее значение энкодера BSP, 0xFF - не крутили
     // Ручка правлена с панели, BSP молчит до пересечения. Свои страницы 14..19, модуляторы 23..26.
-    // Страница 27 только хранит признак для события панели: на BSP её нет.
+    // Страницы 27-28 (подэкраны REVERB и PITCH) только хранят признак для события панели: на BSP их нет.
     uint8_t held[ACID_LINK_PAGES][ACID_KNOBS];
     int demo_muted;   // панель правила в демо: CC демо больше не идут
     int snapshot_due; // сменился тип синта: панели нужен снимок
