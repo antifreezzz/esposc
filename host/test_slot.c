@@ -458,6 +458,7 @@ TEST(test_blob_v5_all_pages_roundtrip)
     acid_synth_set_knob(&s, 8, 3, 77);    // посыл синта 1
     acid_synth_set_knob(&s, 8, 6, 3);     // время дилэя
     acid_synth_set_knob(&s, ACID_PAGE_GRIDS, DRM_X, 99);
+    acid_synth_set_knob(&s, ACID_PAGE_GRIDS, DRM_ROLL, 55);
     acid_synth_set_knob(&s, ACID_PAGE_PETRI, 2, 30);
     static uint8_t blob[ACID_SYNTH_BLOB];
     CHECK(acid_synth_export(&s, blob, sizeof blob) == ACID_SYNTH_BLOB);
@@ -484,6 +485,7 @@ TEST(test_blob_v5_all_pages_roundtrip)
     CHECK_NEAR(b.pan_l[ACID_PAN_SYNTH1], s.pan_l[ACID_PAN_SYNTH1], 1e-6f);
     CHECK(b.perc.inst[2].model == 2);
     CHECK(b.dl_time == 3);
+    CHECK(b.drummer.knob[DRM_ROLL] == 55);
     CHECK(acid_synth_take_save(&b) == 0); // загрузка - не правка пользователя
 }
 
