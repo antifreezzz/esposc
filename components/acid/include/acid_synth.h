@@ -35,9 +35,10 @@
 #define ACID_PAGE_PETRI 13
 #define ACID_PAGE_REVERB 27 // только панель: номера BSP нет
 #define ACID_PAGE_PITCH 28  // только панель (подэкран GLIDE): шаг слайда синтов 1-2 и строй, номера BSP нет
-#define ACID_PITCH_KNOBS 3
-// Ручки 1-2: слайд гладко, лесенкой или полулесенкой (полшага стоим, полшага едем).
-enum { ACID_GLIDE_SMOOTH, ACID_GLIDE_SEMI, ACID_GLIDE_QUARTER, ACID_GLIDE_SEMI_RAMP, ACID_GLIDE_QUARTER_RAMP, ACID_GLIDES };
+#define ACID_PITCH_KNOBS 5
+// Ручки 1-2: слайд гладко, лесенкой, полулесенкой или лесенкой с артикуляцией фильтра на ступенях.
+enum { ACID_GLIDE_SMOOTH, ACID_GLIDE_SEMI, ACID_GLIDE_QUARTER, ACID_GLIDE_SEMI_RAMP, ACID_GLIDE_QUARTER_RAMP,
+       ACID_GLIDE_SEMI_ART, ACID_GLIDE_QUARTER_ART, ACID_GLIDES };
 // Ручка 3: строй от тоники страницы 9 (ROOT). Равномерный - прежняя высота бит в бит.
 enum { ACID_TUNING_EQUAL, ACID_TUNING_JUST, ACID_TUNING_PYTHAG, ACID_TUNING_MEANTONE, ACID_TUNING_RAST,
        ACID_TUNING_BAYATI, ACID_TUNINGS };
@@ -74,6 +75,9 @@ typedef struct {
     float gstep_inc;    // приращение фазы ступени на сэмпл (1 / (glide_s * sr))
     float gphase;       // прогресс текущей ступени [0, 1)
     int gramp;          // полулесенка: полшага на ступени, полшага съезд к следующей
+    int gart;           // артикуляция ступеней: на каждой ступени заново бьёт огибающая
+    float ggate;        // доля ступени / удара ретриггера с открытым гейтом (1.0 - легато)
+    int rtg_gate_left;  // сэмплов до закрытия гейта удара ретриггера (-1 - не активен)
     int gliding;
     float accent_gain;
     float fenv_amount; // Гц на пике огибающей фильтра
@@ -206,6 +210,7 @@ typedef struct acid_synth {
 #define ACID_SYNTH_BLOB_V5 (ACID_SYNTH_BLOB_V4 + ACID_SAVED_PAGES * ACID_KNOBS)
 #define ACID_SYNTH_BLOB_V7 (ACID_SYNTH_BLOB_V5 + 5) // версии 6-7: пять ручек реверба, без ширины
 #define ACID_SYNTH_BLOB_V8 (ACID_SYNTH_BLOB_V5 + ACID_REVERB_KNOBS)
+#define ACID_SYNTH_BLOB_V9 (ACID_SYNTH_BLOB_V8 + 3)
 #define ACID_SYNTH_BLOB (ACID_SYNTH_BLOB_V8 + ACID_PITCH_KNOBS)
 
 // Умолчания всех ручек, тишина до первой ноты.

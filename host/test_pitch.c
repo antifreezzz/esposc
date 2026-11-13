@@ -360,6 +360,87 @@ TEST(test_glide_steps_tuned)
     CHECK_NEAR(cents(&s.slot[0], 52), -13.69, 0.05);
 }
 
+// Артикуляция лесенки: на каждой ступени заново бьёт огибающая фильтра 303 (и триггер Plaits),
+// громкость при GATE 127 не проваливается.
+TEST(test_glide_art)
+{
+    live();
+    acid_synth_set_knob(&s, P, 1, ACID_GLIDE_SEMI_ART);
+    acid_slot_t *v = &s.slot[0];
+    on(BASS, 45);
+    render(4800);
+    on(BASS, 49); // 4 полутона вверх
+    int T = (int)(0.06 * SR + 0.5);
+    int jumps = 0;
+    float prev_fenv = v->fenv.value;
+    for (int i = 0; i < 5 * T; i++) {
+        acid_synth_render(&s, buf, 1);
+        if (v->fenv.value > prev_fenv + 0.1f) {
+            jumps++;
+        }
+        prev_fenv = v->fenv.value;
+        CHECK(v->amp.gate == 1);
+    }
+    CHECK(jumps == 4);
+    CHECK(acid_slot_pitch(v) == v->target_log2);
+
+    // Plaits: триггер срабатывает на ступенях в SEMI ART / QRTR ART.
+    live();
+    acid_synth_set_knob(&s, 6, 1, 1);
+    render(9600);
+    acid_synth_set_knob(&s, P, 1, ACID_GLIDE_QUARTER_ART);
+    on(BASS, 45);
+    render(4800);
+    on(BASS, 47); // 2 полутона = 4 четвертьтона
+    int retrigs = 0;
+    for (int i = 0; i < 5 * T; i++) {
+        int was = v->retrig;
+        acid_synth_render(&s, buf, 1);
+        if (v->retrig && !was) {
+            retrigs++;
+        }
+    }
+    CHECK(retrigs == 4);
+}
+
+// Ручки GATE 4-5 на подэкране PITCH: < 127 закрывает гейт на остаток ступени лесенки,
+// не трогает обычные ноты и действует отдельно на синт 1 и синт 2.
+TEST(test_pitch_gate_ladder)
+{
+    live();
+    CHECK(acid_synth_knob(&s, P, 4) == 127 && acid_synth_knob(&s, P, 5) == 127);
+    acid_synth_set_knob(&s, P, 1, ACID_GLIDE_SEMI);
+    acid_synth_set_knob(&s, P, 4, 64); // ~50% ступени
+    acid_slot_t *v = &s.slot[0];
+    on(BASS, 45);
+    render(4800);
+    CHECK(v->amp.gate == 1); // обычная нота не режется
+    on(BASS, 49);            // 4 полутона
+    int T = (int)(0.06 * SR + 0.5);
+    int open = 0, total = 4 * T;
+    for (int i = 0; i < total; i++) {
+        acid_synth_render(&s, buf, 1);
+        open += v->amp.gate;
+    }
+    CHECK(fabs((double)open / total - 0.5) < 0.03);
+    render(480);
+    CHECK(v->amp.gate == 1); // доехав до цели, нота держится
+
+    // Синт 2 с GATE 127 остаётся легато.
+    acid_synth_set_knob(&s, 7, 1, 0); // синт 2 - 303
+    render(9600);
+    acid_synth_set_knob(&s, P, 2, ACID_GLIDE_SEMI);
+    on(SEQ2, 45);
+    render(4800);
+    on(SEQ2, 49);
+    int open2 = 0;
+    for (int i = 0; i < total; i++) {
+        acid_synth_render(&s, buf, 1);
+        open2 += s.slot[1].amp.gate;
+    }
+    CHECK(open2 == total);
+}
+
 TEST(test_blob)
 {
     static acid_synth_t b;
@@ -368,17 +449,27 @@ TEST(test_blob)
     acid_synth_set_knob(&s, P, 1, 2);
     acid_synth_set_knob(&s, P, 2, 1);
     acid_synth_set_knob(&s, P, 3, ACID_TUNING_RAST);
+    acid_synth_set_knob(&s, P, 4, 50);
+    acid_synth_set_knob(&s, P, 5, 90);
     CHECK(acid_synth_export(&s, blob, sizeof blob) == ACID_SYNTH_BLOB);
-    CHECK(blob[3] == 9);
+    CHECK(blob[3] == 10);
     acid_synth_init(&b, SR);
     CHECK(acid_synth_import(&b, blob, sizeof blob) == 1);
     CHECK(acid_synth_knob(&b, P, 1) == 2 && acid_synth_knob(&b, P, 2) == 1);
     CHECK(acid_synth_knob(&b, P, 3) == ACID_TUNING_RAST);
-    // Версия 8 (без PITCH) читается, строй и слайд - по умолчанию.
+    CHECK(acid_synth_knob(&b, P, 4) == 50 && acid_synth_knob(&b, P, 5) == 90);
+    // Версия 9 (3 ручки PITCH) читается, GATE - по умолчанию 127.
+    blob[3] = 9;
+    acid_synth_init(&b, SR);
+    CHECK(acid_synth_import(&b, blob, ACID_SYNTH_BLOB - 2) == 1);
+    CHECK(acid_synth_knob(&b, P, 1) == 2 && acid_synth_knob(&b, P, 3) == ACID_TUNING_RAST);
+    CHECK(acid_synth_knob(&b, P, 4) == 127 && acid_synth_knob(&b, P, 5) == 127);
+    // Версия 8 (без PITCH) читается, строй и слайд - 0, GATE - 127.
     blob[3] = 8;
     acid_synth_init(&b, SR);
     CHECK(acid_synth_import(&b, blob, ACID_SYNTH_BLOB - ACID_PITCH_KNOBS) == 1);
     CHECK(acid_synth_knob(&b, P, 1) == 0 && acid_synth_knob(&b, P, 3) == 0);
+    CHECK(acid_synth_knob(&b, P, 4) == 127 && acid_synth_knob(&b, P, 5) == 127);
 }
 
 int main(void)
@@ -399,6 +490,8 @@ int main(void)
     RUN(test_glide_linear_half_layer);
     RUN(test_glide_linear_plaits);
     RUN(test_glide_ramp_halves);
+    RUN(test_glide_art);
+    RUN(test_pitch_gate_ladder);
     RUN(test_blob);
     TEST_MAIN_END();
 }

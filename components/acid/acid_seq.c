@@ -150,6 +150,7 @@ static int emit(acid_seq_ev_t *out, int k, int synth, int on, int note, int vel)
     out[k].on = (uint8_t)on;
     out[k].note = (uint8_t)note;
     out[k].vel = (uint8_t)vel;
+    out[k].rtg_ticks = 0;
     return k + 1;
 }
 
@@ -218,6 +219,7 @@ static int track_clock(acid_seq_track_t *t, int synth, int beat_step, const acid
             int note = sc ? acid_tonal_scale_note(sc - 1, base, deg) : acid_tonal_degree_note(tonal, base, deg);
             note = note < 0 ? 0 : (note > 127 ? 127 : note);
             int vel = (v & ACID_SEQ_ACC) ? VEL_ACC : VEL;
+            int on_idx = k;
             if (note != old) {
                 k = emit(out, k, synth, 1, note, vel); // новая раньше старой: глайд
                 if (old >= 0) {
@@ -226,10 +228,14 @@ static int track_clock(acid_seq_track_t *t, int synth, int beat_step, const acid
                 t->sounding = (int8_t)note;
             } else if (hits > 1) {
                 k = emit(out, k, synth, 0, old, 0); // та же нота пришла слайдом: ретриггер бьёт заново
+                on_idx = k;
                 k = emit(out, k, synth, 1, note, vel);
             }
             // Период повторов: шаг из 6 тиков делится на 2 удара по 3 тика или 3 по 2.
             t->rtg = (uint8_t)(hits > 1 ? TICKS / hits : 0);
+            if (t->rtg && on_idx < k) {
+                out[on_idx].rtg_ticks = t->rtg;
+            }
             t->rtg_note = (uint8_t)note;
             t->rtg_vel = (uint8_t)vel;
             t->slid = (v & ACID_SEQ_SLIDE) && hits == 1 && t->sounding >= 0;
@@ -238,6 +244,7 @@ static int track_clock(acid_seq_track_t *t, int synth, int beat_step, const acid
         // Повторы идут по защёлкнутому на тике 0: правка шага посреди хода их не ломает.
         if (t->tick % t->rtg == 0) {
             k = emit(out, k, synth, 1, t->rtg_note, t->rtg_vel);
+            out[k - 1].rtg_ticks = t->rtg;
             t->sounding = (int8_t)t->rtg_note;
         } else if (t->tick % t->rtg == t->rtg - 1 && t->sounding >= 0) {
             k = emit(out, k, synth, 0, t->sounding, 0);

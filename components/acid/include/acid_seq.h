@@ -46,6 +46,7 @@ typedef struct {
 
 typedef struct {
     uint8_t synth, on, note, vel;
+    uint8_t rtg_ticks; // 0 = обычная нота, >0 = удар ретриггера с периодом в тиках клока (2 или 3)
 } acid_seq_ev_t;
 
 int acid_seq_hits(uint8_t v); // ударов на шаг по байту шага: 1, 2 или 3

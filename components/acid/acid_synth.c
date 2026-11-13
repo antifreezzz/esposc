@@ -65,8 +65,8 @@ static const uint8_t PAN_DEFAULT[ACID_PANS] = {64, 64, 80, 48, 64};
 #define TYPE_ENC 1       // энкодер 2 на странице синта
 // 2: + ручки слоя тональности, 3: + слои синтов, 4: + PETRI, 5: + страницы микса, ударки, эффектов, Grids, чашки,
 // 6: + пять ручек реверба (wet на FX 15 вместо LYR HALF), 7: LYR HALF на FX 15, wet на FX 16,
-// 8: + ширина реверба.
-static const uint8_t BLOB_MAGIC[4] = {'A', 'S', '5', 9};
+// 8: + ширина реверба, 9: + PITCH (шаг слайда S1/S2, строй), 10: + GATE S1/S2 на PITCH.
+static const uint8_t BLOB_MAGIC[4] = {'A', 'S', '5', 10};
 static const uint8_t RV_DEFAULT[ACID_REVERB_KNOBS] = {64, 64, 64, 64, 50, 127};
 // Строи: отклонение ступени (полутонов от тоники страницы 9) от равномерного, в центах. Чистый - 5-предельный,
 // пифагоров и среднетоновый (1/4 коммы) - цепью квинт от Eb до G#; RAST и BAYATI - четвертьтона макамов.
@@ -146,6 +146,9 @@ static void slot_init(acid_slot_t *v, float sr, int type)
     v->glide_s = GLIDE_S;
     v->glide_coef = expf(-1.0f / (GLIDE_S * sr));
     v->gramp = 0;
+    v->gart = 0;
+    v->ggate = 1.0f;
+    v->rtg_gate_left = -1;
     v->pitch_log2 = v->target_log2 = log2f(110.0f);
     v->gliding = 0;
     v->accent_gain = 1.0f;
@@ -236,6 +239,8 @@ void acid_synth_init(acid_synth_t *s, float sr)
     acid_reverb_init(&s->reverb, s->rv_mem);
     memcpy(s->rv_raw, RV_DEFAULT, sizeof s->rv_raw);
     memset(s->pitch_raw, 0, sizeof s->pitch_raw);
+    s->pitch_raw[3] = 127;
+    s->pitch_raw[4] = 127;
     s->rv_wet = 0.0f;
     s->rv_send1 = s->rv_send2 = s->rv_send_drums = 64.0f / 127.0f;
     s->rv_duck = 1.0f;
@@ -446,6 +451,7 @@ void acid_synth_notes_off(acid_synth_t *s)
         v->nheld = 0;
         v->pend_note = -1;
         v->gliding = 0;
+        v->rtg_gate_left = -1;
         if (v->pet) {
             acid_petri_notes_off(v->pet);
         }
@@ -994,13 +1000,16 @@ static void page_reverb(acid_synth_t *s, int slot, int v)
     }
 }
 
-// Подэкран PITCH: шаг слайда синта 1 и 2 (у синта и его слоя один), строй. Вне списка - игнор.
+// Подэкран PITCH: шаг слайда синта 1 и 2 (у синта и его слоя один), строй, GATE синта 1 и 2. Вне списка - игнор.
 static void page_pitch(acid_synth_t *s, int slot, int v)
 {
     if (slot <= 2 && v < ACID_GLIDES) {
         s->pitch_raw[slot - 1] = (uint8_t)v;
-        int ramp = v >= ACID_GLIDE_SEMI_RAMP;
-        int st = ramp ? v - ACID_GLIDE_SEMI_RAMP + ACID_GLIDE_SEMI : v;
+        int art = v >= ACID_GLIDE_SEMI_ART;
+        int ramp = !art && v >= ACID_GLIDE_SEMI_RAMP;
+        int st = art  ? v - ACID_GLIDE_SEMI_ART + ACID_GLIDE_SEMI
+               : ramp ? v - ACID_GLIDE_SEMI_RAMP + ACID_GLIDE_SEMI
+                      : v;
         float inv = st == ACID_GLIDE_SEMI ? 12.0f : st == ACID_GLIDE_QUARTER ? 24.0f : 0.0f;
         acid_slot_t *vs[2] = {&s->slot[slot - 1], &s->layer[slot - 1]};
         for (int i = 0; i < 2; i++) {
@@ -1008,12 +1017,18 @@ static void page_pitch(acid_synth_t *s, int slot, int v)
             vs[i]->gstep = inv > 0.0f ? 1.0f / inv : 0.0f;
             vs[i]->gstep_inc = vs[i]->gstep > 0.0f ? 1.0f / (vs[i]->glide_s * s->sr) : 0.0f;
             vs[i]->gramp = ramp;
+            vs[i]->gart = art;
         }
     } else if (slot == 3 && v < ACID_TUNINGS) {
         s->pitch_raw[2] = (uint8_t)v;
         if (s->drone) {
             drone_retune(s);
         }
+    } else if (slot == 4 || slot == 5) {
+        s->pitch_raw[slot - 1] = (uint8_t)v;
+        float g = v >= 127 ? 1.0f : (float)v * (1.0f / 127.0f);
+        s->slot[slot - 4].ggate = g;
+        s->layer[slot - 4].ggate = g;
     }
 }
 
@@ -1416,6 +1431,16 @@ static void exact_off(acid_synth_t *s, acid_slot_t *v, int note)
     note_release(s, v, note);
 }
 
+static void seq_rtg_gate(acid_synth_t *s, acid_slot_t *v, int rtg_ticks)
+{
+    if (rtg_ticks > 0 && v->ggate < 1.0f) {
+        float scale = v->half ? 0.5f : 1.0f;
+        v->rtg_gate_left = (int)((float)rtg_ticks * (acid_clock_spb(&s->clock) * (1.0f / 24.0f)) * scale * v->ggate + 0.5f);
+    } else {
+        v->rtg_gate_left = -1;
+    }
+}
+
 static void seq_notes(acid_synth_t *s, const acid_seq_ev_t *ev, int n)
 {
     for (int i = 0; i < n; i++) {
@@ -1425,9 +1450,15 @@ static void seq_notes(acid_synth_t *s, const acid_seq_ev_t *ev, int n)
         }
         if (ev[i].on || s->drone) {
             synth_note(s, ev[i].synth, ev[i].on, note, ev[i].vel);
+            if (ev[i].on) {
+                seq_rtg_gate(s, &s->slot[ev[i].synth], ev[i].rtg_ticks);
+                seq_rtg_gate(s, &s->layer[ev[i].synth], ev[i].rtg_ticks);
+            }
         } else {
             exact_off(s, &s->slot[ev[i].synth], note);
             exact_off(s, &s->layer[ev[i].synth], note);
+            s->slot[ev[i].synth].rtg_gate_left = -1;
+            s->layer[ev[i].synth].rtg_gate_left = -1;
         }
     }
 }
@@ -1629,11 +1660,22 @@ static float plaits_next(acid_slot_t *v, int gate)
                 } else {
                     v->pitch_log2 += diff > 0.0f ? v->gstep : -v->gstep;
                 }
+                if (v->gart) {
+                    v->retrig = 1;
+                }
+            }
+            if (v->gliding && v->ggate < 1.0f && v->gphase >= v->ggate) {
+                gate = 0;
             }
         } else {
             float gc = v->half ? v->glide_coef * v->glide_coef : v->glide_coef; // полюс за два сэмпла
             v->pitch_log2 = v->target_log2 + (v->pitch_log2 - v->target_log2) * gc;
         }
+    }
+    if (v->rtg_gate_left > 0) {
+        v->rtg_gate_left--;
+    } else if (v->rtg_gate_left == 0) {
+        gate = 0;
     }
     if (v->ppos == ACID_PLAITS_BLOCK) {
         plaits_refill(v, gate);
@@ -1649,8 +1691,8 @@ static float plaits_next(acid_slot_t *v, int gate)
 static void plaits_run(acid_slot_t *v, int gate, float *out, int n)
 {
     while (n > 0) {
-        if (v->gliding) {
-            *out++ = plaits_next(v, gate); // слайд двигает высоту каждый сэмпл
+        if (v->gliding || v->rtg_gate_left >= 0) {
+            *out++ = plaits_next(v, gate); // слайд или гейт ретриггера считают по сэмплу
             n--;
             continue;
         }
@@ -1679,11 +1721,6 @@ static void plaits_run(acid_slot_t *v, int gate, float *out, int n)
 // Сэмпл голоса 303 с громкостью слота.
 static inline float voice_next(acid_synth_t *s, acid_slot_t *v, int gate)
 {
-    acid_amp_gate(&v->amp, gate);
-    if (!gate && v->amp.value < AMP_SLEEP) {
-        v->amp.value = 0.0f; // спит: осциллятор и фильтр стоят, с новой нотой продолжат с того же места
-        return 0.0f;
-    }
     if (v->gliding) {
         if (v->gstep_inc > 0.0f) {
             float inc = v->half ? 2.0f * v->gstep_inc : v->gstep_inc;
@@ -1701,11 +1738,27 @@ static inline float voice_next(acid_synth_t *s, acid_slot_t *v, int gate)
                 } else {
                     v->pitch_log2 += diff > 0.0f ? v->gstep : -v->gstep;
                 }
+                if (v->gart) {
+                    acid_decay_trigger(&v->fenv, 1.0f);
+                }
+            }
+            if (v->gliding && v->ggate < 1.0f && v->gphase >= v->ggate) {
+                gate = 0;
             }
         } else {
             float gc = v->half ? v->glide_coef * v->glide_coef : v->glide_coef; // полюс за два сэмпла
             v->pitch_log2 = v->target_log2 + (v->pitch_log2 - v->target_log2) * gc;
         }
+    }
+    if (v->rtg_gate_left > 0) {
+        v->rtg_gate_left--;
+    } else if (v->rtg_gate_left == 0) {
+        gate = 0;
+    }
+    acid_amp_gate(&v->amp, gate);
+    if (!gate && v->amp.value < AMP_SLEEP) {
+        v->amp.value = 0.0f; // спит: осциллятор и фильтр стоят, с новой нотой продолжат с того же места
+        return 0.0f;
     }
     if (v->ctrl_left == 0) {
         v->g = control_update(s, v);
@@ -2113,7 +2166,8 @@ int acid_synth_import(acid_synth_t *s, const void *buf, size_t len)
 {
     const uint8_t *b = buf;
     // Версия 2 (до слоёв) - только синты; 2-3 - по 25 типов (без PETRI), у слоя «выкл» = 25.
-    int ver = len == ACID_SYNTH_BLOB && memcmp(b, BLOB_MAGIC, sizeof BLOB_MAGIC) == 0       ? 9
+    int ver = len == ACID_SYNTH_BLOB && memcmp(b, BLOB_MAGIC, sizeof BLOB_MAGIC) == 0       ? 10
+              : len == ACID_SYNTH_BLOB_V9 && memcmp(b, "AS5\x09", 4) == 0               ? 9
               : len == ACID_SYNTH_BLOB_V8 && memcmp(b, "AS5\x08", 4) == 0               ? 8
               : len == ACID_SYNTH_BLOB_V7 && memcmp(b, "AS5\x07", 4) == 0               ? 7
               : len == ACID_SYNTH_BLOB_V7 && memcmp(b, "AS5\x06", 4) == 0               ? 6
@@ -2168,8 +2222,10 @@ int acid_synth_import(acid_synth_t *s, const void *buf, size_t len)
         }
     }
     b += ACID_REVERB_KNOBS;
-    for (int e = 0; ver >= 9 && e < ACID_PITCH_KNOBS; e++) {
-        apply_page(s, ACID_PAGE_PITCH, e + 1, b[e]);
+    int n_pitch = ver >= 10 ? ACID_PITCH_KNOBS : ver == 9 ? 3 : 0;
+    for (int e = 0; e < ACID_PITCH_KNOBS; e++) {
+        int val = e < n_pitch ? b[e] : (e >= 3 ? 127 : 0);
+        apply_page(s, ACID_PAGE_PITCH, e + 1, val);
     }
     if (s->drone) {
         drone_retune(s);

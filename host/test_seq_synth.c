@@ -168,6 +168,35 @@ TEST(test_retrig_not_debounced)
     CHECK(hits == 3);
 }
 
+// GATE < 127 режет удары ретриггера в сэмплах по темпу (короче одного тика клока), но не трогает обычные шаги.
+TEST(test_retrig_gate)
+{
+    setup();
+    acid_seq_set_step(&q, 0, 0, 0, 0 | ACID_SEQ_RTG); // 2 удара по 3 тика (3000 сэмплов)
+    acid_seq_set_step(&q, 0, 0, 1, 2);                // обычный шаг: не режется
+    acid_synth_use_seq(&s, &q);
+    acid_synth_set_knob(&s, ACID_PAGE_PITCH, 4, 32); // ~25% удара (~756 сэмплов)
+    ev(ACID_MIDI_START, 0, 0, 0);
+    acid_synth_seq_run(&s, 0, 1);
+    ev(ACID_MIDI_CLOCK, 0, 0, 0); // тик 0: первый удар ретриггера
+    int open = 0;
+    for (int i = 0; i < TICK_SAMPLES; i++) {
+        acid_synth_render(&s, buf, 1);
+        open += s.slot[0].amp.gate;
+    }
+    CHECK(open > 650 && open < 850); // закрылся раньше первого тика клока
+    CHECK(s.slot[0].amp.gate == 0);
+    // Доезжаем до шага 1 (обычный шаг): гейт открыт весь тик.
+    ticks(5);
+    ev(ACID_MIDI_CLOCK, 0, 0, 0);
+    int open_norm = 0;
+    for (int i = 0; i < TICK_SAMPLES; i++) {
+        acid_synth_render(&s, buf, 1);
+        open_norm += s.slot[0].amp.gate;
+    }
+    CHECK(open_norm == TICK_SAMPLES);
+}
+
 int main(void)
 {
     RUN(test_seq_plays_note);
@@ -179,5 +208,6 @@ int main(void)
     RUN(test_same_note_seq_gate_keeps_bsp);
     RUN(test_same_note_bsp_release_keeps_seq);
     RUN(test_retrig_not_debounced);
+    RUN(test_retrig_gate);
     TEST_MAIN_END();
 }
