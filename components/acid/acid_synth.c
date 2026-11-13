@@ -141,8 +141,10 @@ static void slot_init(acid_slot_t *v, float sr, int type)
     acid_drive_init(&v->drv, sr);
     acid_decay_init(&v->fenv, FENV_NORMAL_S, sr);
     acid_amp_init(&v->amp, 0.003f, 0.01f, sr);
-    v->glide_coef = expf(-1.0f / (GLIDE_S * sr));
     v->gstep = v->ginv = 0.0f;
+    v->gstep_inc = v->gphase = 0.0f;
+    v->glide_s = GLIDE_S;
+    v->glide_coef = expf(-1.0f / (GLIDE_S * sr));
     v->gramp = 0;
     v->pitch_log2 = v->target_log2 = log2f(110.0f);
     v->gliding = 0;
@@ -364,22 +366,24 @@ void acid_synth_set_load(acid_synth_t *s, float load)
     }
 }
 
-// Звучащая высота: на слайде лесенкой - ближайшая ступень от цели, иначе как есть.
-// Полулесенка: в дальней от цели половине ступени высота стоит, в ближней съезжает к следующей ступени.
+static void slot_set_glide(acid_slot_t *sl, float sr, float t)
+{
+    sl->glide_s = t;
+    sl->glide_coef = expf(-1.0f / (t * sr));
+    sl->gstep_inc = sl->gstep > 0.0f ? 1.0f / (t * sr) : 0.0f;
+}
+
+// Звучащая высота: на лесенке pitch_log2 уже идёт ступенями;
+// на полулесенке первую половину ступени держим, вторую едем к следующей.
 static inline float pitch_out(const acid_slot_t *v)
 {
-    if (v->gstep == 0.0f || !v->gliding) {
+    if (!v->gramp || v->gstep == 0.0f || !v->gliding || v->gphase <= 0.5f) {
         return v->pitch_log2;
     }
-    float d = (v->pitch_log2 - v->target_log2) * v->ginv;
-    if (v->gramp) {
-        float a = d < 0.0f ? -d : d;
-        float k = (float)(int)a;
-        float f = 2.2f * (a - k) - 0.1f; // у самой ступени - ровно на ней: гладкий глайд не доезжает ~0.8 цента
-        a = k + (f < 0.0f ? 0.0f : f < 1.0f ? f : 1.0f);
-        return v->target_log2 + (d < 0.0f ? -a : a) * v->gstep;
-    }
-    return v->target_log2 + (float)(int)(d < 0.0f ? d - 0.5f : d + 0.5f) * v->gstep;
+    float f = 2.0f * (v->gphase - 0.5f);
+    float diff = v->target_log2 - v->pitch_log2;
+    float step = fabsf(diff) <= v->gstep ? diff : (diff > 0.0f ? v->gstep : -v->gstep);
+    return v->pitch_log2 + f * step;
 }
 
 float acid_slot_pitch(const acid_slot_t *v)
@@ -419,10 +423,12 @@ static void voice_note(acid_synth_t *s, acid_slot_t *v, int note, int accent, in
     v->accent_gain = accent ? v->accent_amt : 1.0f;
     v->accented = accent != 0;
     if (slide) {
+        v->gphase = 0.0f;
         v->gliding = 1;
         return;
     }
     v->gliding = 0;
+    v->gphase = 0.0f;
     v->pitch_log2 = v->target_log2;
     v->retrig = 1;
     acid_decay_set(&v->fenv, accent ? v->decay_s * FENV_ACCENT_RATIO : v->decay_s, s->sr);
@@ -716,7 +722,7 @@ static void knob_303(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
     case 5: sl->decay_s = expo(v, 0.05f, 1.5f); break;
     case 6: sl->accent_amt = lin(v, 1.0f, 2.0f); break;
     case 7: sl->wave = v <= 1 ? v : sl->wave; break; // 0 пила, 1 меандр
-    case 8: sl->glide_coef = expf(-1.0f / (expo(v, 0.01f, 0.3f) * s->sr)); break;
+    case 8: slot_set_glide(sl, s->sr, expo(v, 0.01f, 0.3f)); break;
     case 9: transpose_set(sl, v); break;
     default: break;
     }
@@ -731,7 +737,7 @@ static void knob_plaits(acid_synth_t *s, acid_slot_t *sl, int slot, int v)
     case 4: p->morph = lin(v, 0.0f, 1.0f); break;
     case 5: p->decay = lin(v, 0.0f, 1.0f); break;
     case 6: p->lpg_colour = lin(v, 0.0f, 1.0f); break;
-    case 7: sl->glide_coef = expf(-1.0f / (expo(v, 0.01f, 0.3f) * s->sr)); break;
+    case 7: slot_set_glide(sl, s->sr, expo(v, 0.01f, 0.3f)); break;
     case 8: transpose_set(sl, v); break;
     case 9: p->timbre_env = bip(v); break;
     case 10: p->morph_env = bip(v); break;
@@ -787,7 +793,7 @@ static void knob_apply(acid_synth_t *s, acid_slot_t *v, int slot, int val)
 // Умолчания звучащего типа и поверх них запомненные ручки этого типа.
 static void type_defaults(acid_synth_t *s, acid_slot_t *v)
 {
-    v->glide_coef = expf(-1.0f / (GLIDE_S * s->sr));
+    slot_set_glide(v, s->sr, GLIDE_S);
     v->transpose = 0;
     acid_drive_set(&v->drv, 0, DRIVE_TONE, 0);
     if (v->type == ACID_LAYER_OFF) {
@@ -1000,6 +1006,7 @@ static void page_pitch(acid_synth_t *s, int slot, int v)
         for (int i = 0; i < 2; i++) {
             vs[i]->ginv = inv;
             vs[i]->gstep = inv > 0.0f ? 1.0f / inv : 0.0f;
+            vs[i]->gstep_inc = vs[i]->gstep > 0.0f ? 1.0f / (vs[i]->glide_s * s->sr) : 0.0f;
             vs[i]->gramp = ramp;
         }
     } else if (slot == 3 && v < ACID_TUNINGS) {
@@ -1606,8 +1613,27 @@ static void plaits_refill(acid_slot_t *v, int gate)
 static float plaits_next(acid_slot_t *v, int gate)
 {
     if (v->gliding) {
-        float gc = v->half ? v->glide_coef * v->glide_coef : v->glide_coef; // полюс за два сэмпла
-        v->pitch_log2 = v->target_log2 + (v->pitch_log2 - v->target_log2) * gc;
+        if (v->gstep_inc > 0.0f) {
+            float inc = v->half ? 2.0f * v->gstep_inc : v->gstep_inc;
+            v->gphase += inc;
+            if (v->gphase >= 1.0f - 0.5f * inc) {
+                v->gphase -= 1.0f;
+                if (v->gphase < 0.0f) {
+                    v->gphase = 0.0f;
+                }
+                float diff = v->target_log2 - v->pitch_log2;
+                if (fabsf(diff) <= v->gstep * 1.0001f) {
+                    v->pitch_log2 = v->target_log2;
+                    v->gphase = 0.0f;
+                    v->gliding = 0;
+                } else {
+                    v->pitch_log2 += diff > 0.0f ? v->gstep : -v->gstep;
+                }
+            }
+        } else {
+            float gc = v->half ? v->glide_coef * v->glide_coef : v->glide_coef; // полюс за два сэмпла
+            v->pitch_log2 = v->target_log2 + (v->pitch_log2 - v->target_log2) * gc;
+        }
     }
     if (v->ppos == ACID_PLAITS_BLOCK) {
         plaits_refill(v, gate);
@@ -1659,8 +1685,27 @@ static inline float voice_next(acid_synth_t *s, acid_slot_t *v, int gate)
         return 0.0f;
     }
     if (v->gliding) {
-        float gc = v->half ? v->glide_coef * v->glide_coef : v->glide_coef; // полюс за два сэмпла
-        v->pitch_log2 = v->target_log2 + (v->pitch_log2 - v->target_log2) * gc;
+        if (v->gstep_inc > 0.0f) {
+            float inc = v->half ? 2.0f * v->gstep_inc : v->gstep_inc;
+            v->gphase += inc;
+            if (v->gphase >= 1.0f - 0.5f * inc) {
+                v->gphase -= 1.0f;
+                if (v->gphase < 0.0f) {
+                    v->gphase = 0.0f;
+                }
+                float diff = v->target_log2 - v->pitch_log2;
+                if (fabsf(diff) <= v->gstep * 1.0001f) {
+                    v->pitch_log2 = v->target_log2;
+                    v->gphase = 0.0f;
+                    v->gliding = 0;
+                } else {
+                    v->pitch_log2 += diff > 0.0f ? v->gstep : -v->gstep;
+                }
+            }
+        } else {
+            float gc = v->half ? v->glide_coef * v->glide_coef : v->glide_coef; // полюс за два сэмпла
+            v->pitch_log2 = v->target_log2 + (v->pitch_log2 - v->target_log2) * gc;
+        }
     }
     if (v->ctrl_left == 0) {
         v->g = control_update(s, v);

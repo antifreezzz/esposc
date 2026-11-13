@@ -3,6 +3,7 @@
 #include "test.h"
 
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define SR 48000.0f
@@ -125,7 +126,7 @@ static int slide_values(acid_slot_t *v, int ch, int from, int to, double grid, i
     double prev = -1e9, last = 1e9;
     int distinct = 0;
     *on_grid = *monotonic = 1;
-    for (int i = 0; i < 48000 / 4; i++) {
+    for (int i = 0; i < 2 * 48000 / 4; i++) {
         render(4);
         double st = cents(v, to) / 100.0;
         if (grid > 0) {
@@ -252,6 +253,101 @@ TEST(test_glide_steps_plaits)
     CHECK(ok && moved);
 }
 
+// Слайд from -> to: моменты смены звучащей высоты голоса v (сэмпл от ноты to), число смен за len сэмплов.
+static int step_times(acid_slot_t *v, int ch, int from, int to, int *at, int max, int len)
+{
+    on(ch, from);
+    render(4800);
+    on(ch, to);
+    float last = acid_slot_pitch(v);
+    int n = 0;
+    for (int i = 1; i <= len; i++) {
+        acid_synth_render(&s, buf, 1);
+        float p = acid_slot_pitch(v);
+        if (p != last) {
+            if (n < max) {
+                at[n] = i;
+            }
+            n++;
+            last = p;
+        }
+    }
+    return n;
+}
+
+// Лесенка линейная: ступень за время глайда T (умолчание 0.06 с), каждая держится T, последняя - ровно цель.
+static void linear_case(acid_slot_t *v, int ch, double t_s)
+{
+    int at[16];
+    int T = (int)(t_s * SR + 0.5);
+    int n = step_times(v, ch, 45, 52, at, 16, 9 * T);
+    CHECK(n == 7);
+    for (int i = 0; i < 7 && i < n; i++) {
+        CHECK(abs(at[i] - (i + 1) * T) <= T / 50 + 2); // каждая ступень - T, с первой
+    }
+    CHECK(acid_slot_pitch(v) == v->target_log2); // приходит точно
+}
+
+TEST(test_glide_linear_semi)
+{
+    live();
+    acid_synth_set_knob(&s, P, 1, ACID_GLIDE_SEMI);
+    linear_case(&s.slot[0], BASS, 0.06);
+    // Ручка GLIDE 303 (энкодер 9) задаёт T: 127 - 0.3 с на ступень.
+    live();
+    acid_synth_set_knob(&s, P, 1, ACID_GLIDE_SEMI);
+    acid_synth_set_knob(&s, 6, 8, 127);
+    linear_case(&s.slot[0], BASS, 0.3);
+    // Ручка после выбора лесенки и наоборот - то же.
+    live();
+    acid_synth_set_knob(&s, 6, 8, 127);
+    acid_synth_set_knob(&s, P, 1, ACID_GLIDE_SEMI);
+    linear_case(&s.slot[0], BASS, 0.3);
+}
+
+// Слой на половинной частоте: шаг на сэмпл слоя вдвое, время ступени то же.
+TEST(test_glide_linear_half_layer)
+{
+    live();
+    acid_synth_set_knob(&s, P, 2, ACID_GLIDE_SEMI);
+    acid_synth_set_knob(&s, ACID_PAGE_LAYER1 + 1, 1, 0); // слой синта 2 - 303
+    acid_synth_set_knob(&s, 8, 14, 127);                // LYR HALF
+    render(9600);
+    CHECK(s.layer[1].half == 1);
+    linear_case(&s.layer[1], SEQ2, 0.06);
+}
+
+// Plaits: та же линейная лесенка (высота модели берётся раз на блок 12 сэмплов).
+TEST(test_glide_linear_plaits)
+{
+    live();
+    acid_synth_set_knob(&s, 6, 1, 1); // синт 1 - VA VCF
+    render(9600);
+    acid_synth_set_knob(&s, P, 1, ACID_GLIDE_SEMI);
+    linear_case(&s.slot[0], BASS, 0.06);
+}
+
+// Полулесенка на линейном слайде: полступени стоим, полступени едем. Мёртвая зона у ступени не нужна:
+// линейный слайд зажат на цели и приходит точно (у прежнего экспоненциального она прятала застревание
+// во float в ~0.8 цента), а с ней стоянка была бы 54.5 % ступени вместо половины.
+TEST(test_glide_ramp_halves)
+{
+    live();
+    acid_synth_set_knob(&s, P, 1, ACID_GLIDE_SEMI_RAMP);
+    acid_slot_t *v = &s.slot[0];
+    on(BASS, 45);
+    render(4800);
+    on(BASS, 52);
+    int T = (int)(0.06 * SR + 0.5), held = 0, total = 7 * T;
+    for (int i = 0; i < total; i++) {
+        acid_synth_render(&s, buf, 1);
+        double st = cents(v, 52) / 100.0;
+        held += fabs(st - floor(st + 0.5)) < 1e-4;
+    }
+    CHECK(fabs((double)held / total - 0.5) < 0.01);
+    CHECK(acid_slot_pitch(v) == v->target_log2);
+}
+
 // Строй и лесенка вместе: ступени считаются от цели, слайд приходит в настроенную ноту.
 TEST(test_glide_steps_tuned)
 {
@@ -299,6 +395,10 @@ int main(void)
     RUN(test_glide_quarter_ramp);
     RUN(test_glide_steps_plaits);
     RUN(test_glide_steps_tuned);
+    RUN(test_glide_linear_semi);
+    RUN(test_glide_linear_half_layer);
+    RUN(test_glide_linear_plaits);
+    RUN(test_glide_ramp_halves);
     RUN(test_blob);
     TEST_MAIN_END();
 }

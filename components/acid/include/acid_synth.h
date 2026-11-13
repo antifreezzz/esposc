@@ -69,7 +69,10 @@ typedef struct {
     float pitch_log2;  // текущая высота, log2(Гц)
     float target_log2;
     float glide_coef;
+    float glide_s;      // время ступени / глайда в секундах
     float gstep, ginv;  // слайд лесенкой: ступень в октавах (1/12, 1/24) и обратная; 0 - гладко
+    float gstep_inc;    // приращение фазы ступени на сэмпл (1 / (glide_s * sr))
+    float gphase;       // прогресс текущей ступени [0, 1)
     int gramp;          // полулесенка: полшага на ступени, полшага съезд к следующей
     int gliding;
     float accent_gain;
