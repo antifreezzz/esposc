@@ -39,8 +39,8 @@ static const char *const FX[16] = {NULL, "CRUSH BITS", "CRUSH RATE", "DLY S1", "
                                    "DLY FB", "DLY TONE", "STUTTER", "MOTION", "WIDTH", "LYR1 VOL", "LYR2 VOL", "LYR HALF",
                                    "REVERB"};
 static const char *const REVERB[16] = {NULL, "RVB S1", "RVB S2", "RVB DRUMS", "DECAY", "DAMP", "WIDTH"};
-static const char *const PITCH[16] = {NULL, "S1 GLIDE", "S2 GLIDE", "TUNING"};
-static const char *const GLIDE_STEP[5] = {"SMOOTH", "SEMI", "QUARTER", "SEMI GL", "QRTR GL"};
+static const char *const PITCH[16] = {NULL, "S1 GLIDE", "S2 GLIDE", "TUNING", "S1 GATE", "S2 GATE"};
+static const char *const GLIDE_STEP[7] = {"SMOOTH", "SEMI", "QUARTER", "SEMI GL", "QRTR GL", "SEMI ART", "QRTR ART"};
 static const char *const TUNING[6] = {"EQUAL", "JUST", "PYTHAG", "MEANTONE", "RAST", "BAYATI"}; // как ACID_TUNING_*
 static const char *const GRIDS[16] = {NULL, "ON", "X", "Y", "KICK", "SNARE", "HAT", "CHAOS", "HAT MODE",
                                       "TIME", "EVERY", "FILL LEN", "FILL", "PATTERN", "SWING", "ROLL"};

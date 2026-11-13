@@ -575,7 +575,8 @@ TEST(test_pitch_panel_only)
     CHECK(knob(ACID_PAGE_PITCH, 3) == 2);
     CHECK(ev.page == ACID_PAGE_PITCH && ev.enc == 2 && ev.value == 2 && ev.src == ACID_SRC_PANEL);
     CHECK(l.held[ACID_PAGE_PITCH][2] == 1);
-    CHECK(panel(ACID_PAGE_PITCH, 5, 1) == 0); // внутри 4: за TUNING ручек нет
+    CHECK(panel(ACID_PAGE_PITCH, 5, 64) == 1 && knob(ACID_PAGE_PITCH, 5) == 64);
+    CHECK(panel(ACID_PAGE_PITCH, 7, 1) == 0); // внутри 6: за S2 GATE ручек нет
     CHECK(acid_link_panel_page(&l, &s, ACID_PAGE_PITCH, &ev) == 0);
     CHECK(s.page == 6);
 }

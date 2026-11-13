@@ -495,7 +495,7 @@ TEST(test_mod_local_set)
     CHECK(m.mod_knob[0][5] == 50 && m.mod_held[0][5] == 1);
     CHECK(!pl_model_local_set(&m, PL_PAGE_MOD1 + 1, 5, 50)); // этот кадр не приходил
     CHECK(!pl_model_local_set(&m, PL_PAGE_MOD1, 0, 50) && !pl_model_local_set(&m, PL_PAGE_MOD1, 16, 50));
-    CHECK(!pl_model_local_set(&m, PL_PAGE_REVERB + 1, 5, 50));
+    CHECK(!pl_model_local_set(&m, PL_PAGE_PITCH + 1, 5, 50));
 }
 
 TEST(test_pitch_local_set)
@@ -514,7 +514,7 @@ TEST(test_pitch_local_set)
     CHECK(pl_model_raw(&m, PL_PAGE_PITCH) == m.pitch);
     CHECK(pl_model_local_set(&m, PL_PAGE_PITCH, 2, 1) == 1);
     CHECK(m.pitch[2] == 1 && m.pitch_held[2] == 1);
-    CHECK(pl_model_local_set(&m, PL_PAGE_PITCH, 0, 1) == 0 && pl_model_local_set(&m, PL_PAGE_PITCH, 4, 1) == 0);
+    CHECK(pl_model_local_set(&m, PL_PAGE_PITCH, 0, 1) == 0 && pl_model_local_set(&m, PL_PAGE_PITCH, 6, 1) == 0);
 }
 
 int main(void)

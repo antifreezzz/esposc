@@ -15,9 +15,9 @@
 #define PL_PAGE_GRIDS 12
 #define PL_PAGE_PETRI 13 // на BSP 18
 #define PL_PAGE_REVERB 27 // подэкран FX, на BSP номера нет
-#define PL_PAGE_PITCH 28  // подэкран GLIDE синтов: шаг слайда S1/S2 и строй, номера BSP нет
+#define PL_PAGE_PITCH 28  // подэкран GLIDE синтов: шаг слайда S1/S2, строй, GATE S1/S2, номера BSP нет
 #define PL_REVERB_KNOBS 6
-#define PL_PITCH_KNOBS 3
+#define PL_PITCH_KNOBS 5
 #define PL_KNOBS 16
 #define PL_PAYLOAD_MAX 255
 #define PL_FRAME_MAX (PL_PAYLOAD_MAX + 4)

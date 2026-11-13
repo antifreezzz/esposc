@@ -220,6 +220,8 @@ TEST(test_pitch_cell)
     CHECK(strcmp(c.label, "TUNING") == 0 && strcmp(c.text, "RAST") == 0);
     CHECK(c.v == 4 && c.lo == 0 && c.hi == 5 && c.held == 1);
     pl_view_cell(&m, PL_PAGE_PITCH, 4, &c);
+    CHECK(strcmp(c.label, "S1 GATE") == 0);
+    pl_view_cell(&m, PL_PAGE_PITCH, 6, &c);
     CHECK(c.label == NULL);
     CHECK(pl_view_page_color(PL_PAGE_PITCH) == pl_page_color(6));
     CHECK(pl_page_bsp(PL_PAGE_PITCH) == -1);

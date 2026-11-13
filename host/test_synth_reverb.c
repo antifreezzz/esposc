@@ -97,7 +97,7 @@ TEST(test_reverb_blob_import_and_roundtrip)
     }
     uint8_t blob[ACID_SYNTH_BLOB];
     CHECK(acid_synth_export(&a, blob, sizeof blob) == ACID_SYNTH_BLOB);
-    CHECK(blob[3] == 9);
+    CHECK(blob[3] == 10);
     CHECK(acid_synth_import(&b, blob, sizeof blob));
     for (int e = 0; e < ACID_REVERB_KNOBS; e++) {
         CHECK(acid_synth_knob(&b, ACID_PAGE_REVERB, e + 1) == val[e]);
@@ -110,7 +110,7 @@ TEST(test_reverb_blob_import_and_roundtrip)
         CHECK(acid_synth_knob(&b, ACID_PAGE_REVERB, e + 1) == def[e]);
     }
     CHECK(acid_synth_export(&b, blob, sizeof blob) == ACID_SYNTH_BLOB);
-    CHECK(blob[3] == 9);
+    CHECK(blob[3] == 10);
     // Версия 7: пять ручек, ширины нет - полная.
     acid_synth_init(&a, SR);
     for (int e = 0; e < ACID_REVERB_KNOBS; e++) {
