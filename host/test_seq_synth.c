@@ -197,6 +197,27 @@ TEST(test_retrig_gate)
     CHECK(open_norm == TICK_SAMPLES);
 }
 
+TEST(test_slide_step_to_step)
+{
+    setup();
+    acid_seq_set_step(&q, 0, 0, 0, 0 | ACID_SEQ_SLIDE); // C2 + SLIDE
+    acid_seq_set_step(&q, 0, 0, 5, 0 | ACID_SEQ_UP);    // C3 через 5 шагов
+    acid_synth_use_seq(&s, &q);
+    ev(ACID_MIDI_START, 0, 0, 0);
+    acid_synth_seq_run(&s, 0, 1);
+    ev(ACID_MIDI_CLOCK, 0, 0, 0); // шаг 0, тик 0
+    float p0 = s.slot[0].pitch_log2;
+    render(TICK_SAMPLES);
+    // Середина пути (14 тиков = 15000 сэмплов = 2.5 шага): высота уже едет, середина октавы.
+    ticks(14);
+    float p_mid = s.slot[0].pitch_log2;
+    CHECK(fabsf(p_mid - (p0 + 0.5f)) < 0.05f);
+    // Доезжаем до конца 5-го шага (ещё 15 тиков = 30000 сэмплов): высота дошла до C3.
+    ticks(15);
+    float p_end = s.slot[0].pitch_log2;
+    CHECK(fabsf(p_end - (p0 + 1.0f)) < 0.001f);
+}
+
 int main(void)
 {
     RUN(test_seq_plays_note);
@@ -209,5 +230,6 @@ int main(void)
     RUN(test_same_note_bsp_release_keeps_seq);
     RUN(test_retrig_not_debounced);
     RUN(test_retrig_gate);
+    RUN(test_slide_step_to_step);
     TEST_MAIN_END();
 }

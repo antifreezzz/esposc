@@ -151,6 +151,8 @@ static int emit(acid_seq_ev_t *out, int k, int synth, int on, int note, int vel)
     out[k].note = (uint8_t)note;
     out[k].vel = (uint8_t)vel;
     out[k].rtg_ticks = 0;
+    out[k].slide_note = 0;
+    out[k].slide_steps = 0;
     return k + 1;
 }
 
@@ -181,6 +183,38 @@ void acid_seq_rewind(acid_seq_t *q)
         q->t[s].slid = 0;
         q->t[s].armed = 0;
     }
+}
+
+static int step_note(const acid_seq_track_t *t, int synth, const acid_tonal_t *tonal, int pat, uint8_t v)
+{
+    int deg = v & ACID_SEQ_DEG;
+    int base = (synth == 0 ? 36 : 48) + tonal->tonic + 12 * t->oct[pat] + (v & ACID_SEQ_UP ? 12 : 0);
+    int sc = t->scale[pat];
+    int note = sc ? acid_tonal_scale_note(sc - 1, base, deg) : acid_tonal_degree_note(tonal, base, deg);
+    return note < 0 ? 0 : (note > 127 ? 127 : note);
+}
+
+static int next_real_note(const acid_seq_track_t *t, int synth, const acid_tonal_t *tonal,
+                          uint8_t *out_note, uint8_t *out_steps)
+{
+    acid_seq_track_t p = *t;
+    int max_steps = ACID_SEQ_ROWS * ACID_SEQ_CELLS * ACID_SEQ_REP_MAX * ACID_SEQ_STEPS;
+    if (max_steps > 255) {
+        max_steps = 255;
+    }
+    for (int d = 1; d <= max_steps; d++) {
+        if (++p.step == ACID_SEQ_STEPS) {
+            p.step = 0;
+            song_next(&p);
+        }
+        uint8_t v = p.pat[p.cur_pat][p.step];
+        if ((v & ACID_SEQ_DEG) != ACID_SEQ_REST) {
+            *out_note = (uint8_t)step_note(&p, synth, tonal, p.cur_pat, v);
+            *out_steps = (uint8_t)d;
+            return 1;
+        }
+    }
+    return 0;
 }
 
 static int track_clock(acid_seq_track_t *t, int synth, int beat_step, const acid_tonal_t *tonal, acid_seq_ev_t *out)
@@ -214,13 +248,11 @@ static int track_clock(acid_seq_track_t *t, int synth, int beat_step, const acid
                 t->sounding = -1;
             }
         } else {
-            int base = (synth == 0 ? 36 : 48) + tonal->tonic + 12 * t->oct[t->cur_pat] + (v & ACID_SEQ_UP ? 12 : 0);
-            int sc = t->scale[t->cur_pat];
-            int note = sc ? acid_tonal_scale_note(sc - 1, base, deg) : acid_tonal_degree_note(tonal, base, deg);
-            note = note < 0 ? 0 : (note > 127 ? 127 : note);
+            int note = step_note(t, synth, tonal, t->cur_pat, v);
             int vel = (v & ACID_SEQ_ACC) ? VEL_ACC : VEL;
-            int on_idx = k;
+            int on_idx = -1;
             if (note != old) {
+                on_idx = k;
                 k = emit(out, k, synth, 1, note, vel); // новая раньше старой: глайд
                 if (old >= 0) {
                     k = emit(out, k, synth, 0, old, 0);
@@ -233,12 +265,23 @@ static int track_clock(acid_seq_track_t *t, int synth, int beat_step, const acid
             }
             // Период повторов: шаг из 6 тиков делится на 2 удара по 3 тика или 3 по 2.
             t->rtg = (uint8_t)(hits > 1 ? TICKS / hits : 0);
-            if (t->rtg && on_idx < k) {
+            if (t->rtg && on_idx >= 0) {
                 out[on_idx].rtg_ticks = t->rtg;
             }
             t->rtg_note = (uint8_t)note;
             t->rtg_vel = (uint8_t)vel;
             t->slid = (v & ACID_SEQ_SLIDE) && hits == 1 && t->sounding >= 0;
+            if (t->slid) {
+                uint8_t sn = 0, ss = 0;
+                if (next_real_note(t, synth, tonal, &sn, &ss) && sn != note) {
+                    if (on_idx < 0) {
+                        on_idx = k;
+                        k = emit(out, k, synth, 2, note, vel); // та же нота, но дальше слайд к новой
+                    }
+                    out[on_idx].slide_note = sn;
+                    out[on_idx].slide_steps = ss;
+                }
+            }
         }
     } else if (t->rtg) {
         // Повторы идут по защёлкнутому на тике 0: правка шага посреди хода их не ломает.

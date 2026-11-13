@@ -149,6 +149,7 @@ static void slot_init(acid_slot_t *v, float sr, int type)
     v->gart = 0;
     v->ggate = 1.0f;
     v->rtg_gate_left = -1;
+    v->seq_inc = v->seq_step_inc = 0.0f;
     v->pitch_log2 = v->target_log2 = log2f(110.0f);
     v->gliding = 0;
     v->accent_gain = 1.0f;
@@ -430,10 +431,12 @@ static void voice_note(acid_synth_t *s, acid_slot_t *v, int note, int accent, in
     if (slide) {
         v->gphase = 0.0f;
         v->gliding = 1;
+        v->seq_inc = v->seq_step_inc = 0.0f;
         return;
     }
     v->gliding = 0;
     v->gphase = 0.0f;
+    v->seq_inc = v->seq_step_inc = 0.0f;
     v->pitch_log2 = v->target_log2;
     v->retrig = 1;
     acid_decay_set(&v->fenv, accent ? v->decay_s * FENV_ACCENT_RATIO : v->decay_s, s->sr);
@@ -451,6 +454,7 @@ void acid_synth_notes_off(acid_synth_t *s)
         v->nheld = 0;
         v->pend_note = -1;
         v->gliding = 0;
+        v->seq_inc = v->seq_step_inc = 0.0f;
         v->rtg_gate_left = -1;
         if (v->pet) {
             acid_petri_notes_off(v->pet);
@@ -1441,6 +1445,33 @@ static void seq_rtg_gate(acid_synth_t *s, acid_slot_t *v, int rtg_ticks)
     }
 }
 
+static void seq_slide_to(acid_synth_t *s, acid_slot_t *v, int slide_note, int slide_steps)
+{
+    if (slide_steps <= 0) {
+        return;
+    }
+    float target = note_log2(s, slot_note(s, v, slide_note));
+    float diff = target - v->pitch_log2;
+    if (fabsf(diff) < 1e-6f) {
+        return;
+    }
+    float dur = (float)slide_steps * 0.25f * acid_clock_spb(&s->clock);
+    if (dur < 1.0f) {
+        dur = 1.0f;
+    }
+    v->target_log2 = target;
+    v->gphase = 0.0f;
+    v->gliding = 1;
+    if (v->gstep > 0.0f) {
+        float steps = ceilf(fabsf(diff) / v->gstep);
+        v->seq_step_inc = steps / dur;
+        v->seq_inc = 0.0f;
+    } else {
+        v->seq_inc = diff / dur;
+        v->seq_step_inc = 0.0f;
+    }
+}
+
 static void seq_notes(acid_synth_t *s, const acid_seq_ev_t *ev, int n)
 {
     for (int i = 0; i < n; i++) {
@@ -1448,11 +1479,20 @@ static void seq_notes(acid_synth_t *s, const acid_seq_ev_t *ev, int n)
         if (!ev[i].on && (s->bsp_held[ev[i].synth][note >> 5] >> (note & 31) & 1)) {
             continue; // ту же ноту держит BSP: отпустит он
         }
+        if (ev[i].on == 2) {
+            seq_slide_to(s, &s->slot[ev[i].synth], ev[i].slide_note, ev[i].slide_steps);
+            seq_slide_to(s, &s->layer[ev[i].synth], ev[i].slide_note, ev[i].slide_steps);
+            continue;
+        }
         if (ev[i].on || s->drone) {
             synth_note(s, ev[i].synth, ev[i].on, note, ev[i].vel);
             if (ev[i].on) {
                 seq_rtg_gate(s, &s->slot[ev[i].synth], ev[i].rtg_ticks);
                 seq_rtg_gate(s, &s->layer[ev[i].synth], ev[i].rtg_ticks);
+                if (ev[i].slide_steps > 0) {
+                    seq_slide_to(s, &s->slot[ev[i].synth], ev[i].slide_note, ev[i].slide_steps);
+                    seq_slide_to(s, &s->layer[ev[i].synth], ev[i].slide_note, ev[i].slide_steps);
+                }
             }
         } else {
             exact_off(s, &s->slot[ev[i].synth], note);
@@ -1640,37 +1680,59 @@ static void plaits_refill(acid_slot_t *v, int gate)
     v->idle = quiet ? v->idle + 1 : 0;
 }
 
+static inline int slot_glide_advance(acid_slot_t *v, int *gate)
+{
+    if (!v->gliding) {
+        return 0;
+    }
+    if (v->gstep_inc > 0.0f) {
+        float base_inc = v->seq_step_inc > 0.0f ? v->seq_step_inc : v->gstep_inc;
+        float inc = v->half ? 2.0f * base_inc : base_inc;
+        v->gphase += inc;
+        int stepped = 0;
+        if (v->gphase >= 1.0f - 0.5f * inc) {
+            v->gphase -= 1.0f;
+            if (v->gphase < 0.0f) {
+                v->gphase = 0.0f;
+            }
+            float diff = v->target_log2 - v->pitch_log2;
+            if (fabsf(diff) <= v->gstep * 1.0001f) {
+                v->pitch_log2 = v->target_log2;
+                v->gphase = 0.0f;
+                v->gliding = 0;
+                v->seq_step_inc = 0.0f;
+            } else {
+                v->pitch_log2 += diff > 0.0f ? v->gstep : -v->gstep;
+            }
+            stepped = v->gart;
+        }
+        if (v->gliding && v->ggate < 1.0f && v->gphase >= v->ggate) {
+            *gate = 0;
+        }
+        return stepped;
+    }
+    if (v->seq_inc != 0.0f) {
+        float inc = v->half ? 2.0f * v->seq_inc : v->seq_inc;
+        float diff = v->target_log2 - v->pitch_log2;
+        if (fabsf(diff) <= fabsf(inc)) {
+            v->pitch_log2 = v->target_log2;
+            v->gliding = 0;
+            v->seq_inc = 0.0f;
+        } else {
+            v->pitch_log2 += inc;
+        }
+        return 0;
+    }
+    float gc = v->half ? v->glide_coef * v->glide_coef : v->glide_coef; // полюс за два сэмпла
+    v->pitch_log2 = v->target_log2 + (v->pitch_log2 - v->target_log2) * gc;
+    return 0;
+}
+
 // Сэмпл голоса Plaits с громкостью слота: блоки по 12.
 static float plaits_next(acid_slot_t *v, int gate)
 {
-    if (v->gliding) {
-        if (v->gstep_inc > 0.0f) {
-            float inc = v->half ? 2.0f * v->gstep_inc : v->gstep_inc;
-            v->gphase += inc;
-            if (v->gphase >= 1.0f - 0.5f * inc) {
-                v->gphase -= 1.0f;
-                if (v->gphase < 0.0f) {
-                    v->gphase = 0.0f;
-                }
-                float diff = v->target_log2 - v->pitch_log2;
-                if (fabsf(diff) <= v->gstep * 1.0001f) {
-                    v->pitch_log2 = v->target_log2;
-                    v->gphase = 0.0f;
-                    v->gliding = 0;
-                } else {
-                    v->pitch_log2 += diff > 0.0f ? v->gstep : -v->gstep;
-                }
-                if (v->gart) {
-                    v->retrig = 1;
-                }
-            }
-            if (v->gliding && v->ggate < 1.0f && v->gphase >= v->ggate) {
-                gate = 0;
-            }
-        } else {
-            float gc = v->half ? v->glide_coef * v->glide_coef : v->glide_coef; // полюс за два сэмпла
-            v->pitch_log2 = v->target_log2 + (v->pitch_log2 - v->target_log2) * gc;
-        }
+    if (slot_glide_advance(v, &gate)) {
+        v->retrig = 1;
     }
     if (v->rtg_gate_left > 0) {
         v->rtg_gate_left--;
@@ -1721,34 +1783,8 @@ static void plaits_run(acid_slot_t *v, int gate, float *out, int n)
 // Сэмпл голоса 303 с громкостью слота.
 static inline float voice_next(acid_synth_t *s, acid_slot_t *v, int gate)
 {
-    if (v->gliding) {
-        if (v->gstep_inc > 0.0f) {
-            float inc = v->half ? 2.0f * v->gstep_inc : v->gstep_inc;
-            v->gphase += inc;
-            if (v->gphase >= 1.0f - 0.5f * inc) {
-                v->gphase -= 1.0f;
-                if (v->gphase < 0.0f) {
-                    v->gphase = 0.0f;
-                }
-                float diff = v->target_log2 - v->pitch_log2;
-                if (fabsf(diff) <= v->gstep * 1.0001f) {
-                    v->pitch_log2 = v->target_log2;
-                    v->gphase = 0.0f;
-                    v->gliding = 0;
-                } else {
-                    v->pitch_log2 += diff > 0.0f ? v->gstep : -v->gstep;
-                }
-                if (v->gart) {
-                    acid_decay_trigger(&v->fenv, 1.0f);
-                }
-            }
-            if (v->gliding && v->ggate < 1.0f && v->gphase >= v->ggate) {
-                gate = 0;
-            }
-        } else {
-            float gc = v->half ? v->glide_coef * v->glide_coef : v->glide_coef; // полюс за два сэмпла
-            v->pitch_log2 = v->target_log2 + (v->pitch_log2 - v->target_log2) * gc;
-        }
+    if (slot_glide_advance(v, &gate)) {
+        acid_decay_trigger(&v->fenv, 1.0f);
     }
     if (v->rtg_gate_left > 0) {
         v->rtg_gate_left--;
