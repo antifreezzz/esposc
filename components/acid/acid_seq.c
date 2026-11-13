@@ -208,7 +208,7 @@ static int track_clock(acid_seq_track_t *t, int synth, int beat_step, const acid
             old = t->sounding = -1;
         }
         if (deg == ACID_SEQ_REST) {
-            if (old >= 0) {
+            if (old >= 0 && !t->slid) {
                 k = emit(out, k, synth, 0, old, 0);
                 t->sounding = -1;
             }
@@ -232,8 +232,8 @@ static int track_clock(acid_seq_track_t *t, int synth, int beat_step, const acid
             t->rtg = (uint8_t)(hits > 1 ? TICKS / hits : 0);
             t->rtg_note = (uint8_t)note;
             t->rtg_vel = (uint8_t)vel;
+            t->slid = (v & ACID_SEQ_SLIDE) && hits == 1 && t->sounding >= 0;
         }
-        t->slid = (v & ACID_SEQ_SLIDE) && hits == 1 && t->sounding >= 0;
     } else if (t->rtg) {
         // Повторы идут по защёлкнутому на тике 0: правка шага посреди хода их не ломает.
         if (t->tick % t->rtg == 0) {

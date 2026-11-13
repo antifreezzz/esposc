@@ -443,6 +443,68 @@ TEST(test_retrig_blob)
     CHECK(r.t[1].pat[3][7] == (5 | ACID_SEQ_RTG | ACID_SEQ_SLIDE));
 }
 
+// Слайд через паузы: нота со SLIDE держится через пустые шаги и слайдит в следующую ноту.
+TEST(test_slide_through_rests)
+{
+    setup();
+    acid_seq_set_step(&q, 0, 0, 0, 0 | ACID_SEQ_SLIDE); // C2 + SLIDE
+    acid_seq_set_step(&q, 0, 0, 3, 2);                  // E2 (через 2 паузы)
+    acid_seq_set_step(&q, 0, 0, 15, 4 | ACID_SEQ_SLIDE); // G2 + SLIDE на конце такта
+    run(0);
+    // Шаг 0: C2 on
+    CHECK(tick(-1) == 1 && ev[0].on && ev[0].note == 36);
+    for (int t = 1; t < 18; t++) { // остаток шага 0 и 2 паузы (шаги 1 и 2) - тишина (держим C2)
+        CHECK(tick(-1) == 0);
+    }
+    int n3 = acid_tonal_degree_note(&tonal, 36, 2);
+    int n15 = acid_tonal_degree_note(&tonal, 36, 4);
+    // Шаг 3: n3 on раньше C2 off (глайд!)
+    CHECK(tick(-1) == 2);
+    CHECK(ev[0].on && ev[0].note == n3);
+    CHECK(!ev[1].on && ev[1].note == 36);
+    for (int t = 1; t < 5; t++) { // тик 5 (GATE_TICK) гасит n3
+        tick(-1);
+    }
+    CHECK(tick(-1) == 1 && !ev[0].on && ev[0].note == n3);
+    // Доезжаем до шага 15: n15 + SLIDE, затем перенос через конец такта на шаг 0 (C2)
+    for (int step = 4; step < 15; step++) {
+        for (int t = 0; t < 6; t++) {
+            tick(-1);
+        }
+    }
+    CHECK(tick(-1) == 1 && ev[0].on && ev[0].note == n15); // шаг 15: n15 on
+    for (int t = 1; t < 6; t++) {
+        CHECK(tick(-1) == 0);
+    }
+    CHECK(tick(-1) == 2); // шаг 0 нового такта: C2 on раньше n15 off
+    CHECK(ev[0].on && ev[0].note == 36);
+    CHECK(!ev[1].on && ev[1].note == n15);
+}
+
+// Слайд через паузы при смене такта песни и та же нота (просто держится), а stop/rewind гасят.
+TEST(test_slide_through_rests_song)
+{
+    setup();
+    row(0, 0, "AB", 1);
+    acid_seq_set_step(&q, 0, 0, 14, 0 | ACID_SEQ_SLIDE); // C2 + SLIDE на шаге 14 такта A
+    acid_seq_set_step(&q, 0, 1, 2, 0);                   // C2 на шаге 2 такта B (через 3 паузы)
+    run(0);
+    for (int step = 0; step < 14; step++) {
+        for (int t = 0; t < 6; t++) {
+            tick(-1);
+        }
+    }
+    CHECK(tick(-1) == 1 && ev[0].on && ev[0].note == 36);
+    for (int t = 1; t < 6 + 6 + 2 * 6; t++) { // шаг 15 такта A и шаги 0-1 такта B
+        CHECK(tick(-1) == 0);
+    }
+    CHECK(tick(-1) == 0); // шаг 2 такта B: та же нота C2, просто держится
+    for (int t = 1; t < 5; t++) {
+        tick(-1);
+    }
+    CHECK(tick(-1) == 1 && !ev[0].on && ev[0].note == 36); // и гаснет на GATE_TICK шага 2
+}
+
 int main(void)
 {
     RUN(test_song_walk);
@@ -470,5 +532,7 @@ int main(void)
     RUN(test_retrig_after_slide_same_note);
     RUN(test_retrig_rest_silent);
     RUN(test_retrig_blob);
+    RUN(test_slide_through_rests);
+    RUN(test_slide_through_rests_song);
     TEST_MAIN_END();
 }
